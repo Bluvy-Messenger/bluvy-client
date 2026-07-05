@@ -1,0 +1,20 @@
+<div class="composer">
+  <input
+    class="composer__input"
+    type="text"
+    [placeholder]="'composer.placeholder' | translate"
+    [value]="inputText"
+    [disabled]="disabled"
+    (input)="onInputChange($event)"
+    (keydown)="onKeydown($event)"
+  />
+  <button
+    class="composer__send"
+    type="button"
+    [disabled]="disabled || !inputText.trim()"
+    (click)="onSend()"
+    aria-label="Send"
+  >
+    <ion-icon name="send"></ion-icon>
+  </button>
+</div>

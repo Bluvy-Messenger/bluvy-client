@@ -1,0 +1,40 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'security.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="ss-content">
+
+    <div class="ss-section">
+      <div class="ss-section-title">{{ 'security.section.devices' | translate }}</div>
+      <div class="ss-block">
+        <button class="settings-row" (click)="openDevices()">
+          <ion-icon name="phone-portrait-outline" class="settings-row__icon"></ion-icon>
+          <div class="settings-row__body">
+            <span class="settings-row__label">{{ 'security.devices' | translate }}</span>
+            <span class="settings-row__sub">{{ 'security.devices.sub' | translate }}</span>
+          </div>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
+      </div>
+    </div>
+
+    <div class="ss-section">
+      <div class="ss-section-title">{{ 'security.section.encryption' | translate }}</div>
+      <div class="ss-block">
+        <button class="settings-row" (click)="openSync()">
+          <ion-icon name="sync-outline" class="settings-row__icon"></ion-icon>
+          <div class="settings-row__body">
+            <span class="settings-row__label">{{ 'security.sync' | translate }}</span>
+            <span class="settings-row__sub">{{ 'security.sync.sub' | translate }}</span>
+          </div>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</ion-content>

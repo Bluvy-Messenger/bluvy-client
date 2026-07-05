@@ -1,0 +1,67 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{ 'pin_unlock.title' | translate }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+
+  @if (!restoring) {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>{{ 'pin_unlock.card.title' | translate }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>{{ 'pin_unlock.card.desc' | translate }}</p>
+
+        <ion-input
+          [value]="pin"
+          (ionInput)="onPinInput($event)"
+          [placeholder]="'pin_unlock.placeholder' | translate"
+          type="password"
+          inputmode="numeric"
+          maxlength="8"
+          style="margin: 12px 0;"
+        ></ion-input>
+
+        @if (error) {
+          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+        }
+
+        <ion-button
+          expand="block"
+          [disabled]="unlocking || !pin.trim()"
+          (click)="onUnlock()">
+          @if (unlocking) {
+            <ion-spinner name="crescent"></ion-spinner>
+          } @else {
+            {{ 'pin_unlock.submit' | translate }}
+          }
+        </ion-button>
+
+        <ion-button
+          expand="block"
+          fill="clear"
+          style="margin-top: 8px;"
+          (click)="goToRecovery()">
+          {{ 'pin_unlock.forgot' | translate }}
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+
+  @if (restoring) {
+    <ion-card>
+      <ion-card-content>
+        <div class="ion-text-center ion-padding">
+          <ion-spinner></ion-spinner>
+          <p>{{ 'pin_unlock.restoring' | translate }}</p>
+          @if (restored > 0) {
+            <p>{{ 'pin_unlock.restored' | translate: { count: restored } }}</p>
+          }
+        </div>
+      </ion-card-content>
+    </ion-card>
+  }
+
+</ion-content>

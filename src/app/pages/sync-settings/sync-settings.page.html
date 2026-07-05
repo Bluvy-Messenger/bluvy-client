@@ -1,0 +1,145 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'sync.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="ss-content">
+
+    @if (error) {
+      <div class="ss-section">
+        <div class="ss-block">
+          <p class="ss-result ss-result--error">{{ error }}</p>
+        </div>
+      </div>
+    }
+
+    @if (pinChanged) {
+      <div class="ss-section">
+        <div class="ss-block">
+          <p class="ss-result ss-result--success">{{ 'sync.pin_changed' | translate }}</p>
+        </div>
+      </div>
+    }
+
+    <div class="ss-section">
+      <div class="ss-section-title">{{ 'sync.section.status' | translate }}</div>
+      <div class="ss-block">
+        <div class="ss-status">
+          <span class="ss-badge" [class.ss-badge--ok]="mbkAvailable" [class.ss-badge--off]="!mbkAvailable"></span>
+          <span>{{ (mbkAvailable ? 'sync.status.active' : 'sync.status.locked') | translate }}</span>
+        </div>
+        <p class="ss-description">{{ 'sync.status.desc' | translate }}</p>
+      </div>
+    </div>
+
+    @if (mbkAvailable) {
+
+      <div class="ss-section">
+        <div class="ss-section-title">{{ 'sync.section.security' | translate }}</div>
+        <div class="ss-block">
+          @if (!showChangePin) {
+            <button class="btn btn--ghost" (click)="showChangePin = true">{{ 'sync.change_pin' | translate }}</button>
+          } @else {
+            <input
+              class="ss-input"
+              type="password"
+              inputmode="numeric"
+              maxlength="8"
+              [placeholder]="'sync.new_pin' | translate"
+              [value]="newPin"
+              (input)="onNewPinInput($event)"
+            />
+            <input
+              class="ss-input"
+              type="password"
+              inputmode="numeric"
+              maxlength="8"
+              [placeholder]="'sync.confirm_pin' | translate"
+              [value]="newPinConfirm"
+              (input)="onNewPinConfirmInput($event)"
+            />
+            <button
+              class="btn btn--primary"
+              [disabled]="working || !newPin || !newPinConfirm"
+              (click)="onChangePin()"
+            >
+              @if (working) { <div class="ss-spinner"></div> }
+              {{ 'sync.save_pin' | translate }}
+            </button>
+            <button class="btn btn--clear" (click)="showChangePin = false">{{ 'common.cancel' | translate }}</button>
+          }
+        </div>
+      </div>
+
+      <div class="ss-section">
+        <div class="ss-section-title">{{ 'sync.section.restore' | translate }}</div>
+        <div class="ss-block">
+          @if (restoring) {
+            <div class="ss-progress-row">
+              <div class="ss-spinner"></div>
+              <span class="ss-progress">{{ 'sync.restoring' | translate: { count: restoreRestored } }}</span>
+            </div>
+          } @else if (restoreDone) {
+            @if (restoreError) {
+              <p class="ss-result ss-result--error">{{ 'sync.restore_error' | translate: { error: restoreError } }}</p>
+            } @else {
+              <p class="ss-result ss-result--success">{{ 'sync.restored' | translate: { count: restoreRestored } }}</p>
+            }
+            <button class="btn btn--ghost" (click)="dismissRestore()">{{ 'common.close' | translate }}</button>
+          } @else {
+            <button class="btn btn--ghost" (click)="restore()">{{ 'sync.restore_btn' | translate }}</button>
+          }
+        </div>
+      </div>
+
+      <div class="ss-section">
+        <div class="ss-section-title">{{ 'sync.section.advanced' | translate }}</div>
+        <div class="ss-block">
+          @if (rebuilding) {
+            <div class="ss-progress-row">
+              <div class="ss-spinner"></div>
+              @if (rebuildPhase === 'deleting') {
+                <span class="ss-progress">{{ 'sync.deleting' | translate }}</span>
+              } @else {
+                <span class="ss-progress">{{ 'sync.rebuilding' | translate: { uploaded: rebuildUploaded, total: rebuildTotal } }}</span>
+              }
+            </div>
+          } @else if (rebuildDone) {
+            @if (rebuildError) {
+              <p class="ss-result ss-result--error">{{ 'sync.rebuild_error' | translate: { error: rebuildError } }}</p>
+            } @else {
+              <p class="ss-result ss-result--success">{{ 'sync.rebuild_success' | translate: { count: rebuildUploaded } }}</p>
+            }
+            <button class="btn btn--ghost" (click)="dismissRebuild()">{{ 'common.close' | translate }}</button>
+          } @else if (rebuildStep === 'confirm1') {
+            <p class="ss-warn">{{ 'sync.rebuild_warning' | translate }}</p>
+            <ul class="ss-warn-list">
+              <li>{{ 'sync.rebuild_no_local' | translate }}</li>
+              <li>{{ 'sync.rebuild_wait' | translate }}</li>
+              <li>{{ 'sync.rebuild_no_close' | translate }}</li>
+            </ul>
+            <button class="btn btn--danger" (click)="advanceRebuildConfirm()">{{ 'common.continue' | translate }}</button>
+            <button class="btn btn--clear" (click)="cancelRebuild()">{{ 'common.cancel' | translate }}</button>
+          } @else if (rebuildStep === 'confirm2') {
+            <p class="ss-warn">{{ 'sync.rebuild_warning_2' | translate }}</p>
+            <button
+              class="btn btn--danger"
+              [disabled]="!rebuildConfirmEnabled"
+              (click)="confirmRebuild()"
+            >
+              {{ (rebuildConfirmEnabled ? 'sync.rebuild_confirm_btn' : 'sync.rebuild_wait_btn') | translate }}
+            </button>
+            <button class="btn btn--clear" (click)="cancelRebuild()">{{ 'common.cancel' | translate }}</button>
+          } @else {
+            <button class="btn btn--danger" (click)="beginRebuild()">{{ 'sync.rebuild_btn' | translate }}</button>
+          }
+        </div>
+      </div>
+
+    }
+
+  </div>
+</ion-content>

@@ -1,0 +1,18 @@
+@if (multiline) {
+  <textarea
+    class="input"
+    [placeholder]="placeholder"
+    [value]="value"
+    [disabled]="disabled"
+    (input)="onInput($event)"
+  ></textarea>
+} @else {
+  <input
+    class="input"
+    type="text"
+    [placeholder]="placeholder"
+    [value]="value"
+    [disabled]="disabled"
+    (input)="onInput($event)"
+  >
+}

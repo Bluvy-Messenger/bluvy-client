@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bluvy </string>
+    <string name="title_activity_main">Bluvy </string>
+    <string name="package_name">bluvy.application.official</string>
+    <string name="custom_url_scheme">bluvy.application.official</string>
+</resources>

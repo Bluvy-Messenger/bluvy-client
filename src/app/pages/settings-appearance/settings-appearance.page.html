@@ -1,0 +1,71 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'appearance.title' | translate }}</h1>
+</div>
+
+<ion-content class="ion-padding">
+  <div class="ss-content">
+    <p class="theme-label">{{ 'appearance.label' | translate }}</p>
+
+    <!-- Mobile: checkbox list -->
+    <div class="theme-list">
+      <button
+        class="theme-list-item"
+        [class.theme-list-item--active]="preference() === 'light'"
+        (click)="setMode('light')"
+      >
+        <ion-icon [name]="preference() === 'light' ? 'sunny' : 'sunny-outline'" class="theme-list-item__icon"></ion-icon>
+        <span class="theme-list-item__label">{{ 'appearance.light' | translate }}</span>
+        <ion-icon [name]="preference() === 'light' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="theme-list-item__check"></ion-icon>
+      </button>
+      <button
+        class="theme-list-item"
+        [class.theme-list-item--active]="preference() === 'dark'"
+        (click)="setMode('dark')"
+      >
+        <ion-icon [name]="preference() === 'dark' ? 'moon' : 'moon-outline'" class="theme-list-item__icon"></ion-icon>
+        <span class="theme-list-item__label">{{ 'appearance.dark' | translate }}</span>
+        <ion-icon [name]="preference() === 'dark' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="theme-list-item__check"></ion-icon>
+      </button>
+      <button
+        class="theme-list-item"
+        [class.theme-list-item--active]="preference() === 'auto'"
+        (click)="setMode('auto')"
+      >
+        <ion-icon [name]="preference() === 'auto' ? 'contrast' : 'contrast-outline'" class="theme-list-item__icon"></ion-icon>
+        <span class="theme-list-item__label">{{ 'appearance.system' | translate }}</span>
+        <ion-icon [name]="preference() === 'auto' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="theme-list-item__check"></ion-icon>
+      </button>
+    </div>
+
+    <!-- Tablet+: card grid -->
+    <div class="theme-grid">
+      <button
+        class="theme-card"
+        [class.theme-card--active]="preference() === 'light'"
+        (click)="setMode('light')"
+      >
+        <ion-icon [name]="preference() === 'light' ? 'sunny' : 'sunny-outline'" class="theme-card__icon"></ion-icon>
+        <span class="theme-card__name">{{ 'appearance.light' | translate }}</span>
+      </button>
+      <button
+        class="theme-card"
+        [class.theme-card--active]="preference() === 'dark'"
+        (click)="setMode('dark')"
+      >
+        <ion-icon [name]="preference() === 'dark' ? 'moon' : 'moon-outline'" class="theme-card__icon"></ion-icon>
+        <span class="theme-card__name">{{ 'appearance.dark' | translate }}</span>
+      </button>
+      <button
+        class="theme-card"
+        [class.theme-card--active]="preference() === 'auto'"
+        (click)="setMode('auto')"
+      >
+        <ion-icon [name]="preference() === 'auto' ? 'contrast' : 'contrast-outline'" class="theme-card__icon"></ion-icon>
+        <span class="theme-card__name">{{ 'appearance.system' | translate }}</span>
+      </button>
+    </div>
+  </div>
+</ion-content>

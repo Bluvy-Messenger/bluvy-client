@@ -1,0 +1,101 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{ 'contacts.title' | translate }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-refresher slot="fixed" (ionRefresh)="handleRefresh($event)">
+    <ion-refresher-content></ion-refresher-content>
+  </ion-refresher>
+
+  <div class="search-zone">
+    <ion-icon name="search-outline" class="search-zone__icon"></ion-icon>
+    <input
+      class="search-zone__input"
+      [placeholder]="'common.search' | translate"
+      (input)="onSearch($event)"
+    />
+  </div>
+
+  @if (loading) {
+    <div class="loading-center">
+      <div class="spinner"></div>
+    </div>
+  }
+
+  @if (!loading && error) {
+    <p class="no-results" style="color: var(--color-danger)">{{ error }}</p>
+  }
+
+  @if (!loading && !error && !hasAnyContacts) {
+    <div class="empty-state">
+      <ion-icon name="people-outline" class="empty-state__icon"></ion-icon>
+      <p class="empty-state__title">{{ 'contacts.empty.title' | translate }}</p>
+      <p class="empty-state__desc">{{ 'contacts.empty.desc' | translate }}</p>
+    </div>
+  }
+
+  @if (!loading && !error && hasAnyContacts && !hasAnyFiltered) {
+    <p class="no-results">{{ 'contacts.no_results' | translate }}</p>
+  }
+
+  @if (!loading && !error && filteredBluvy.length > 0) {
+    <div class="section-sep">{{ 'contacts.section.bluvy' | translate }}</div>
+    <div class="contact-grid">
+      @for (contact of filteredBluvy; track contact.did) {
+        <div class="contact-row">
+          <div class="contact-avatar">
+            <app-avatar [src]="contact.avatarUrl ?? null" [handle]="contact.handle" size="md"></app-avatar>
+            <app-presence-indicator
+              [online]="(presenceSvc.status$(contact.did) | async) === 'online'"
+            ></app-presence-indicator>
+          </div>
+          <div class="contact-info">
+            <span class="contact-name">{{ contact.displayName || contact.handle }}</span>
+            <span class="contact-handle">@{{ contact.handle }}</span>
+          </div>
+          <button
+            class="contact-action"
+            [disabled]="openingConvId === contact.did"
+            (click)="openConversation(contact)"
+          >
+            @if (openingConvId === contact.did) {
+              <div class="spinner spinner--sm"></div>
+            } @else {
+              {{ 'contacts.message' | translate }}
+            }
+          </button>
+        </div>
+      }
+    </div>
+  }
+
+  @if (!loading && !error && filteredBluesky.length > 0) {
+    <div class="section-sep">{{ 'contacts.section.invite' | translate }}</div>
+    <div class="contact-grid">
+      @for (contact of filteredBluesky; track contact.did) {
+        <div class="contact-row">
+          <div class="contact-avatar">
+            <app-avatar [src]="contact.avatarUrl ?? null" [handle]="contact.handle" size="md"></app-avatar>
+          </div>
+          <div class="contact-info">
+            <span class="contact-name">{{ contact.displayName || contact.handle }}</span>
+            <span class="contact-handle">@{{ contact.handle }}</span>
+          </div>
+          <button
+            class="contact-action contact-action--invite"
+            [disabled]="invitingDid === contact.did"
+            (click)="invite(contact)"
+          >
+            @if (invitingDid === contact.did) {
+              <div class="spinner spinner--sm"></div>
+            } @else {
+              {{ 'contacts.invite' | translate }}
+            }
+          </button>
+        </div>
+      }
+    </div>
+  }
+</ion-content>

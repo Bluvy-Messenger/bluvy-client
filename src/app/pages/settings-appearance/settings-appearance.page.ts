@@ -1,0 +1,31 @@
+import { Component, Input, Output, EventEmitter, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { IonContent, IonIcon } from '@ionic/angular/standalone';
+import { ThemeService, type ThemeMode } from '../../core/theme/theme.service';
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+
+@Component({
+  selector: 'app-settings-appearance',
+  standalone: true,
+  imports: [IonContent, IonIcon, TranslatePipe],
+  templateUrl: './settings-appearance.page.html',
+  styleUrls: ['./settings-appearance.page.scss'],
+})
+export class SettingsAppearancePage {
+  @Input() embedded = false;
+  @Output() navigateBack = new EventEmitter<void>();
+
+  private router   = inject(Router);
+  private themeSvc = inject(ThemeService);
+
+  readonly preference = this.themeSvc.preference;
+
+  goBack(): void {
+    if (this.embedded) { this.navigateBack.emit(); return; }
+    void this.router.navigate(['/tabs/settings']);
+  }
+
+  setMode(mode: ThemeMode): void {
+    this.themeSvc.set(mode);
+  }
+}

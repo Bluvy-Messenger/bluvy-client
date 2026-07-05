@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feedback and feature suggestions
+    url: https://userinput.app/#/s/did:plc:yz47u7jw457mzifjdk7ojanh/3mposmgdddq2g
+    about: Feature requests are not accepted as issues on this repository. Submit them here instead.
+  - name: Security vulnerability
+    url: https://userinput.app/#/s/did:plc:yz47u7jw457mzifjdk7ojanh/3mposmgdddq2g
+    about: Do not open a public issue for a security or cryptography vulnerability. Read SECURITY.md in this repository for the private disclosure procedure.

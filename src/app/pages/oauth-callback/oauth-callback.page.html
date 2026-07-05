@@ -1,0 +1,22 @@
+<ion-content class="login-content">
+  <div class="login-page">
+    <div class="login-page__hero">
+      <div class="login-logo">
+        <img src="assets/icons/icon-192.webp" alt="Bluvy" class="login-logo__img" />
+      </div>
+      <h1 class="login-page__title">Bluvy</h1>
+    </div>
+
+    @if (error) {
+      <div class="login-page__form">
+        <p class="form-error">{{ error }}</p>
+        <button class="login-btn" routerLink="/login">Réessayer</button>
+      </div>
+    } @else {
+      <div class="loading-center">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem; color: var(--ion-color-medium)">Connexion en cours…</p>
+      </div>
+    }
+  </div>
+</ion-content>

@@ -1,0 +1,106 @@
+:root {
+  // ── Colours — light ──────────────────────────────────────────────────────────
+  --color-bg:             #F7F9FC;
+  --color-surface:        #FFFFFF;
+  --color-text-primary:   #111827;
+  --color-text-secondary: #6B7280;
+  --color-primary:        #0A7CFF;
+  --color-primary-hover:  #006AE6;
+  --color-primary-active: #0057BE;
+  --color-border:         #E5E7EB;
+  --color-success:        #22C55E;
+  --color-warning:        #F59E0B;
+  --color-danger:         #EF4444;
+
+  // ── Typography ───────────────────────────────────────────────────────────────
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   17px;
+  --text-lg:   20px;
+  --text-xl:   24px;
+  --text-2xl:  30px;
+
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  // ── Spacing ──────────────────────────────────────────────────────────────────
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+
+  --radius-xs:   6px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   24px;
+  --radius-full: 9999px;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.05);
+
+  --focus-ring: 0 0 0 3px rgba(10, 124, 255, 0.4);
+
+  // ── Animation ────────────────────────────────────────────────────────────────
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 250ms;
+
+  // ── Icons ────────────────────────────────────────────────────────────────────
+  --icon-size-xs: 16px;
+  --icon-size-sm: 20px;
+  --icon-size-md: 24px;
+  --icon-size-lg: 28px;
+
+  // ── Interactive states ───────────────────────────────────────────────────
+  --color-interactive-hover:  rgba(0, 0, 0, 0.04);
+  --color-interactive-active: rgba(0, 0, 0, 0.07);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg:             #0F172A;
+    --color-surface:        #1E293B;
+    --color-text-primary:   #F8FAFC;
+    --color-text-secondary: #CBD5E1;
+    --color-border:         #334155;
+    --color-interactive-hover:  rgba(255, 255, 255, 0.06);
+    --color-interactive-active: rgba(255, 255, 255, 0.10);
+  }
+}
+
+// ── Class-based overrides (managed by ThemeService) ───────────────────────
+
+html.theme-dark {
+  --color-bg:             #0F172A;
+  --color-surface:        #1E293B;
+  --color-text-primary:   #F8FAFC;
+  --color-text-secondary: #CBD5E1;
+  --color-border:         #334155;
+  --color-interactive-hover:  rgba(255, 255, 255, 0.06);
+  --color-interactive-active: rgba(255, 255, 255, 0.10);
+}
+
+// Restore light palette even when system prefers dark
+@media (prefers-color-scheme: dark) {
+  html.theme-light {
+    --color-bg:             #F7F9FC;
+    --color-surface:        #FFFFFF;
+    --color-text-primary:   #111827;
+    --color-text-secondary: #6B7280;
+    --color-border:         #E5E7EB;
+    --color-interactive-hover:  rgba(0, 0, 0, 0.04);
+    --color-interactive-active: rgba(0, 0, 0, 0.07);
+  }
+}

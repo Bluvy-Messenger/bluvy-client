@@ -1,0 +1,20 @@
+<div class="row" [class.row--mine]="isMine">
+  <div class="bubble"
+       [class.bubble--mine]="isMine"
+       [class.bubble--theirs]="!isMine"
+       [class.bubble--pending]="pending">
+    <p class="bubble__text">{{ text }}</p>
+    <div class="bubble__footer">
+      <span class="bubble__time">{{ timestamp | date:'HH:mm' }}</span>
+      @if (isMine && !pending) {
+        @if (receiptStatus === 'read') {
+          <ion-icon name="checkmark-done" class="bubble__receipt bubble__receipt--read"></ion-icon>
+        } @else if (receiptStatus === 'delivered') {
+          <ion-icon name="checkmark-done-outline" class="bubble__receipt"></ion-icon>
+        } @else if (receiptStatus === 'sent') {
+          <ion-icon name="checkmark-outline" class="bubble__receipt"></ion-icon>
+        }
+      }
+    </div>
+  </div>
+</div>

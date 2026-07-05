@@ -1,0 +1,18 @@
+export const SOCKET_EVENTS = {
+  MESSAGE_NEW:          'message:new',
+  WELCOME_NEW:          'welcome:new',
+  DEVICE_NEW:           'device:new',
+  MLS_COMMIT:           'mls:commit',
+  PRESENCE_SNAPSHOT:    'presence:snapshot',
+  PRESENCE_UPDATE:      'presence:update',
+  TYPING_START:         'typing:start',
+  TYPING_STOP:          'typing:stop',
+  CONVERSATION_READ:    'conversation:read',
+  RECEIPT_UPDATE:       'receipt:update',
+  RECEIPT_DELIVERED:    'receipt:delivered',
+  MESSAGE_DELIVERED:    'message:delivered',
+  MESSAGE_SEND:         'message:send',
+  CONVERSATION_NEW:     'conversation:new',
+  CONNECT:              'connect',
+  CONNECT_ERROR:        'connect_error',
+} as const;

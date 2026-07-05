@@ -1,0 +1,10 @@
+<div class="typing">
+  <div class="typing__bubble">
+    <span class="dot"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+  </div>
+  @if (name) {
+    <span class="typing__label">{{ 'typing.indicator' | translate: { name: name } }}</span>
+  }
+</div>

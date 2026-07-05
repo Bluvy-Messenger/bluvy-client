@@ -1,0 +1,76 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'devices.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="ss-content">
+
+    @if (loading) {
+      <div class="loading-center"><div class="spinner"></div></div>
+    }
+
+    @if (!loading && error) {
+      <p class="page-error">{{ error }}</p>
+    }
+
+    @if (!loading && devices.length > 0) {
+      <div class="ss-section-title">{{ 'devices.section' | translate }}</div>
+      <div class="device-list">
+        @for (device of devices; track device.id) {
+          <div class="device-card" [class.device-card--current]="device.id === currentDeviceId">
+            <div class="device-card__icon">
+              <ion-icon [name]="platformIcon(device.platform)"></ion-icon>
+            </div>
+
+            <div class="device-card__info">
+              <div class="device-card__name">
+                {{ device.name }}
+                @if (device.id === currentDeviceId) {
+                  <span class="device-card__badge">{{ 'devices.this' | translate }}</span>
+                }
+              </div>
+              <div class="device-card__meta">
+                {{ device.platform === 'android' ? 'Android' : device.platform === 'ios' ? 'iOS' : 'Web' }}
+                {{ 'devices.last_seen' | translate: { date: formatLastSeen(device.lastSeen) } }}
+              </div>
+              <div class="device-card__meta device-card__meta--light">
+                {{ 'devices.added' | translate: { date: formatCreatedAt(device.createdAt) } }}
+              </div>
+            </div>
+
+            @if (device.id !== currentDeviceId) {
+              <div class="device-card__actions">
+                @if (confirmRevokeId === device.id) {
+                  <div class="device-card__confirm">
+                    <span class="device-card__confirm-text">{{ 'devices.revoke_confirm' | translate }}</span>
+                    <button class="btn-danger-sm" [disabled]="revokingId === device.id" (click)="revoke(device)">
+                      @if (revokingId === device.id) {
+                        <div class="spinner spinner--xs"></div>
+                      } @else {
+                        {{ 'devices.revoke.yes' | translate }}
+                      }
+                    </button>
+                    <button class="btn-ghost-sm" (click)="cancelConfirm()">{{ 'devices.revoke.cancel' | translate }}</button>
+                  </div>
+                } @else {
+                  <button class="btn-revoke" (click)="askConfirm(device.id)">
+                    {{ 'devices.revoke' | translate }}
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <p class="devices-hint">
+        <ion-icon name="information-circle-outline"></ion-icon>
+        {{ 'devices.revoke_hint' | translate }}
+      </p>
+    }
+
+  </div>
+</ion-content>

@@ -1,0 +1,92 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{ 'migrate_sync.title' | translate }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+
+  @if (step === 'info') {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>{{ 'migrate_sync.history.title' | translate }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>{{ 'migrate_sync.history.desc' | translate }}</p>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-button expand="block" style="margin-top: 16px;" (click)="onStartRestore()">
+      {{ 'migrate_sync.restore_btn' | translate }}
+    </ion-button>
+
+    <ion-button expand="block" fill="outline" color="medium" style="margin-top: 8px;" (click)="onSkip()">
+      {{ 'migrate_sync.fresh_btn' | translate }}
+    </ion-button>
+  }
+
+  @if (step === 'restore') {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>{{ 'migrate_sync.key.title' | translate }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>{{ 'migrate_sync.key.desc' | translate }}</p>
+
+        <ion-textarea
+          [(ngModel)]="recoveryKeyInput"
+          rows="4"
+          [placeholder]="'migrate_sync.key.placeholder' | translate"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          style="margin: 12px 0; font-family: monospace; font-size: 14px; letter-spacing: 1px;"
+        ></ion-textarea>
+
+        @if (error) {
+          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+        }
+
+        <ion-button
+          expand="block"
+          [disabled]="!isValidRecoveryKey"
+          style="margin-top: 8px;"
+          (click)="onRestore()">
+          {{ 'migrate_sync.key.submit' | translate }}
+        </ion-button>
+
+        <ion-button expand="block" fill="clear" color="medium" style="margin-top: 4px;" (click)="onBack()">
+          {{ 'migrate_sync.key.back' | translate }}
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+
+  @if (step === 'restoring') {
+    <div style="display: flex; flex-direction: column; align-items: center; padding-top: 48px; gap: 16px;">
+      <ion-spinner name="crescent"></ion-spinner>
+      <p>{{ 'migrate_sync.restoring' | translate }}</p>
+    </div>
+  }
+
+  @if (step === 'done') {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>{{ 'migrate_sync.done.title' | translate }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>{{ 'migrate_sync.done.messages' | translate: { count: restoredCount } }}</p>
+        @if (groupStateCount > 0) {
+          <p>{{ 'migrate_sync.done.states' | translate: { count: groupStateCount } }}</p>
+        }
+        <p>{{ 'migrate_sync.done.desc' | translate }}</p>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-button expand="block" style="margin-top: 16px;" (click)="onContinue()">
+      {{ 'migrate_sync.done.submit' | translate }}
+    </ion-button>
+  }
+
+</ion-content>

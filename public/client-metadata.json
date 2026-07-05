@@ -1,0 +1,17 @@
+{
+  "client_id": "https://bluvy.app/client-metadata.json",
+  "client_name": "Bluvy Messenger",
+  "client_uri": "https://bluvy.app",
+  "logo_uri": "https://bluvy.app/assets/icon/icon.png",
+  "tos_uri": "https://bluvy.app/terms",
+  "policy_uri": "https://bluvy.app/privacy",
+  "redirect_uris": [
+    "https://bluvy.app/oauth/callback"
+  ],
+  "response_types": ["code"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "scope": "atproto transition:generic rpc:chat.bluvy.auth.login?aud=did:web:bluvy.app",
+  "token_endpoint_auth_method": "none",
+  "application_type": "web",
+  "dpop_bound_access_tokens": true
+}

@@ -1,0 +1,236 @@
+@if (bpSvc.isTablet()) {
+  <div class="t-shell">
+    <div class="t-shell__list">
+      <div class="t-list-header">
+        <div class="t-list-tabs">
+          <button class="t-tab-btn" [class.t-tab-btn--active]="activeTab === 'conversations' && rightPanelView !== 'menu'" (click)="switchTab('conversations')">
+            {{ 'tabs.conversations' | translate }}
+          </button>
+          <button class="t-tab-btn" [class.t-tab-btn--active]="activeTab === 'contacts' && rightPanelView !== 'menu'" (click)="switchTab('contacts')">
+            {{ 'tabs.contacts' | translate }}
+          </button>
+        </div>
+        <button class="t-header-btn" [class.t-header-btn--active]="rightPanelView === 'menu'" (click)="openMenu()" aria-label="Menu">
+          <ion-icon name="menu-outline"></ion-icon>
+        </button>
+      </div>
+
+      <div class="search-zone">
+        <ion-icon name="search-outline" class="search-zone__icon"></ion-icon>
+        @if (activeTab === 'conversations') {
+          <input class="search-zone__input" [placeholder]="'common.search' | translate" readonly />
+        } @else {
+          <input class="search-zone__input" [placeholder]="'common.search' | translate" (input)="onContactSearch($event)" />
+        }
+      </div>
+
+      <div class="t-list-body">
+        @if (activeTab === 'conversations') {
+          @if (loading) {
+            <div class="loading-center"><div class="spinner"></div></div>
+          }
+          @if (!loading && error) {
+            <div class="ion-text-center ion-padding">
+              <ion-text color="danger">{{ error }}</ion-text>
+            </div>
+          }
+          @if (!loading && !error && conversations.length === 0) {
+            <div class="empty-state">
+              <ion-icon name="chatbubble-outline" class="empty-state__icon"></ion-icon>
+              <p class="empty-state__title">{{ 'conversations.empty.title' | translate }}</p>
+              <p class="empty-state__desc">{{ 'conversations.empty.desc' | translate }}</p>
+            </div>
+          }
+          @if (!loading && conversations.length > 0) {
+            <div class="conv-list">
+              @for (conv of conversations; track conv.id) {
+                <app-conversation-item
+                  [avatarSrc]="conv.participant.avatarUrl ?? null"
+                  [handle]="conv.participant.handle"
+                  [name]="conv.participant.displayName || conv.participant.handle"
+                  [preview]="getPreview(conv)"
+                  [time]="conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ''"
+                  [unreadCount]="conv.unreadCount"
+                  [online]="(presenceSvc.status$(conv.participant.did) | async) === 'online'"
+                  (open)="openConversation(conv)"
+                ></app-conversation-item>
+              }
+            </div>
+          }
+        }
+
+        @if (activeTab === 'contacts') {
+          @if (contactsLoading) {
+            <div class="loading-center"><div class="spinner"></div></div>
+          }
+          @if (!contactsLoading && filteredBluvy.length > 0) {
+            <div class="section-sep">{{ 'conversations.section.bluvy' | translate }}</div>
+            @for (c of filteredBluvy; track c.did) {
+              <div class="contact-row" (click)="openContactConversation(c)">
+                <app-avatar [src]="c.avatarUrl ?? null" [handle]="c.handle" size="md"></app-avatar>
+                <div class="contact-info">
+                  <span class="contact-name">{{ c.displayName || c.handle }}</span>
+                  <span class="contact-handle">@{{ c.handle }}</span>
+                </div>
+              </div>
+            }
+          }
+          @if (!contactsLoading && filteredBluesky.length > 0) {
+            <div class="section-sep">{{ 'conversations.section.invite' | translate }}</div>
+            @for (c of filteredBluesky; track c.did) {
+              <div class="contact-row">
+                <app-avatar [src]="c.avatarUrl ?? null" [handle]="c.handle" size="md"></app-avatar>
+                <div class="contact-info">
+                  <span class="contact-name">{{ c.displayName || c.handle }}</span>
+                  <span class="contact-handle">@{{ c.handle }}</span>
+                </div>
+              </div>
+            }
+          }
+          @if (!contactsLoading && filteredBluvy.length === 0 && filteredBluesky.length === 0) {
+            <div class="empty-state">
+              <ion-icon name="people-outline" class="empty-state__icon"></ion-icon>
+              <p class="empty-state__title">{{ 'conversations.contacts.empty.title' | translate }}</p>
+            </div>
+          }
+        }
+      </div>
+    </div>
+
+    <div class="t-shell__detail">
+      @if (rightPanelView === 'conversation' && selectedConvId) {
+        <app-conversation-panel [conversationId]="selectedConvId"></app-conversation-panel>
+      } @else if (rightPanelView === 'settings') {
+        <app-settings
+          [embedded]="true"
+          (navigateBack)="onPanelBack()"
+          (openSubPage)="onSettingsSubPage($event)"
+        ></app-settings>
+      } @else if (rightPanelView === 'sync-settings') {
+        <app-sync-settings
+          [embedded]="true"
+          (navigateBack)="onPanelBack()"
+        ></app-sync-settings>
+      } @else if (rightPanelView === 'settings-appearance') {
+        <app-settings-appearance
+          [embedded]="true"
+          (navigateBack)="onAppearanceBack()"
+        ></app-settings-appearance>
+      } @else if (rightPanelView === 'settings-language') {
+        <app-settings-language
+          [embedded]="true"
+          (navigateBack)="onLanguageBack()"
+        ></app-settings-language>
+      } @else if (rightPanelView === 'security') {
+        <app-security
+          [embedded]="true"
+          (navigateBack)="onPanelBack()"
+          (openSubPage)="onSecuritySubPage($event)"
+        ></app-security>
+      } @else if (rightPanelView === 'devices') {
+        <app-devices
+          [embedded]="true"
+          (navigateBack)="onDevicesBack()"
+        ></app-devices>
+      } @else if (rightPanelView === 'about') {
+        <app-about
+          [embedded]="true"
+          (navigateBack)="onPanelBack()"
+        ></app-about>
+      } @else if (rightPanelView === 'menu') {
+        <div class="t-menu-panel">
+          <div class="t-menu-profile">
+            <app-avatar [src]="authSvc.currentUser()?.avatarUrl ?? null" [handle]="authSvc.currentUser()?.handle || ''" size="xl"></app-avatar>
+            <div class="t-menu-profile__info">
+              <span class="t-menu-profile__name">{{ authSvc.currentUser()?.displayName || authSvc.currentUser()?.handle }}</span>
+              <span class="t-menu-profile__handle">&#64;{{ authSvc.currentUser()?.handle }}</span>
+            </div>
+          </div>
+          <div class="t-menu-list">
+            <button class="t-menu-item" disabled>
+              <ion-icon name="person-outline" class="t-menu-item__icon"></ion-icon>
+              <span class="t-menu-item__label">{{ 'menu.profile' | translate }}</span>
+              <ion-icon name="chevron-forward-outline" class="t-menu-item__arrow"></ion-icon>
+            </button>
+            <button class="t-menu-item" (click)="menuGoToSecurity()">
+              <ion-icon name="shield-checkmark-outline" class="t-menu-item__icon"></ion-icon>
+              <div class="t-menu-item__content">
+                <span class="t-menu-item__label">{{ 'menu.security' | translate }}</span>
+                <span class="t-menu-item__sub">{{ 'menu.security.sub' | translate }}</span>
+              </div>
+              <ion-icon name="chevron-forward-outline" class="t-menu-item__arrow"></ion-icon>
+            </button>
+            <button class="t-menu-item" (click)="menuGoToSettings()">
+              <ion-icon name="settings-outline" class="t-menu-item__icon"></ion-icon>
+              <span class="t-menu-item__label">{{ 'menu.settings' | translate }}</span>
+              <ion-icon name="chevron-forward-outline" class="t-menu-item__arrow"></ion-icon>
+            </button>
+            <button class="t-menu-item" (click)="menuGoToAbout()">
+              <ion-icon name="information-circle-outline" class="t-menu-item__icon"></ion-icon>
+              <span class="t-menu-item__label">{{ 'menu.about' | translate }}</span>
+              <ion-icon name="chevron-forward-outline" class="t-menu-item__arrow"></ion-icon>
+            </button>
+            <button class="t-menu-item t-menu-item--danger" (click)="authSvc.logout()">
+              <ion-icon name="log-out-outline" class="t-menu-item__icon"></ion-icon>
+              <span class="t-menu-item__label">{{ 'menu.logout' | translate }}</span>
+            </button>
+          </div>
+        </div>
+      } @else {
+        <div class="shell__welcome">
+          <ion-icon name="chatbubble-outline"></ion-icon>
+          <p>{{ 'conversations.welcome' | translate }}</p>
+        </div>
+      }
+    </div>
+  </div>
+} @else {
+  <ion-header>
+    <ion-toolbar>
+      <ion-title>{{ 'conversations.title' | translate }}</ion-title>
+    </ion-toolbar>
+  </ion-header>
+
+  <ion-content>
+    <ion-refresher slot="fixed" (ionRefresh)="handleRefresh($event)">
+      <ion-refresher-content></ion-refresher-content>
+    </ion-refresher>
+
+    <div class="search-zone">
+      <ion-icon name="search-outline" class="search-zone__icon"></ion-icon>
+      <input class="search-zone__input" [placeholder]="'common.search' | translate" readonly />
+    </div>
+
+    @if (loading) {
+      <div class="loading-center"><div class="spinner"></div></div>
+    }
+    @if (!loading && error) {
+      <div class="ion-text-center ion-padding">
+        <ion-text color="danger">{{ error }}</ion-text>
+      </div>
+    }
+    @if (!loading && !error && conversations.length === 0) {
+      <div class="empty-state">
+        <ion-icon name="chatbubble-outline" class="empty-state__icon"></ion-icon>
+        <p class="empty-state__title">{{ 'conversations.empty.title' | translate }}</p>
+        <p class="empty-state__desc">{{ 'conversations.empty.desc' | translate }}</p>
+      </div>
+    }
+    @if (!loading && conversations.length > 0) {
+      <div class="conv-list">
+        @for (conv of conversations; track conv.id) {
+          <app-conversation-item
+            [avatarSrc]="conv.participant.avatarUrl ?? null"
+            [handle]="conv.participant.handle"
+            [name]="conv.participant.displayName || conv.participant.handle"
+            [preview]="getPreview(conv)"
+            [time]="conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ''"
+            [unreadCount]="conv.unreadCount"
+            [online]="(presenceSvc.status$(conv.participant.did) | async) === 'online'"
+            (open)="openConversation(conv)"
+          ></app-conversation-item>
+        }
+      </div>
+    }
+  </ion-content>
+}

@@ -1,0 +1,47 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'about.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="ss-content">
+
+    <div class="about-hero">
+      <div class="about-logo">
+        <img src="assets/icons/icon-192.webp" alt="Bluvy Messenger" class="about-logo__img" />
+      </div>
+      <p class="about-name">{{ 'about.app_name' | translate }}</p>
+      <p class="about-version">Version {{ version }}</p>
+      <p class="about-author">{{ 'about.by' | translate }}</p>
+    </div>
+
+    <div class="ss-section">
+      <div class="ss-section-title">{{ 'about.section.legal' | translate }}</div>
+      <div class="ss-block">
+        <button class="settings-row" (click)="navigate('/privacy')">
+          <ion-icon name="shield-outline" class="settings-row__icon"></ion-icon>
+          <span class="settings-row__label">{{ 'about.privacy' | translate }}</span>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
+        <button class="settings-row" (click)="navigate('/terms')">
+          <ion-icon name="document-text-outline" class="settings-row__icon"></ion-icon>
+          <span class="settings-row__label">{{ 'about.terms' | translate }}</span>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
+        <button class="settings-row" (click)="navigate('/mentions')">
+          <ion-icon name="business-outline" class="settings-row__icon"></ion-icon>
+          <span class="settings-row__label">{{ 'about.mentions' | translate }}</span>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
+        <button class="settings-row" (click)="navigate('/licenses')">
+          <ion-icon name="code-slash-outline" class="settings-row__icon"></ion-icon>
+          <span class="settings-row__label">{{ 'about.licenses' | translate }}</span>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</ion-content>

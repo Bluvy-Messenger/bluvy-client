@@ -1,0 +1,68 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-base);
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: opacity var(--duration-fast), background var(--duration-fast),
+              border-color var(--duration-fast);
+  white-space: nowrap;
+  text-decoration: none;
+  padding: 0 var(--space-4);
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  // ── Sizes ──────────────────────────────────────────────────────────────────
+  &--sm { height: 32px; font-size: var(--text-sm);  padding: 0 var(--space-3); }
+  &--md { height: 40px; }
+  &--lg { height: 48px; font-size: var(--text-md); padding: 0 var(--space-5); }
+
+  // ── Variants ───────────────────────────────────────────────────────────────
+  &--primary {
+    background: var(--color-primary);
+    color: #fff;
+
+    &:not(:disabled):hover { opacity: 0.9; }
+  }
+
+  &--outline {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+
+    &:not(:disabled):hover { background: var(--color-interactive-hover); }
+  }
+
+  &--ghost {
+    background: transparent;
+    color: var(--color-text-secondary);
+
+    &:not(:disabled):hover { background: var(--color-interactive-hover); }
+  }
+
+  &--danger {
+    background: var(--color-danger);
+    color: #fff;
+
+    &:not(:disabled):hover { opacity: 0.9; }
+  }
+
+  // ── Expand ─────────────────────────────────────────────────────────────────
+  &--expand {
+    width: 100%;
+    display: flex;
+  }
+}

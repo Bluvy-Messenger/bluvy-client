@@ -1,0 +1,292 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'legal.privacy.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="legal-content">
+
+    @if (i18n.locale === 'en') {
+      <p class="legal-en-note">{{ 'legal.en_only' | translate }}</p>
+    }
+
+    <p class="legal-updated">Dernière mise à jour : 2 juillet 2026</p>
+
+    <div class="legal-highlight">
+      <p>Bluvy Messenger est conçu autour d'un principe fondamental : vos messages ne nous appartiennent pas. Tout le contenu de vos conversations est chiffré de bout en bout sur votre appareil. Nous n'avons ni la clé, ni la capacité technique de lire vos messages.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>1. Responsable du traitement</h2>
+      <p><strong>Thomasfds Apps</strong> est responsable du traitement des données personnelles collectées via l'application Bluvy Messenger, disponible sur le web, Android et iOS.</p>
+      <p>Contact : <strong>contact&#64;thomasfds.fr</strong></p>
+    </div>
+
+    <div class="legal-section">
+      <h2>2. Données collectées et leur finalité</h2>
+      <p>Bluvy Messenger collecte uniquement les données strictement nécessaires au fonctionnement du service. Voici le détail précis de chaque donnée, son utilité et sa durée de conservation.</p>
+
+      <h3>2.1 Identité Bluesky</h3>
+      <div style="overflow-x: auto;">
+        <table class="legal-data-table">
+          <thead>
+            <tr>
+              <th>Donnée</th>
+              <th>Utilité</th>
+              <th>Base légale</th>
+              <th>Conservation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Identifiant Bluesky (DID)</td>
+              <td>Identifier l'utilisateur de manière permanente entre les sessions et les appareils. Le DID est l'identifiant canonique du protocole AT, attribué par Bluesky.</td>
+              <td>Exécution du contrat</td>
+              <td>Durée d'utilisation du compte</td>
+            </tr>
+            <tr>
+              <td>Handle Bluesky (@pseudo)</td>
+              <td>Afficher votre pseudonyme dans l'interface et permettre à vos contacts de vous identifier.</td>
+              <td>Exécution du contrat</td>
+              <td>Durée d'utilisation du compte</td>
+            </tr>
+            <tr>
+              <td>Nom d'affichage</td>
+              <td>Afficher votre prénom ou nom d'affichage tel que défini sur votre profil Bluesky.</td>
+              <td>Exécution du contrat</td>
+              <td>Durée d'utilisation du compte</td>
+            </tr>
+            <tr>
+              <td>URL de l'avatar</td>
+              <td>Afficher votre photo de profil. L'image elle-même reste hébergée sur les serveurs Bluesky ; nous ne stockons que l'URL.</td>
+              <td>Exécution du contrat</td>
+              <td>Durée d'utilisation du compte</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.2 Gestion des appareils</h3>
+      <div style="overflow-x: auto;">
+        <table class="legal-data-table">
+          <thead>
+            <tr>
+              <th>Donnée</th>
+              <th>Utilité</th>
+              <th>Base légale</th>
+              <th>Conservation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Identifiant d'appareil</td>
+              <td>Distinguer chaque appareil connecté à votre compte pour permettre la gestion multi-appareils et la révocation individuelle d'accès.</td>
+              <td>Exécution du contrat / Intérêt légitime (sécurité)</td>
+              <td>Jusqu'à révocation de l'appareil, puis purge automatique dans les 7 jours</td>
+            </tr>
+            <tr>
+              <td>Nom de l'appareil</td>
+              <td>Afficher un nom lisible dans la liste de vos appareils connectés (ex : "iPhone de Thomas").</td>
+              <td>Exécution du contrat</td>
+              <td>Jusqu'à révocation</td>
+            </tr>
+            <tr>
+              <td>Plateforme (web / Android / iOS)</td>
+              <td>Adapter l'interface et les fonctionnalités de sécurité à votre type d'appareil.</td>
+              <td>Exécution du contrat</td>
+              <td>Jusqu'à révocation</td>
+            </tr>
+            <tr>
+              <td>Dernière activité (horodatage)</td>
+              <td>Vous permettre d'identifier vos appareils actifs et de repérer d'éventuels accès non autorisés.</td>
+              <td>Intérêt légitime (sécurité)</td>
+              <td>Jusqu'à révocation</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.3 Sessions d'authentification</h3>
+      <div style="overflow-x: auto;">
+        <table class="legal-data-table">
+          <thead>
+            <tr>
+              <th>Donnée</th>
+              <th>Utilité</th>
+              <th>Base légale</th>
+              <th>Conservation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Token d'accès (haché SHA-256)</td>
+              <td>Maintenir votre session active. Seul le hachage est stocké ; le token brut n'est jamais conservé sur nos serveurs.</td>
+              <td>Exécution du contrat</td>
+              <td>15 minutes, renouvelé automatiquement</td>
+            </tr>
+            <tr>
+              <td>Token de rafraîchissement (haché SHA-256)</td>
+              <td>Renouveler votre session sans vous demander de vous reconnecter. Stocké sous forme de hachage uniquement.</td>
+              <td>Exécution du contrat</td>
+              <td>30 jours maximum, révoqué à la déconnexion</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.4 Messages et conversations</h3>
+      <div style="overflow-x: auto;">
+        <table class="legal-data-table">
+          <thead>
+            <tr>
+              <th>Donnée</th>
+              <th>Utilité</th>
+              <th>Base légale</th>
+              <th>Conservation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Messages chiffrés (ciphertext)</td>
+              <td>Stocker et livrer vos messages de manière sécurisée. Le contenu de vos messages est chiffré sur votre appareil avant envoi. <strong>Nous n'avons techniquement pas accès au contenu de vos messages.</strong></td>
+              <td>Exécution du contrat</td>
+              <td>Jusqu'à suppression par l'utilisateur. Les messages supprimés sont définitivement effacés après 90 jours.</td>
+            </tr>
+            <tr>
+              <td>Sauvegardes chiffrées</td>
+              <td>Permettre la restauration de l'historique de vos conversations sur un nouvel appareil. Les sauvegardes sont chiffrées sur votre appareil ; nous ne pouvons pas les déchiffrer.</td>
+              <td>Exécution du contrat</td>
+              <td>Jusqu'à suppression explicite. 90 jours après suppression, puis effacement définitif.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.5 Chiffrement de bout en bout (MLS)</h3>
+      <div style="overflow-x: auto;">
+        <table class="legal-data-table">
+          <thead>
+            <tr>
+              <th>Donnée</th>
+              <th>Utilité</th>
+              <th>Base légale</th>
+              <th>Conservation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Key packages MLS (clés publiques)</td>
+              <td>Permettre l'établissement sécurisé d'une session de messagerie chiffrée entre vos appareils et vos contacts. Ces clés sont générées sur votre appareil et sont à usage unique.</td>
+              <td>Exécution du contrat</td>
+              <td>Clés non consommées : 7 jours. Clés consommées : 30 jours après consommation, puis suppression automatique.</td>
+            </tr>
+            <tr>
+              <td>Welcome messages MLS (chiffrés)</td>
+              <td>Permettre à un nouvel appareil de rejoindre un groupe de chiffrement. Contenu chiffré, inaccessible à nos serveurs.</td>
+              <td>Exécution du contrat</td>
+              <td>Non consommés : 7 jours. Consommés : 7 jours après consommation, puis suppression automatique.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.6 Sécurité du service</h3>
+      <div style="overflow-x: auto;">
+        <table class="legal-data-table">
+          <thead>
+            <tr>
+              <th>Donnée</th>
+              <th>Utilité</th>
+              <th>Base légale</th>
+              <th>Conservation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Historique des tentatives d'accès (anonymisé)</td>
+              <td>Protéger votre compte contre les attaques par force brute. Ces données ne permettent pas d'identifier le contenu de vos actions.</td>
+              <td>Intérêt légitime (sécurité)</td>
+              <td>Fenêtre glissante de 15 minutes</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="legal-section">
+      <h2>3. Données que nous ne collectons pas</h2>
+      <ul>
+        <li>Le contenu en clair de vos messages — il ne quitte jamais votre appareil sans être chiffré</li>
+        <li>Vos clés privées cryptographiques — générées et conservées exclusivement sur vos appareils</li>
+        <li>Votre clé de récupération — vous seule/seul en avez connaissance</li>
+        <li>Votre mot de passe Bluesky — l'authentification se fait directement auprès de Bluesky</li>
+        <li>Votre localisation, historique de navigation, données publicitaires ou comportementales</li>
+      </ul>
+    </div>
+
+    <div class="legal-section">
+      <h2>4. Partage des données</h2>
+      <p>Nous ne vendons, ne louons et ne partageons jamais vos données personnelles avec des tiers à des fins commerciales.</p>
+      <p>Vos données d'identité Bluesky (DID, handle, nom, avatar) proviennent du réseau Bluesky et sont accessibles publiquement via le protocole AT. Leur traitement dans Bluvy Messenger est limité à l'affichage dans l'application.</p>
+      <p>En cas d'obligation légale (réquisition judiciaire), nous pouvons être contraints de communiquer les données techniques en notre possession. Rappelons que nous n'avons pas accès au contenu de vos messages, qui sont chiffrés.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>5. Sécurité</h2>
+      <p>Bluvy Messenger applique les mesures suivantes pour protéger vos données :</p>
+      <ul>
+        <li><strong>Chiffrement de bout en bout</strong> via le protocole MLS (Messaging Layer Security) — standard IETF RFC 9420</li>
+        <li><strong>Tokens d'authentification stockés sous forme de hachages SHA-256</strong> — jamais en clair</li>
+        <li><strong>Transport sécurisé</strong> via HTTPS/TLS pour toutes les communications</li>
+        <li><strong>Limitation du débit</strong> (rate limiting) pour prévenir les attaques par force brute</li>
+        <li><strong>Révocation d'appareils</strong> — vous pouvez invalider immédiatement l'accès de tout appareil</li>
+        <li><strong>Purge automatique</strong> des données expirées selon les délais définis ci-dessus</li>
+      </ul>
+    </div>
+
+    <div class="legal-section">
+      <h2>6. Vos droits (RGPD)</h2>
+      <p>Conformément au Règlement Général sur la Protection des Données (RGPD — Règlement UE 2016/679), vous disposez des droits suivants :</p>
+      <ul>
+        <li><strong>Droit d'accès</strong> (Art. 15) — obtenir la liste des données vous concernant</li>
+        <li><strong>Droit de rectification</strong> (Art. 16) — corriger des données inexactes</li>
+        <li><strong>Droit à l'effacement</strong> (Art. 17) — demander la suppression de vos données</li>
+        <li><strong>Droit à la limitation</strong> (Art. 18) — restreindre le traitement dans certains cas</li>
+        <li><strong>Droit à la portabilité</strong> (Art. 20) — recevoir vos données dans un format structuré</li>
+        <li><strong>Droit d'opposition</strong> (Art. 21) — vous opposer à certains traitements</li>
+      </ul>
+      <p>Pour exercer ces droits, contactez-nous à <strong>contact&#64;thomasfds.fr</strong>. Nous répondrons dans un délai d'un mois. En cas de réponse insatisfaisante, vous pouvez introduire une réclamation auprès de la <strong>CNIL</strong> (www.cnil.fr).</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>7. Cookies et stockage local</h2>
+      <p>Bluvy Messenger n'utilise pas de cookies publicitaires ou de traçage. Le stockage local (localStorage, IndexedDB, Secure Storage sur mobile) est utilisé exclusivement pour :</p>
+      <ul>
+        <li>Maintenir votre session de connexion</li>
+        <li>Stocker les clés cryptographiques localement sur votre appareil</li>
+        <li>Mettre en cache vos contacts pour accélérer l'affichage</li>
+      </ul>
+    </div>
+
+    <div class="legal-section">
+      <h2>8. Transferts internationaux</h2>
+      <p>Vos données sont hébergées au sein de l'Union Européenne. Aucun transfert vers des pays tiers n'est effectué sans garanties adéquates.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>9. Modifications de cette politique</h2>
+      <p>Nous pouvons mettre à jour cette politique en cas d'évolution du service ou de la réglementation. La date de dernière mise à jour est indiquée en haut de ce document. Pour les modifications substantielles, nous vous en informerons via l'application.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>10. Contact</h2>
+      <p>Pour toute question relative à vos données personnelles :<br>
+      <strong>Thomasfds Apps</strong><br>
+      Email : <strong>contact&#64;thomasfds.fr</strong><br>
+      Site : <strong>thomasfds.fr</strong></p>
+    </div>
+
+  </div>
+</ion-content>

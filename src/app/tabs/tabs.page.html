@@ -1,0 +1,128 @@
+<div class="app-shell">
+
+  @if (bpSvc.isTablet()) {
+    <aside class="sidebar">
+
+      <!-- Profile -->
+      <div class="sidebar-profile" (click)="navigate('/tabs/menu')">
+        <app-avatar
+          [src]="auth.currentUser()?.avatarUrl ?? null"
+          [handle]="auth.currentUser()?.handle || ''"
+          size="md"
+        ></app-avatar>
+        <div class="sidebar-profile__info">
+          <span class="sidebar-profile__name">
+            {{ auth.currentUser()?.displayName || auth.currentUser()?.handle }}
+          </span>
+          <span class="sidebar-profile__handle">&#64;{{ auth.currentUser()?.handle }}</span>
+        </div>
+      </div>
+
+      <!-- Main nav -->
+      <nav class="sidebar-nav">
+        <button
+          class="sidebar-item"
+          [class.sidebar-item--active]="isActive('/tabs/conversations')"
+          (click)="navigate('/tabs/conversations')"
+        >
+          <ion-icon name="chatbubble-outline" class="sidebar-item__icon"></ion-icon>
+          <span class="sidebar-item__label">{{ 'tabs.conversations' | translate }}</span>
+          @if (receiptsSvc.totalUnread$ | async; as total) {
+            @if (total > 0) {
+              <span class="sidebar-badge">{{ total > 99 ? '99+' : total }}</span>
+            }
+          }
+        </button>
+
+        <button
+          class="sidebar-item"
+          [class.sidebar-item--active]="isActive('/tabs/contacts')"
+          (click)="navigate('/tabs/contacts')"
+        >
+          <ion-icon name="people-outline" class="sidebar-item__icon"></ion-icon>
+          <span class="sidebar-item__label">{{ 'tabs.contacts' | translate }}</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-divider"></div>
+
+      <!-- Settings nav -->
+      <nav class="sidebar-nav">
+        <button
+          class="sidebar-item"
+          [class.sidebar-item--active]="isSecurityActive()"
+          (click)="navigate('/tabs/security')"
+        >
+          <ion-icon name="shield-checkmark-outline" class="sidebar-item__icon"></ion-icon>
+          <span class="sidebar-item__label">{{ 'tabs.security' | translate }}</span>
+        </button>
+
+        <button
+          class="sidebar-item"
+          [class.sidebar-item--active]="isActive('/tabs/settings')"
+          (click)="navigate('/tabs/settings')"
+        >
+          <ion-icon name="settings-outline" class="sidebar-item__icon"></ion-icon>
+          <span class="sidebar-item__label">{{ 'tabs.settings' | translate }}</span>
+        </button>
+
+        <button
+          class="sidebar-item"
+          [class.sidebar-item--active]="isActive('/tabs/about')"
+          (click)="navigate('/tabs/about')"
+        >
+          <ion-icon name="information-circle-outline" class="sidebar-item__icon"></ion-icon>
+          <span class="sidebar-item__label">{{ 'tabs.about' | translate }}</span>
+        </button>
+      </nav>
+
+      <!-- Beta notice -->
+      <div class="sidebar-beta">
+        <ion-icon name="flask-outline"></ion-icon>
+        <span class="sidebar-beta__label">{{ 'tabs.beta' | translate }}</span>
+      </div>
+
+      <!-- Logout pinned at bottom -->
+      <div class="sidebar-footer">
+        <button class="sidebar-item sidebar-item--danger" (click)="auth.logout()">
+          <ion-icon name="log-out-outline" class="sidebar-item__icon"></ion-icon>
+          <span class="sidebar-item__label">{{ 'tabs.logout' | translate }}</span>
+        </button>
+      </div>
+
+    </aside>
+  }
+
+  <div class="app-main">
+    @if (!bpSvc.isTablet()) {
+      <div class="app-beta-bar">
+        <ion-icon name="flask-outline"></ion-icon>
+        <span>{{ 'tabs.beta' | translate }}</span>
+      </div>
+    }
+    <ion-tabs>
+      <ion-tab-bar slot="bottom" [class.tab-bar--hidden]="!showTabBar()">
+        <ion-tab-button tab="conversations" href="/tabs/conversations">
+          <ion-icon name="chatbubble-outline"></ion-icon>
+          <span class="tab-label">{{ 'tabs.conversations' | translate }}</span>
+          @if (receiptsSvc.totalUnread$ | async; as total) {
+            @if (total > 0) {
+              <app-unread-badge [count]="total"></app-unread-badge>
+            }
+          }
+        </ion-tab-button>
+
+        <ion-tab-button tab="contacts" href="/tabs/contacts">
+          <ion-icon name="people-outline"></ion-icon>
+          <span class="tab-label">{{ 'tabs.contacts' | translate }}</span>
+        </ion-tab-button>
+
+        <ion-tab-button tab="menu" href="/tabs/menu">
+          <ion-icon name="menu-outline"></ion-icon>
+          <span class="tab-label">{{ 'tabs.menu' | translate }}</span>
+        </ion-tab-button>
+      </ion-tab-bar>
+    </ion-tabs>
+  </div>
+
+</div>

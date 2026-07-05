@@ -1,0 +1,100 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{ 'recovery_unlock.title' | translate }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+
+  @if (step === 'key') {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>{{ 'recovery_unlock.key.title' | translate }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>{{ 'recovery_unlock.key.desc' | translate }}</p>
+
+        <ion-input
+          [value]="recoveryInput"
+          (ionInput)="onRecoveryInput($event)"
+          [placeholder]="'recovery_unlock.key.placeholder' | translate"
+          type="text"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false"
+          style="margin: 12px 0;"
+        ></ion-input>
+
+        @if (error) {
+          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+        }
+
+        <ion-button
+          expand="block"
+          [disabled]="working || !recoveryInput.trim()"
+          (click)="onUnlockWithRecovery()">
+          @if (working) {
+            <ion-spinner name="crescent"></ion-spinner>
+          } @else {
+            {{ 'recovery_unlock.key.submit' | translate }}
+          }
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+
+  @if (step === 'pin') {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>{{ 'recovery_unlock.pin.title' | translate }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>{{ 'recovery_unlock.pin.desc' | translate }}</p>
+
+        <ion-input
+          [value]="pin"
+          (ionInput)="onPinInput($event)"
+          [placeholder]="'recovery_unlock.pin.new' | translate"
+          type="password"
+          inputmode="numeric"
+          maxlength="8"
+          style="margin: 12px 0 8px;"
+        ></ion-input>
+
+        <ion-input
+          [value]="pinConfirm"
+          (ionInput)="onPinConfirmInput($event)"
+          [placeholder]="'recovery_unlock.pin.confirm' | translate"
+          type="password"
+          inputmode="numeric"
+          maxlength="8"
+          style="margin-bottom: 12px;"
+        ></ion-input>
+
+        @if (error) {
+          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+        }
+
+        <ion-button
+          expand="block"
+          [disabled]="working || !pin || !pinConfirm"
+          (click)="onSetNewPin()">
+          @if (working) {
+            <ion-spinner name="crescent"></ion-spinner>
+          } @else {
+            {{ 'recovery_unlock.pin.submit' | translate }}
+          }
+        </ion-button>
+
+        <ion-button
+          expand="block"
+          fill="clear"
+          style="margin-top: 8px;"
+          (click)="onSkipPin()">
+          {{ 'recovery_unlock.pin.skip' | translate }}
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+
+</ion-content>

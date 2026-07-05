@@ -1,0 +1,22 @@
+<button class="conv-item" (click)="open.emit()">
+  <div class="conv-item__avatar">
+    <app-avatar [src]="avatarSrc" [handle]="handle" size="lg"></app-avatar>
+    <app-presence-indicator [online]="online"></app-presence-indicator>
+  </div>
+  <div class="conv-item__content">
+    <div class="conv-item__row">
+      <span class="conv-item__name">{{ name }}</span>
+      @if (time) {
+        <span class="conv-item__time">{{ time }}</span>
+      }
+    </div>
+    <div class="conv-item__row">
+      <span class="conv-item__preview" [class.conv-item__preview--unread]="unreadCount > 0">
+        {{ displayPreview }}
+      </span>
+      @if (unreadCount > 0) {
+        <app-unread-badge [count]="unreadCount"></app-unread-badge>
+      }
+    </div>
+  </div>
+</button>

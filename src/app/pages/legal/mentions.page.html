@@ -1,0 +1,82 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'legal.mentions.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="legal-content">
+
+    @if (i18n.locale === 'en') {
+      <p class="legal-en-note">{{ 'legal.en_only' | translate }}</p>
+    }
+
+    <p class="legal-updated">Conformément à la loi n°2004-575 du 21 juin 2004 pour la Confiance dans l'Économie Numérique (LCEN).</p>
+
+    <div class="legal-section">
+      <h2>1. Éditeur de l'application</h2>
+      <p>
+        <strong>Thomasfds Apps</strong><br>
+        Développeur indépendant<br>
+        Site web : <strong>thomasfds.fr</strong><br>
+        Email : <strong>contact&#64;thomasfds.fr</strong>
+      </p>
+    </div>
+
+    <div class="legal-section">
+      <h2>2. Directeur de la publication</h2>
+      <p>
+        <strong>Thomasfds</strong><br>
+        Responsable de la publication de l'application Bluvy Messenger et du site web associé.
+      </p>
+    </div>
+
+    <div class="legal-section">
+      <h2>3. Hébergement</h2>
+      <p>L'infrastructure technique de Bluvy Messenger est hébergée au sein de l'Union Européenne.</p>
+      <p>Pour toute demande relative à l'hébergement, contactez : <strong>contact&#64;thomasfds.fr</strong></p>
+    </div>
+
+    <div class="legal-section">
+      <h2>4. Propriété intellectuelle</h2>
+      <p>L'ensemble des éléments constituant l'application Bluvy Messenger (code source, interface, logo, textes) est la propriété exclusive de <strong>Thomasfds Apps</strong>, sauf mention contraire.</p>
+      <p>Toute reproduction, représentation, modification, publication ou adaptation de tout ou partie des éléments de l'application, quel que soit le moyen ou le procédé utilisé, est interdite sans l'autorisation écrite préalable de Thomasfds Apps.</p>
+      <p>Bluvy Messenger intègre des composants logiciels open source distribués sous leurs licences respectives, consultables dans la section <strong>Licences open source</strong> de l'application.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>5. Données personnelles</h2>
+      <p>Le traitement des données personnelles est décrit dans la <strong>Politique de confidentialité</strong> de l'application.</p>
+      <p>Conformément à la loi Informatique et Libertés du 6 janvier 1978 modifiée et au Règlement Général sur la Protection des Données (RGPD — Règlement UE 2016/679), vous disposez d'un droit d'accès, de rectification, de suppression et d'opposition aux données vous concernant.</p>
+      <p>Pour exercer ces droits : <strong>contact&#64;thomasfds.fr</strong></p>
+      <p>Autorité de contrôle : <strong>Commission Nationale de l'Informatique et des Libertés (CNIL)</strong> — www.cnil.fr</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>6. Liens hypertextes</h2>
+      <p>Bluvy Messenger peut contenir des liens vers des sites externes, notamment vers Bluesky (bsky.social). Ces sites sont indépendants et Thomasfds Apps ne saurait être tenu responsable de leur contenu ou de leur politique de confidentialité.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>7. Limitation de responsabilité</h2>
+      <p>Thomasfds Apps s'efforce d'assurer la disponibilité et l'exactitude des informations présentes dans l'application, mais ne peut garantir l'absence d'erreurs ou d'interruptions de service.</p>
+      <p>Thomasfds Apps décline toute responsabilité quant aux dommages directs ou indirects susceptibles de résulter de l'utilisation de l'application.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>8. Droit applicable</h2>
+      <p>Les présentes mentions légales sont soumises au droit français. Tout litige relatif à leur interprétation ou à leur exécution relève des tribunaux compétents de droit commun.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>9. Contact</h2>
+      <p>
+        <strong>Thomasfds Apps</strong><br>
+        Email : <strong>contact&#64;thomasfds.fr</strong><br>
+        Site : <strong>apps.thomasfds.fr</strong>
+      </p>
+    </div>
+
+  </div>
+</ion-content>

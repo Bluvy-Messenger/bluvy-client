@@ -1,0 +1,7 @@
+<div class="avatar avatar--{{ size }}">
+  @if (safeSrc) {
+    <img [src]="safeSrc" [alt]="handle" loading="lazy">
+  } @else {
+    <span class="avatar__initials">{{ initials }}</span>
+  }
+</div>

@@ -1,0 +1,49 @@
+<ion-content>
+  <div class="profile">
+    <app-avatar
+      [src]="auth.currentUser()?.avatarUrl ?? null"
+      [handle]="auth.currentUser()?.handle || ''"
+      size="xl"
+    ></app-avatar>
+    <div class="profile__info">
+      <span class="profile__name">
+        {{ auth.currentUser()?.displayName || auth.currentUser()?.handle }}
+      </span>
+      <span class="profile__handle">@{{ auth.currentUser()?.handle }}</span>
+    </div>
+  </div>
+
+  <div class="menu-list">
+    <button class="menu-item" disabled>
+      <ion-icon name="person-outline" class="menu-item__icon"></ion-icon>
+      <span class="menu-item__label">{{ 'menu.profile' | translate }}</span>
+      <ion-icon name="chevron-forward-outline" class="menu-item__arrow"></ion-icon>
+    </button>
+
+    <button class="menu-item" (click)="openSecurity()">
+      <ion-icon name="shield-checkmark-outline" class="menu-item__icon"></ion-icon>
+      <div class="menu-item__content">
+        <span class="menu-item__label">{{ 'menu.security' | translate }}</span>
+        <span class="menu-item__sub">{{ 'menu.security.sub' | translate }}</span>
+      </div>
+      <ion-icon name="chevron-forward-outline" class="menu-item__arrow"></ion-icon>
+    </button>
+
+    <button class="menu-item" (click)="openSettings()">
+      <ion-icon name="settings-outline" class="menu-item__icon"></ion-icon>
+      <span class="menu-item__label">{{ 'menu.settings' | translate }}</span>
+      <ion-icon name="chevron-forward-outline" class="menu-item__arrow"></ion-icon>
+    </button>
+
+    <button class="menu-item" (click)="openAbout()">
+      <ion-icon name="information-circle-outline" class="menu-item__icon"></ion-icon>
+      <span class="menu-item__label">{{ 'menu.about' | translate }}</span>
+      <ion-icon name="chevron-forward-outline" class="menu-item__arrow"></ion-icon>
+    </button>
+
+    <button class="menu-item menu-item--danger" (click)="auth.logout()">
+      <ion-icon name="log-out-outline" class="menu-item__icon"></ion-icon>
+      <span class="menu-item__label">{{ 'menu.logout' | translate }}</span>
+    </button>
+  </div>
+</ion-content>

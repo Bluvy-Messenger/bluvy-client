@@ -1,0 +1,119 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'legal.terms.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="legal-content">
+
+    @if (i18n.locale === 'en') {
+      <p class="legal-en-note">{{ 'legal.en_only' | translate }}</p>
+    }
+
+    <p class="legal-updated">Dernière mise à jour : 2 juillet 2026</p>
+
+    <div class="legal-section">
+      <h2>1. Objet</h2>
+      <p>Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de <strong>Bluvy Messenger</strong>, application de messagerie privée éditée par <strong>Thomasfds Apps</strong>, disponible sur le web, Android et iOS.</p>
+      <p>En utilisant Bluvy Messenger, vous acceptez ces CGU dans leur intégralité. Si vous n'acceptez pas ces conditions, veuillez ne pas utiliser le service.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>2. Prérequis</h2>
+      <p>Pour utiliser Bluvy Messenger, vous devez :</p>
+      <ul>
+        <li>Disposer d'un <strong>compte Bluesky</strong> valide (bluesky.social ou autre PDS compatible AT Protocol)</li>
+        <li>Avoir au moins <strong>13 ans</strong> (ou l'âge légal minimum dans votre pays)</li>
+        <li>Accepter les <a href="https://bsky.social/about/support/tos" target="_blank" rel="noopener noreferrer">Conditions d'utilisation de Bluesky</a> qui s'appliquent à votre compte Bluesky</li>
+      </ul>
+      <p>Bluvy Messenger n'est pas affilié à Bluesky Social PBC. Votre compte Bluesky est géré indépendamment de notre service.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>3. Description du service</h2>
+      <p>Bluvy Messenger est une application de messagerie privée qui utilise votre identité Bluesky pour :</p>
+      <ul>
+        <li>Envoyer et recevoir des <strong>messages privés chiffrés de bout en bout</strong></li>
+        <li>Communiquer avec vos contacts utilisant également Bluvy Messenger</li>
+        <li>Gérer vos appareils connectés et vos sauvegardes chiffrées</li>
+      </ul>
+      <p>Le chiffrement de bout en bout est assuré par le protocole <strong>MLS (Messaging Layer Security)</strong>, standard IETF RFC 9420. Ni Thomasfds Apps, ni aucun tiers ne peut déchiffrer vos messages.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>4. Utilisation acceptable</h2>
+      <p>Vous vous engagez à utiliser Bluvy Messenger dans le respect des lois applicables et de ces CGU. Il est notamment interdit de :</p>
+      <ul>
+        <li>Utiliser le service à des fins illicites, frauduleuses ou nuisibles</li>
+        <li>Harceler, menacer ou intimider d'autres utilisateurs</li>
+        <li>Tenter de contourner les mesures de sécurité ou le chiffrement</li>
+        <li>Automatiser l'accès au service sans autorisation expresse</li>
+        <li>Distribuer des contenus illégaux (droits d'auteur, CSAM, incitation à la haine, etc.)</li>
+        <li>Usurper l'identité d'un tiers</li>
+        <li>Tenter d'accéder aux données d'un autre utilisateur</li>
+      </ul>
+    </div>
+
+    <div class="legal-section">
+      <h2>5. Propriété et responsabilité des contenus</h2>
+      <p>Vous êtes seul responsable des messages que vous envoyez via Bluvy Messenger. En raison du chiffrement de bout en bout, Thomasfds Apps n'a ni accès ni contrôle sur le contenu de vos conversations.</p>
+      <p>Vos messages vous appartiennent. Bluvy Messenger ne revendique aucun droit de propriété intellectuelle sur vos contenus.</p>
+      <p>Vous vous engagez à ne pas utiliser le service pour transmettre des contenus qui violeraient les droits de tiers ou la législation applicable.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>6. Comptes et sécurité</h2>
+      <p>Vous êtes responsable de la sécurité de votre compte Bluesky et de vos appareils. Bluvy Messenger vous recommande :</p>
+      <ul>
+        <li>D'utiliser un <strong>App Password</strong> Bluesky dédié plutôt que votre mot de passe principal</li>
+        <li>De conserver votre <strong>clé de récupération</strong> dans un lieu sûr — elle ne peut pas être récupérée si perdue</li>
+        <li>De révoquer immédiatement tout appareil que vous ne reconnaissez pas</li>
+      </ul>
+      <p>En cas de compromission de votre compte Bluesky, informez immédiatement Bluesky Social et révoquez tous vos appareils Bluvy Messenger.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>7. Disponibilité du service</h2>
+      <p>Bluvy Messenger est fourni <strong>tel quel</strong>, sans garantie de disponibilité continue. Nous nous efforçons de maintenir le service disponible mais ne pouvons garantir une disponibilité ininterrompue.</p>
+      <p>Nous nous réservons le droit de modifier, suspendre ou interrompre tout ou partie du service, avec ou sans préavis, notamment pour maintenance ou raisons de sécurité.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>8. Suspension et résiliation</h2>
+      <p>Nous nous réservons le droit de suspendre ou supprimer votre accès au service en cas de violation de ces CGU, sans préavis et sans indemnité.</p>
+      <p>Vous pouvez cesser d'utiliser le service à tout moment. La suppression de votre compte Bluvy Messenger peut être demandée via la section <strong>Paramètres → Supprimer mon compte</strong>.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>9. Limitation de responsabilité</h2>
+      <p>Dans les limites permises par la loi applicable, Thomasfds Apps ne saurait être tenu responsable de :</p>
+      <ul>
+        <li>La perte de messages ou de données due à une défaillance technique</li>
+        <li>L'utilisation du service par des tiers ayant accès à votre appareil</li>
+        <li>Tout dommage indirect résultant de l'utilisation ou de l'impossibilité d'utiliser le service</li>
+        <li>La perte de votre clé de récupération (irrécupérable)</li>
+      </ul>
+    </div>
+
+    <div class="legal-section">
+      <h2>10. Propriété intellectuelle</h2>
+      <p>Bluvy Messenger, ses logos, son interface et son code source sont la propriété de Thomasfds Apps. Toute reproduction, distribution ou modification sans autorisation expresse est interdite.</p>
+      <p>Bluvy Messenger repose sur des bibliothèques open source dont les licences sont consultables dans la section <strong>Licences open source</strong>.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>11. Droit applicable</h2>
+      <p>Ces CGU sont soumises au droit français. En cas de litige, les tribunaux français seront compétents, sous réserve des dispositions impératives applicables dans votre pays de résidence.</p>
+    </div>
+
+    <div class="legal-section">
+      <h2>12. Contact</h2>
+      <p>Pour toute question concernant ces CGU :<br>
+      <strong>Thomasfds Apps</strong><br>
+      Email : <strong>contact&#64;thomasfds.fr</strong></p>
+    </div>
+
+  </div>
+</ion-content>

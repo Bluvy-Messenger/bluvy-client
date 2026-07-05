@@ -1,0 +1,112 @@
+<ion-content>
+  <div class="landing">
+
+    <!-- ── Hero ─────────────────────────────────────────────────────────── -->
+    <section class="landing-hero">
+      <div class="landing-hero__inner">
+        <div class="landing-logo">
+          <img src="assets/icons/icon-192.webp" alt="Bluvy Messenger" class="landing-logo__img" />
+        </div>
+        <h1 class="landing-hero__title">Bluvy Messenger</h1>
+        <p class="landing-hero__tagline">{{ 'landing.tagline1' | translate }}<br>{{ 'landing.tagline2' | translate }}</p>
+        <button class="landing-cta" (click)="goToLogin()">
+          {{ 'landing.cta.login' | translate }}
+          <ion-icon name="arrow-forward-outline"></ion-icon>
+        </button>
+        <p class="landing-hero__sub">{{ 'landing.sub' | translate }}</p>
+      </div>
+    </section>
+
+    <!-- ── Beta notice ──────────────────────────────────────────────────── -->
+    <div class="beta-banner">
+      <ion-icon name="flask-outline"></ion-icon>
+      <span>{{ 'landing.beta' | translate }}</span>
+    </div>
+
+    <!-- ── Features ──────────────────────────────────────────────────────── -->
+    <section class="landing-features">
+      <div class="landing-section__inner">
+        <h2 class="landing-section__title">{{ 'landing.features.title' | translate }}</h2>
+        <div class="features-grid">
+
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <ion-icon name="lock-closed-outline"></ion-icon>
+            </div>
+            <h3 class="feature-card__title">{{ 'landing.e2e.title' | translate }}</h3>
+            <p class="feature-card__desc">{{ 'landing.e2e.desc' | translate }}</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <ion-icon name="finger-print-outline"></ion-icon>
+            </div>
+            <h3 class="feature-card__title">{{ 'landing.identity.title' | translate }}</h3>
+            <p class="feature-card__desc">{{ 'landing.identity.desc' | translate }}</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <ion-icon name="phone-portrait-outline"></ion-icon>
+            </div>
+            <h3 class="feature-card__title">{{ 'landing.multidevice.title' | translate }}</h3>
+            <p class="feature-card__desc">{{ 'landing.multidevice.desc' | translate }}</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <ion-icon name="key-outline"></ion-icon>
+            </div>
+            <h3 class="feature-card__title">{{ 'landing.keys.title' | translate }}</h3>
+            <p class="feature-card__desc">{{ 'landing.keys.desc' | translate }}</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <ion-icon name="shield-checkmark-outline"></ion-icon>
+            </div>
+            <h3 class="feature-card__title">{{ 'landing.data.title' | translate }}</h3>
+            <p class="feature-card__desc">{{ 'landing.data.desc' | translate }}</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CTA ───────────────────────────────────────────────────────────── -->
+    <section class="landing-bottom-cta">
+      <div class="landing-section__inner landing-section__inner--center">
+        <h2 class="landing-bottom-cta__title">{{ 'landing.bottom.title' | translate }}</h2>
+        <p class="landing-bottom-cta__sub">{{ 'landing.bottom.desc' | translate }}</p>
+        <button class="landing-cta" (click)="goToLogin()">
+          {{ 'landing.cta.start' | translate }}
+          <ion-icon name="arrow-forward-outline"></ion-icon>
+        </button>
+        <p class="landing-availability">{{ 'landing.availability' | translate }}</p>
+      </div>
+    </section>
+
+    <!-- ── Footer ────────────────────────────────────────────────────────── -->
+    <footer class="landing-footer">
+      <div class="landing-footer__inner">
+        <div class="landing-footer__brand">
+          <span class="landing-footer__logo">Bluvy</span>
+          <span class="landing-footer__by">{{ 'landing.footer.by' | translate }}</span>
+        </div>
+        <nav class="landing-footer__links">
+          <a [routerLink]="'/privacy'">{{ 'landing.footer.privacy' | translate }}</a>
+          <a [routerLink]="'/terms'">{{ 'landing.footer.terms' | translate }}</a>
+          <a [routerLink]="'/mentions'">{{ 'landing.footer.mentions' | translate }}</a>
+          <a [routerLink]="'/licenses'">{{ 'landing.footer.licenses' | translate }}</a>
+        </nav>
+        <div class="landing-lang-switcher">
+          <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'fr'" (click)="i18n.setLocale('fr')">FR</button>
+          <span class="lang-sep">|</span>
+          <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'en'" (click)="i18n.setLocale('en')">EN</button>
+        </div>
+        <p class="landing-footer__copy">{{ 'landing.footer.copyright' | translate }}</p>
+      </div>
+    </footer>
+
+  </div>
+</ion-content>

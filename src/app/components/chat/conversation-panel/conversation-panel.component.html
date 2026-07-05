@@ -1,0 +1,70 @@
+<div class="panel">
+  <div class="panel__header">
+    @if (loading) {
+      <span class="panel__name">Chargement...</span>
+    } @else if (conversation) {
+      <app-avatar
+        [src]="conversation.participant.avatarUrl ?? null"
+        [handle]="conversation.participant.handle"
+        size="sm"
+      ></app-avatar>
+      <div class="panel__info">
+        <span class="panel__name">
+          {{ conversation.participant.displayName || conversation.participant.handle }}
+        </span>
+        @if ((presenceSvc.status$(conversation.participant.did) | async) === 'online') {
+          <span class="panel__status">En ligne</span>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="panel__messages" #messagesContainer>
+    @if (loading) {
+      <div class="panel__loading">
+        <div class="spinner"></div>
+      </div>
+    } @else {
+      @for (msg of displayMessages; track msg.id; let i = $index) {
+        @if (getDateSeparator(i); as label) {
+          <div class="panel__date-sep">{{ label }}</div>
+        }
+        <app-message-bubble
+          [text]="msg.displayText"
+          [isMine]="msg.isMine"
+          [timestamp]="msg.createdAt"
+          [pending]="msg.pending"
+          [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+        ></app-message-bubble>
+      }
+
+      @if ((typingUsers$ | async)?.length) {
+        <app-typing-indicator
+          [name]="conversation?.participant?.displayName || conversation?.participant?.handle || ''"
+        ></app-typing-indicator>
+      }
+
+      @if (!mlsGroupReady) {
+        <div class="panel__reestablish">
+          <p>Les messages chiffrés ne peuvent pas être affichés.</p>
+          <button class="reestablish-btn" [disabled]="reestablishing" (click)="reestablishEncryption()">
+            @if (reestablishing) { <div class="spinner spinner--sm"></div> }
+            Rétablir le chiffrement
+          </button>
+        </div>
+      }
+    }
+
+    @if (error) {
+      <div class="panel__error">{{ error }}</div>
+    }
+  </div>
+
+  <div class="panel__footer">
+    <app-message-composer
+      [conversationId]="conversationId"
+      [disabled]="sending"
+      (send)="sendMessage($event)"
+    ></app-message-composer>
+  </div>
+</div>

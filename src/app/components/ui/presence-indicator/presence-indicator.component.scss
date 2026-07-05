@@ -1,0 +1,12 @@
+.presence {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  border: 2px solid var(--color-surface);
+
+  &--online {
+    background: var(--color-success);
+  }
+}

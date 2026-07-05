@@ -1,0 +1,133 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-bg);
+}
+
+ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
+
+.ss-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-3)) var(--space-4) var(--space-3);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+
+  h1 {
+    font-family: var(--font-sans);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+}
+
+.ss-back {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+
+  ion-icon { font-size: 24px; }
+  &:active { background: var(--color-interactive-hover); }
+}
+
+.ss-content {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+
+  @media (min-width: 768px) {
+    margin-top: 30px;
+    margin-bottom: 30px;
+  }
+}
+
+.ss-section { margin-bottom: var(--space-5); }
+
+.ss-section-title {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.ss-block {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  color: var(--color-text-primary);
+  transition: opacity var(--duration-fast);
+  &:active { opacity: 0.7; }
+}
+
+.settings-row__icon { color: var(--color-text-secondary); font-size: 22px; flex-shrink: 0; }
+.settings-row__label { flex: 1; font-family: var(--font-sans); font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--color-text-primary); text-align: left; }
+.settings-row__chevron { color: var(--color-text-secondary); font-size: 20px; flex-shrink: 0; }
+
+// ── About identity block ───────────────────────────────────────────────────────
+
+.about-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-8) var(--space-4) var(--space-6);
+  gap: var(--space-2);
+}
+
+.about-logo svg {
+  width: 56px;
+  height: 56px;
+}
+
+.about-name {
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+  margin: var(--space-2) 0 0;
+  letter-spacing: -0.3px;
+}
+
+.about-version {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.about-author {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+  opacity: 0.7;
+}

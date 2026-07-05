@@ -1,0 +1,91 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/tabs/conversations"></ion-back-button>
+    </ion-buttons>
+    @if (loading) {
+      <ion-title>{{ 'conversation.loading' | translate }}</ion-title>
+    } @else if (conversation) {
+      <div class="conv-header">
+        <app-avatar
+          [src]="conversation.participant.avatarUrl ?? null"
+          [handle]="conversation.participant.handle"
+          size="sm"
+        ></app-avatar>
+        <div class="conv-header__info">
+          <span class="conv-header__name">
+            {{ conversation.participant.displayName || conversation.participant.handle }}
+          </span>
+          @if ((presenceSvc.status$(conversation.participant.did) | async) === 'online') {
+            <span class="conv-header__status">{{ 'conversation.online' | translate }}</span>
+          }
+        </div>
+      </div>
+    } @else {
+      <ion-title>{{ 'conversation.fallback' | translate }}</ion-title>
+    }
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (loading) {
+    <div class="loading-center">
+      <div class="spinner"></div>
+    </div>
+  } @else if (error && displayMessages.length === 0) {
+    <div class="ion-text-center ion-padding">
+      <ion-text color="danger">{{ error }}</ion-text>
+    </div>
+  } @else {
+    <div class="messages-list">
+      @for (msg of displayMessages; track msg.id; let i = $index) {
+        @if (getDateSeparator(i); as label) {
+          <div class="date-sep">{{ label }}</div>
+        }
+        <app-message-bubble
+          [text]="msg.displayText"
+          [isMine]="msg.isMine"
+          [timestamp]="msg.createdAt"
+          [pending]="msg.pending"
+          [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+        ></app-message-bubble>
+      }
+    </div>
+
+    @if ((typingUsers$ | async)?.length) {
+      <app-typing-indicator
+        [name]="conversation?.participant?.displayName || conversation?.participant?.handle || ''"
+      ></app-typing-indicator>
+    }
+
+    @if (!mlsGroupReady) {
+      <div class="ion-text-center ion-padding">
+        <ion-text color="medium" style="display: block; font-size: var(--text-sm); margin-bottom: var(--space-2);">
+          {{ 'conversation.encryption_warning' | translate }}
+        </ion-text>
+        <button
+          class="reestablish-btn"
+          [disabled]="reestablishing"
+          (click)="reestablishEncryption()"
+        >
+          @if (reestablishing) { <div class="spinner spinner--sm"></div> }
+          {{ 'conversation.restore' | translate }}
+        </button>
+      </div>
+    }
+  }
+
+  @if (error && displayMessages.length > 0) {
+    <div class="ion-padding-horizontal error-inline">
+      <ion-text color="danger">{{ error }}</ion-text>
+    </div>
+  }
+</ion-content>
+
+<ion-footer>
+  <app-message-composer
+    [conversationId]="conversationId"
+    [disabled]="sending"
+    (send)="sendMessage($event)"
+  ></app-message-composer>
+</ion-footer>

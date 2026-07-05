@@ -1,0 +1,90 @@
+<ion-content class="login-content">
+  @if (checking) {
+    <div class="loading-center">
+      <div class="spinner"></div>
+    </div>
+  } @else {
+    <div class="login-page">
+      <div class="login-page__hero">
+        <div class="login-logo">
+          <img src="assets/icons/icon-192.webp" alt="Bluvy" class="login-logo__img" />
+        </div>
+        <h1 class="login-page__title">Bluvy</h1>
+        <p class="login-page__subtitle">{{ 'login.subtitle' | translate }}</p>
+      </div>
+
+      <div class="login-page__form">
+        <div class="form-field">
+          <label class="form-field__label">{{ 'login.handle.label' | translate }}</label>
+          <input
+            class="form-field__input"
+            type="text"
+            [placeholder]="'login.handle.placeholder' | translate"
+            autocomplete="username"
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            maxlength="256"
+            [value]="handle"
+            (input)="handle = $any($event.target).value"
+          />
+        </div>
+
+        <div class="form-field">
+          <label class="form-field__label">{{ 'login.password.label' | translate }}</label>
+          <div class="form-field__password">
+            <input
+              class="form-field__input"
+              [type]="showPassword ? 'text' : 'password'"
+              [placeholder]="'login.password.placeholder' | translate"
+              autocomplete="current-password"
+              maxlength="128"
+              [value]="password"
+              (input)="password = $any($event.target).value"
+            />
+            <button class="form-field__eye" type="button" (click)="showPassword = !showPassword">
+              <ion-icon [name]="showPassword ? 'eye-off-outline' : 'eye-outline'"></ion-icon>
+            </button>
+          </div>
+        </div>
+
+        @if (error) {
+          <p class="form-error">{{ error }}</p>
+        }
+
+        <button
+          class="login-btn"
+          [disabled]="loading"
+          (click)="onLogin()"
+        >
+          @if (loading) {
+            <div class="spinner spinner--sm"></div>
+          } @else {
+            {{ 'login.submit' | translate }}
+          }
+        </button>
+
+        <button type="button" class="forgot-link">{{ 'login.forgot' | translate }}</button>
+
+        <div class="login-divider"><span>{{ 'login.or' | translate }}</span></div>
+
+        <button type="button" class="create-btn" (click)="openCreateAccount()">
+          {{ 'login.create' | translate }}
+        </button>
+      </div>
+
+      <div class="login-page__footer">
+        <ion-icon name="lock-closed-outline" class="footer-lock"></ion-icon>
+        {{ 'login.e2e' | translate }}
+      </div>
+
+      <nav class="login-page__legal">
+        <a class="login-legal-link" (click)="openLegal('/privacy')">{{ 'login.footer.privacy' | translate }}</a>
+        <span class="login-legal-sep">·</span>
+        <a class="login-legal-link" (click)="openLegal('/terms')">{{ 'login.footer.terms' | translate }}</a>
+        <span class="login-legal-sep">·</span>
+        <a class="login-legal-link" (click)="openLegal('/mentions')">{{ 'login.footer.mentions' | translate }}</a>
+      </nav>
+    </div>
+  }
+</ion-content>
