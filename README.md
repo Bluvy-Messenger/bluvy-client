@@ -31,9 +31,6 @@ requesting these — see [Feedback](#feedback) below.
 - TypeScript
 - MLS end-to-end encryption
 
-Target platforms: Android, tablets, and web in production. Web is the primary
-platform for local development, since it offers the fastest debugging workflow.
-
 ## Getting started
 
 ```
