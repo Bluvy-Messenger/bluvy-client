@@ -1,0 +1,92 @@
+name: Deploy frontend to production
+
+# The `production` environment already enforces: required reviewer (Thomasfds),
+# and deployment restricted to the `main` branch only. Secrets and the
+# PROD_WWW_PATH variable are already configured on that environment.
+#
+# Third-party actions below are pinned to major version tags. For stricter
+# supply-chain hardening (this workflow holds a production SSH key), consider
+# re-pinning them to an exact commit SHA once you've reviewed each action's
+# source.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npx ionic build --prod
+
+      - name: Package build
+        run: tar -czf www.tar.gz -C www .
+
+      - name: Prepare remote deploy directory
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          script: mkdir -p /tmp/bluvy-deploy
+
+      - name: Upload build to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          source: 'www.tar.gz'
+          target: '/tmp/bluvy-deploy'
+
+      - name: Swap build into place (atomic, keeps a rollback copy)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          envs: PROD_WWW_PATH
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR="/tmp/bluvy-deploy"
+            WWW_PATH="${PROD_WWW_PATH}"
+            PARENT_DIR="$(dirname "$WWW_PATH")"
+            INCOMING="$PARENT_DIR/www_incoming"
+            PREVIOUS="$PARENT_DIR/www_previous"
+
+            rm -rf "$INCOMING"
+            mkdir -p "$INCOMING"
+            tar -xzf "$DEPLOY_DIR/www.tar.gz" -C "$INCOMING"
+
+            # Sanity check before touching the live site.
+            test -s "$INCOMING/index.html"
+
+            rm -rf "$PREVIOUS"
+            if [ -d "$WWW_PATH" ]; then
+              mv "$WWW_PATH" "$PREVIOUS"
+            fi
+            mv "$INCOMING" "$WWW_PATH"
+
+            rm -f "$DEPLOY_DIR/www.tar.gz"
+        env:
+          PROD_WWW_PATH: ${{ vars.PROD_WWW_PATH }}
