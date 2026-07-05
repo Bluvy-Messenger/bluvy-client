@@ -16,10 +16,11 @@ import { TranslationService } from '../../core/i18n/translation.service';
   styleUrls: ['./landing.page.scss'],
 })
 export class LandingPage implements OnInit {
-  private router = inject(Router);
-  private auth   = inject(AuthService);
-  private seo    = inject(SeoService);
-  protected i18n = inject(TranslationService);
+  private router   = inject(Router);
+  private auth     = inject(AuthService);
+  private oauthSvc = inject(OAuthService);
+  private seo      = inject(SeoService);
+  protected i18n   = inject(TranslationService);
 
   async ngOnInit(): Promise<void> {
     this.seo.set({

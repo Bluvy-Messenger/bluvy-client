@@ -2,6 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
+import { OAuthService } from '../../core/auth/oauth.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
 
@@ -13,9 +14,10 @@ import { TranslationService } from '../../core/i18n/translation.service';
   imports: [IonContent, IonIcon, TranslatePipe],
 })
 export class LoginPage implements OnInit {
-  private router = inject(Router);
-  private auth   = inject(AuthService);
-  private i18n   = inject(TranslationService);
+  private router   = inject(Router);
+  private auth     = inject(AuthService);
+  private oauthSvc = inject(OAuthService);
+  private i18n     = inject(TranslationService);
 
   handle   = '';
   loading  = false;
@@ -53,7 +55,7 @@ export class LoginPage implements OnInit {
   async onLogin(): Promise<void> {
     const handle = this.handle.trim();
 
-    if (!handle || !password) {
+    if (!handle) {
       this.error = this.i18n.t('login.error.required');
       return;
     }
