@@ -1,6 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
+import { ApiClientService } from '../../core/infrastructure/api-client.service';
 import { Capacitor } from '@capacitor/core';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
@@ -9,6 +9,7 @@ import { SeoService } from '../../core/services/seo.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
 import { ROUTES } from '../../core/routes';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-landing',
@@ -23,8 +24,9 @@ export class LandingPage implements OnInit {
   private oauthSvc = inject(OAuthService);
   private seo      = inject(SeoService);
   protected i18n   = inject(TranslationService);
-  private http     = inject(HttpClient);
+  private apiClient = inject(ApiClientService);
 
+  readonly version = environment.version;
   inviter: { displayName: string; handle: string; avatarUrl: string | null } | null = null;
   showFeatures = false;
 
@@ -35,16 +37,13 @@ export class LandingPage implements OnInit {
         const context = JSON.parse(cached);
         if (context.targetDid) {
           const url = `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(context.targetDid)}`;
-          this.http.get<any>(url).subscribe({
-            next: profile => {
-              this.inviter = {
-                displayName: profile.displayName || profile.handle,
-                handle: profile.handle,
-                avatarUrl: profile.avatar || null
-              };
-            },
-            error: () => {}
-          });
+          this.apiClient.get<any>(url, { skipAuth: true }).then(profile => {
+            this.inviter = {
+              displayName: profile.displayName || profile.handle,
+              handle: profile.handle,
+              avatarUrl: profile.avatar || null
+            };
+          }).catch(() => {});
         }
       } catch {}
     }
@@ -64,7 +63,7 @@ export class LandingPage implements OnInit {
       await this.router.navigate([ROUTES.login]);
       return;
     }
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() && !cached) {
       await this.router.navigate([ROUTES.login]);
       return;
     }

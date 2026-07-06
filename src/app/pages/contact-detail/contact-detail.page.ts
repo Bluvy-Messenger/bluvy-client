@@ -2,7 +2,7 @@ import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
-import { IonContent, IonIcon } from '@ionic/angular/standalone';
+import { IonContent, IonIcon, IonModal, ToastController } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
 import { ContactsService } from '../../core/contact/contacts.service';
 import type { Contact, BlueskyProfile } from '../../core/contact/contact.types';
@@ -12,13 +12,18 @@ import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.b
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { ROUTES } from '../../core/routes';
 import { environment } from '../../../environments/environment';
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
+import { Browser } from '@capacitor/browser';
+import { addIcons } from 'ionicons';
+import { close, chatbubbleEllipsesOutline, linkOutline, shareSocialOutline } from 'ionicons/icons';
 
 @Component({
   selector: 'app-contact-detail',
   templateUrl: './contact-detail.page.html',
   styleUrls: ['./contact-detail.page.scss'],
   standalone: true,
-  imports: [IonContent, IonIcon, AvatarComponent, TranslatePipe, AsyncPipe],
+  imports: [IonContent, IonIcon, IonModal, AvatarComponent, TranslatePipe, AsyncPipe],
 })
 export class ContactDetailPage {
   private route       = inject(ActivatedRoute);
@@ -27,6 +32,7 @@ export class ContactDetailPage {
   private convSvc     = inject(ConversationsService);
   private authSvc     = inject(AuthService);
   private coordinator = inject(MlsCoordinatorBase);
+  private toastCtrl   = inject(ToastController);
 
   did: string = '';
   contact: Contact | null = null;
@@ -35,6 +41,15 @@ export class ContactDetailPage {
   openingConv = false;
   inviting = false;
   error = '';
+
+  isInviteModalOpen = false;
+  directInviteUrl = '';
+  personalInviteUrl = '';
+  qrCodeUrl = '';
+
+  constructor() {
+    addIcons({ close, chatbubbleEllipsesOutline, linkOutline, shareSocialOutline });
+  }
 
   async ionViewWillEnter(): Promise<void> {
     const routeParams = this.route.snapshot.paramMap;
@@ -89,26 +104,86 @@ export class ContactDetailPage {
 
   async invite(): Promise<void> {
     if (!this.blueskyProfile) return;
-    this.inviting = true;
-
+    
     const userDid = this.authSvc.currentUser()?.did || '';
     const cleanOrigin = window.location.origin.endsWith('/') ? window.location.origin.slice(0, -1) : window.location.origin;
-    const inviteUrl = environment.production
+    
+    // Direct invite containing only the inviter's DID (so others can start a conversation)
+    this.directInviteUrl = environment.production
+      ? `https://bluvy.app/message#${userDid}`
+      : `${cleanOrigin}/message#${userDid}`;
+
+    // Personal invite linking both user DIDs together
+    this.personalInviteUrl = environment.production
       ? `https://bluvy.app/message#${userDid}+${this.did}`
       : `${cleanOrigin}/message#${userDid}+${this.did}`;
 
-    const text = `Hey! I use Bluvy for end-to-end encrypted messaging. Join me: ${inviteUrl}`;
+    this.qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(this.directInviteUrl)}`;
+    
+    this.isInviteModalOpen = true;
+  }
 
+  async shareViaBlueskyDm(): Promise<void> {
+    const text = `Hey! I use Bluvy for end-to-end encrypted messaging. Join me: ${this.personalInviteUrl}`;
+    
     try {
-      if (typeof navigator.share === 'function') {
-        await navigator.share({ title: 'Join me on Bluvy', text, url: inviteUrl });
+      await navigator.clipboard.writeText(text);
+      const toast = await this.toastCtrl.create({
+        message: 'Texte d\'invitation copié ! Ouverture des messages Bluesky...',
+        duration: 3000,
+        position: 'bottom',
+        color: 'success'
+      });
+      await toast.present();
+    } catch {
+      // Ignored
+    }
+
+    const bskyUrl = 'https://bsky.app/messages';
+    if (Capacitor.isNativePlatform()) {
+      await Browser.open({ url: bskyUrl, presentationStyle: 'popover' });
+    } else {
+      window.open(bskyUrl, '_blank');
+    }
+    this.isInviteModalOpen = false;
+  }
+
+  async copyDirectLink(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.directInviteUrl);
+      const toast = await this.toastCtrl.create({
+        message: 'Lien direct copié dans le presse-papiers !',
+        duration: 3000,
+        position: 'bottom',
+        color: 'success'
+      });
+      await toast.present();
+    } catch {
+      // Ignored
+    }
+    this.isInviteModalOpen = false;
+  }
+
+  async shareQrCode(): Promise<void> {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await Share.share({
+          title: 'Mon QR Code Bluvy',
+          text: 'Scannez ce code pour démarrer une discussion sécurisée sur Bluvy !',
+          url: this.directInviteUrl,
+          dialogTitle: 'Partager le QR Code'
+        });
+      } else if (typeof navigator.share === 'function') {
+        await navigator.share({
+          title: 'Mon QR Code Bluvy',
+          text: 'Scannez ce code pour démarrer une discussion sécurisée sur Bluvy !',
+          url: this.directInviteUrl
+        });
       } else {
-        await navigator.clipboard.writeText(`${text}`);
+        window.open(this.qrCodeUrl, '_blank');
       }
     } catch {
       // Ignored
-    } finally {
-      this.inviting = false;
     }
   }
 }

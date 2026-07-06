@@ -5,6 +5,7 @@ import { Browser } from '@capacitor/browser';
 import { BrowserOAuthClient, OAuthSession } from '@atproto/oauth-client-browser';
 import { Agent } from '@atproto/api';
 import { environment } from '../../../environments/environment';
+import { capacitorOAuthFetch } from './oauth-fetch.adapter';
 
 let _client: BrowserOAuthClient | null = null;
 
@@ -27,6 +28,7 @@ export class OAuthService {
       _client = await BrowserOAuthClient.load({
         clientId:       this.resolveClientId(),
         handleResolver: 'https://api.bsky.app',
+        fetch:          capacitorOAuthFetch,
       });
     }
     return _client;
@@ -208,11 +210,16 @@ export class OAuthService {
       void App.addListener('appUrlOpen', async ({ url }) => {
         clearTimeout(timer);
         try {
-          const params = new URL(url).searchParams;
+          const parsedUrl = new URL(url);
+          let params = parsedUrl.searchParams;
+          if (!params.has('state') && parsedUrl.hash) {
+            params = new URLSearchParams(parsedUrl.hash.slice(1));
+          }
           await this.handleCallback(params);
           await Browser.close();
           resolve();
         } catch (err) {
+          console.error('[AppUrlOpen Error]', err);
           await Browser.close().catch(() => {});
           reject(err);
         }

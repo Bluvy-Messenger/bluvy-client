@@ -50,14 +50,24 @@ export class NativeMessageStore implements IMessageStore {
       { toVersion: 1, statements: SCHEMA_V1 },
       { toVersion: 2, statements: SCHEMA_V2 },
     ]);
-    this.db = await this.sqlite.createConnection(
-      DB_NAME,
-      false,
-      'no-encryption',
-      DB_VERSION,
-      false,
-    );
-    await this.db.open();
+    
+    const isConn = await this.sqlite.isConnection(DB_NAME, false);
+    if (isConn.result) {
+      this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
+    } else {
+      this.db = await this.sqlite.createConnection(
+        DB_NAME,
+        false,
+        'no-encryption',
+        DB_VERSION,
+        false,
+      );
+    }
+    
+    const isOpen = await this.db.isDBOpen();
+    if (!isOpen.result) {
+      await this.db.open();
+    }
   }
 
   async put(record: EncryptedCacheRecord): Promise<void> {

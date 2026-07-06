@@ -1,8 +1,16 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "bluvy.application.official",
-    "sha256_cert_fingerprints": ["REPLACE_WITH_YOUR_RELEASE_KEYSTORE_SHA256_FINGERPRINT"]
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "bluvy.application.official",
+      "sha256_cert_fingerprints": [
+        "46:09:2C:F5:01:A7:68:F5:D0:E1:18:65:29:CE:52:47:09:34:B9:B7:D8:E2:3E:93:C4:34:21:0E:17:AD:2A:0B",
+        "2C:38:1C:A7:AE:9B:94:D4:5E:94:3B:8A:8D:6C:57:F9:CF:05:04:16:B6:C5:1F:5A:F4:4C:37:2F:E7:75:11:E0"
+      ]
+    }
   }
-}]
+]

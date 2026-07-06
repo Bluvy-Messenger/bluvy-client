@@ -87,10 +87,17 @@ export class AuthService {
   }
 
   async loginWithOAuthSession(session: OAuthSession): Promise<void> {
+    console.log('[AuthService] loginWithOAuthSession start');
     const did = session.did;
+    console.log('[AuthService] did:', did);
+    console.log('[AuthService] fetching service auth token...');
     const serviceAuthToken = await this.oauthSvc.getServiceAuthToken(session, environment.oauthServiceDid);
+    console.log('[AuthService] service auth token fetched successfully');
+    console.log('[AuthService] loading device info...');
     const device = await this.deviceSvc.getOrCreate(did);
+    console.log('[AuthService] device:', device);
 
+    console.log('[AuthService] calling authRepo.login...');
     const response = await this.authRepo.login(
       serviceAuthToken,
       did,

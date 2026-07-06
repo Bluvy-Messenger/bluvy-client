@@ -62,3 +62,46 @@
     }
   </div>
 </ion-content>
+
+<ion-modal [isOpen]="isInviteModalOpen" (didDismiss)="isInviteModalOpen = false" initialBreakpoint="0.75" [breakpoints]="[0, 0.75, 0.95]">
+  <ng-template>
+    <div class="invite-modal-content">
+      <div class="invite-modal-header">
+        <h2>Inviter ce contact</h2>
+        <button class="close-btn" (click)="isInviteModalOpen = false" aria-label="Close">
+          <ion-icon name="close"></ion-icon>
+        </button>
+      </div>
+
+      <div class="invite-options">
+        <button class="invite-option-btn" (click)="shareViaBlueskyDm()">
+          <ion-icon name="chatbubble-ellipses-outline" class="invite-option-icon"></ion-icon>
+          <div class="invite-option-text">
+            <h3>DM sur Bluesky</h3>
+            <p>Copie le message d'invitation et ouvre les messages Bluesky</p>
+          </div>
+        </button>
+
+        <button class="invite-option-btn" (click)="copyDirectLink()">
+          <ion-icon name="link-outline" class="invite-option-icon"></ion-icon>
+          <div class="invite-option-text">
+            <h3>Copier le lien direct</h3>
+            <p>Copie votre lien d'invitation (inclut uniquement votre DID)</p>
+          </div>
+        </button>
+
+        <div class="qr-section">
+          <h3>Scanner le QR Code</h3>
+          <p class="qr-desc">Faites scanner ce code pour ouvrir la conversation</p>
+          <div class="qr-code-wrapper">
+            <img [src]="qrCodeUrl" alt="QR Code" class="qr-code-img" />
+          </div>
+          <button class="share-qr-btn" (click)="shareQrCode()">
+            <ion-icon name="share-social-outline"></ion-icon>
+            <span>Partager le QR Code</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </ng-template>
+</ion-modal>

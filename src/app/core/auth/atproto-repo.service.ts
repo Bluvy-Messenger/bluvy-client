@@ -66,4 +66,46 @@ export class AtprotoRepoService {
       // Ignore if record already deleted or doesn't exist
     }
   }
+
+  /**
+   * Programmatically sends a direct message to a Bluesky user.
+   */
+  async sendBlueskyDM(recipientDid: string, text: string): Promise<void> {
+    const agent = this.getAgent();
+    if (!agent) {
+      throw new Error('No active ATProto session');
+    }
+
+    // 1. Get or create the conversation ID for the recipient
+    const convoRes = await agent.call(
+      'chat.bsky.convo.getConvoForMembers',
+      { members: [recipientDid] },
+      undefined,
+      {
+        headers: {
+          'atproto-proxy': 'did:web:api.bsky.chat'
+        }
+      }
+    );
+
+    const convoId = (convoRes.data as any)?.convo?.id;
+    if (!convoId) {
+      throw new Error('Could not establish Bluesky DM channel');
+    }
+
+    // 2. Send the invitation message to the conversation
+    await agent.call(
+      'chat.bsky.convo.sendMessage',
+      undefined,
+      {
+        convoId,
+        message: { text }
+      },
+      {
+        headers: {
+          'atproto-proxy': 'did:web:api.bsky.chat'
+        }
+      }
+    );
+  }
 }

@@ -66,6 +66,21 @@
   // ── Interactive states ───────────────────────────────────────────────────
   --color-interactive-hover:  rgba(0, 0, 0, 0.04);
   --color-interactive-active: rgba(0, 0, 0, 0.07);
+
+  // ── Safe Area ────────────────────────────────────────────────────────────────
+  --safe-area-top: 0px;
+}
+
+html.ios {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+}
+
+// On native Android, the EdgeToEdge plugin already reserves the status bar
+// height as a real native margin on the WebView. Ionic's own ion-toolbar
+// safe-area padding still reads env(safe-area-inset-top) unconditionally,
+// which double-counts that space. Zero it out for the native app only.
+html.md.plt-hybrid {
+  --ion-safe-area-top: 0px;
 }
 
 @media (prefers-color-scheme: dark) {

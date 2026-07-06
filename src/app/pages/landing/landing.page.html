@@ -1,150 +1,346 @@
 <ion-content>
-  @if (inviter && !showFeatures) {
-    <div class="invite-page animate-fade-in">
-      <div class="invite-page__card">
-        <div class="invite-logo">
-          <img src="assets/icons/icon-192.webp" alt="Bluvy" class="invite-logo__img" />
+  <div class="landing">
+    <!-- Header -->
+    <header class="landing-header">
+      <div class="header-inner">
+        <div class="brand">
+          <img src="assets/icons/icon-192.webp" alt="Bluvy" class="brand-logo" />
+          <span class="brand-name">Bluvy</span>
         </div>
+        <div class="header-actions">
+          <div class="lang-switcher">
+            <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'fr'" (click)="i18n.setLocale('fr')">FR</button>
+            <span class="lang-sep">|</span>
+            <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'en'" (click)="i18n.setLocale('en')">EN</button>
+          </div>
+        </div>
+      </div>
+    </header>
 
-        <div class="invite-avatar-wrap">
-          @if (inviter.avatarUrl) {
-            <img [src]="inviter.avatarUrl" alt="Avatar" class="invite-avatar" />
-          } @else {
-            <div class="invite-avatar-placeholder">
-              <ion-icon name="person-outline"></ion-icon>
+    @if (inviter) {
+      <!-- Invite View (Centered layout) -->
+      <div class="invite-container">
+        <div class="invite-card">
+          <div class="avatar-wrapper">
+            @if (inviter.avatarUrl) {
+              <img [src]="inviter.avatarUrl" alt="Avatar" class="profile-avatar" />
+            } @else {
+              <div class="profile-avatar-placeholder">
+                <ion-icon name="person-outline"></ion-icon>
+              </div>
+            }
+          </div>
+          <h1 class="invite-title"><strong>{{ inviter.displayName }}</strong> {{ 'landing.invite.title.main' | translate }}</h1>
+          <p class="invite-handle">&#64;{{ inviter.handle }}</p>
+          
+          <p class="invite-description">
+            {{ 'landing.invite.desc.main' | translate }}
+          </p>
+
+          <button class="cta-button" (click)="goToLogin()">
+            {{ 'landing.invite.accept' | translate }}
+            <ion-icon name="arrow-forward-outline"></ion-icon>
+          </button>
+        </div>
+      </div>
+    } @else {
+      <!-- Welcome View: Hero + Multiple Sections -->
+      
+      <!-- ── SECTION 1: HERO ─────────────────────────────────────────────── -->
+      <section class="hero-section">
+        <div class="section-inner hero-inner-grid">
+          <div class="hero-content">
+            <div class="product-badge">
+              <ion-icon name="shield-checkmark-outline"></ion-icon>
+              <span>{{ 'landing.badge.beta' | translate }}{{ version }}</span>
             </div>
-          }
+            <h1 class="hero-title">{{ 'landing.hero.title' | translate }}</h1>
+            <p class="hero-description">
+              {{ 'landing.hero.desc' | translate }}
+            </p>
+            <div class="action-wrap">
+              <button class="cta-button" (click)="goToLogin()">
+                {{ 'landing.cta.login' | translate }}
+                <ion-icon name="arrow-forward-outline"></ion-icon>
+              </button>
+              <div class="platforms-wrap">
+                <span class="platforms-label">{{ 'landing.availability.label' | translate }}</span>
+                <div class="platform-chips">
+                  <span class="platform-chip">
+                    <ion-icon name="globe-outline"></ion-icon>
+                    Web App
+                  </span>
+                  <span class="platform-chip">
+                    <ion-icon name="phone-portrait-outline"></ion-icon>
+                    Android
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="hero-visual">
+            <!-- App UI Mockup -->
+            <div class="chat-mockup">
+              <div class="mockup-header">
+                <div class="mockup-avatar">A</div>
+                <div class="mockup-header-text">
+                  <h4>Alice</h4>
+                  <span>En ligne</span>
+                </div>
+              </div>
+              <div class="mockup-body">
+                <div class="msg msg--theirs">
+                  <p>Salut ! On passe sur Bluvy pour discuter ?</p>
+                </div>
+                <div class="msg msg--yours">
+                  <p>Carrément, c'est chiffré de bout en bout avec MLS ! 🔒</p>
+                </div>
+                <div class="msg msg--theirs">
+                  <p>Trop bien, et je retrouve tous mes contacts Bluesky en plus !</p>
+                </div>
+              </div>
+              <div class="mockup-footer">
+                <div class="mockup-input">Écrire un message...</div>
+                <div class="mockup-send">
+                  <ion-icon name="send"></ion-icon>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <h1 class="invite-title">
-          <strong>{{ inviter.displayName }}</strong> vous invite à rejoindre Bluvy
-        </h1>
-        <p class="invite-handle">&#64;{{ inviter.handle }}</p>
-
-        <p class="invite-description">
-          Échangez en toute confidentialité. Bluvy est une messagerie privée sécurisée, décentralisée et entièrement chiffrée de bout en bout (protocole MLS) construite sur le réseau Bluesky.
-        </p>
-
-        <button class="landing-cta landing-cta--invite" (click)="goToLogin()">
-          Accepter l'invitation et commencer
-          <ion-icon name="arrow-forward-outline"></ion-icon>
-        </button>
-
-        <button class="invite-secondary-link" (click)="showFeatures = true">
-          Découvrir les fonctionnalités de Bluvy
-        </button>
-      </div>
-    </div>
-  } @else {
-    <div class="landing">
-
-      <!-- ── Hero ─────────────────────────────────────────────────────────── -->
-      <section class="landing-hero">
-        <div class="landing-hero__inner">
-          <div class="landing-logo">
-          <img src="assets/icons/icon-192.webp" alt="Bluvy Messenger" class="landing-logo__img" />
-        </div>
-        <h1 class="landing-hero__title">Bluvy Messenger</h1>
-        <p class="landing-hero__tagline">{{ 'landing.tagline1' | translate }}<br>{{ 'landing.tagline2' | translate }}</p>
-        <button class="landing-cta" (click)="goToLogin()">
-          {{ 'landing.cta.login' | translate }}
-          <ion-icon name="arrow-forward-outline"></ion-icon>
-        </button>
-        <p class="landing-hero__sub">{{ 'landing.sub' | translate }}</p>
-      </div>
-    </section>
-
-    <!-- ── Beta notice ──────────────────────────────────────────────────── -->
-    <div class="beta-banner">
-      <ion-icon name="flask-outline"></ion-icon>
-      <span>{{ 'landing.beta' | translate }}</span>
-    </div>
-
-    <!-- ── Features ──────────────────────────────────────────────────────── -->
-    <section class="landing-features">
-      <div class="landing-section__inner">
-        <h2 class="landing-section__title">{{ 'landing.features.title' | translate }}</h2>
-        <div class="features-grid">
-
-          <div class="feature-card">
-            <div class="feature-card__icon">
+      <!-- ── SECTION 2: CHIFFREMENT SIMPLE ────────────────────────────────── -->
+      <section class="feature-section feature-section--alt">
+        <div class="section-inner feature-grid">
+          <div class="feature-content">
+            <div class="feature-icon-wrap">
               <ion-icon name="lock-closed-outline"></ion-icon>
             </div>
-            <h3 class="feature-card__title">{{ 'landing.e2e.title' | translate }}</h3>
-            <p class="feature-card__desc">{{ 'landing.e2e.desc' | translate }}</p>
+            <h2 class="feature-title">{{ 'landing.encryption.title' | translate }}</h2>
+            <p class="feature-description" [innerHTML]="'landing.encryption.desc1' | translate"></p>
+            <p class="feature-description" [innerHTML]="'landing.encryption.desc2' | translate"></p>
           </div>
+          <div class="feature-visual">
+            <div class="security-card">
+              <div class="security-card__lock">
+                <ion-icon name="shield-checkmark"></ion-icon>
+              </div>
+              <div class="security-card__details">
+                <span class="sec-label">PROTOCOLE MLS</span>
+                <span class="sec-status">Actif & Chiffré</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <div class="feature-card">
-            <div class="feature-card__icon">
+      <!-- ── SECTION 3: INVITATION SYSTEM ─────────────────────────────────── -->
+      <section class="feature-section">
+        <div class="section-inner feature-grid feature-grid--reverse">
+          <div class="feature-content">
+            <div class="feature-icon-wrap">
+              <ion-icon name="people-outline"></ion-icon>
+            </div>
+            <h2 class="feature-title">{{ 'landing.invite.title' | translate }}</h2>
+            <p class="feature-description" [innerHTML]="'landing.invite.desc1' | translate"></p>
+            <p class="feature-description" [innerHTML]="'landing.invite.desc2' | translate"></p>
+          </div>
+          <div class="feature-visual">
+            <div class="invite-preview-card">
+              <div class="invite-preview-card__header">
+                <ion-icon name="link-outline"></ion-icon>
+                <span>{{ 'landing.invite.preview.header' | translate }}</span>
+              </div>
+              <div class="invite-preview-card__link">bluvy.app/message#did:plc:nqj7...</div>
+              <div class="invite-preview-card__badge">{{ 'landing.invite.preview.badge' | translate }}</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── SECTION 4: DECENTRALISATION / PAS DE NUMERO ────────────────────── -->
+      <section class="feature-section feature-section--alt">
+        <div class="section-inner feature-grid">
+          <div class="feature-content">
+            <div class="feature-icon-wrap">
               <ion-icon name="finger-print-outline"></ion-icon>
             </div>
-            <h3 class="feature-card__title">{{ 'landing.identity.title' | translate }}</h3>
-            <p class="feature-card__desc">{{ 'landing.identity.desc' | translate }}</p>
+            <h2 class="feature-title">{{ 'landing.keys.title' | translate }}</h2>
+            <p class="feature-description" [innerHTML]="'landing.pwa.desc2' | translate"></p>
+            <p class="feature-description" [innerHTML]="'landing.keys.desc' | translate"></p>
           </div>
+          <div class="feature-visual">
+            <div class="identity-card">
+              <div class="identity-card__handle">&#64;alice.bsky.social</div>
+              <div class="identity-card__did">did:plc:nqj7zly655qamncr...</div>
+              <div class="identity-card__verified">
+                <ion-icon name="checkmark-circle"></ion-icon>
+                <span>Identité Vérifiée via Bluesky</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <div class="feature-card">
-            <div class="feature-card__icon">
+      <!-- ── SECTION 5: PWA & ANDROID ─────────────────────────────────────── -->
+      <section class="feature-section">
+        <div class="section-inner feature-grid feature-grid--reverse">
+          <div class="feature-content">
+            <div class="feature-icon-wrap">
               <ion-icon name="phone-portrait-outline"></ion-icon>
             </div>
-            <h3 class="feature-card__title">{{ 'landing.multidevice.title' | translate }}</h3>
-            <p class="feature-card__desc">{{ 'landing.multidevice.desc' | translate }}</p>
+            <h2 class="feature-title">{{ 'landing.pwa.title' | translate }}</h2>
+            <p class="feature-description" [innerHTML]="'landing.pwa.desc1' | translate"></p>
+            <p class="feature-description" [innerHTML]="'landing.pwa.desc2' | translate"></p>
           </div>
-
-          <div class="feature-card">
-            <div class="feature-card__icon">
-              <ion-icon name="key-outline"></ion-icon>
+          <div class="feature-visual">
+            <div class="app-mode-preview">
+              <div class="app-mode-icon">
+                <ion-icon name="globe-outline"></ion-icon>
+                <span>PWA</span>
+              </div>
+              <div class="app-mode-sep">+</div>
+              <div class="app-mode-icon">
+                <ion-icon name="phone-portrait-outline"></ion-icon>
+                <span>Android</span>
+              </div>
             </div>
-            <h3 class="feature-card__title">{{ 'landing.keys.title' | translate }}</h3>
-            <p class="feature-card__desc">{{ 'landing.keys.desc' | translate }}</p>
           </div>
-
-          <div class="feature-card">
-            <div class="feature-card__icon">
-              <ion-icon name="shield-checkmark-outline"></ion-icon>
-            </div>
-            <h3 class="feature-card__title">{{ 'landing.data.title' | translate }}</h3>
-            <p class="feature-card__desc">{{ 'landing.data.desc' | translate }}</p>
-          </div>
-
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- ── CTA ───────────────────────────────────────────────────────────── -->
-    <section class="landing-bottom-cta">
-      <div class="landing-section__inner landing-section__inner--center">
-        <h2 class="landing-bottom-cta__title">{{ 'landing.bottom.title' | translate }}</h2>
-        <p class="landing-bottom-cta__sub">{{ 'landing.bottom.desc' | translate }}</p>
-        <button class="landing-cta" (click)="goToLogin()">
-          {{ 'landing.cta.start' | translate }}
-          <ion-icon name="arrow-forward-outline"></ion-icon>
-        </button>
-        <p class="landing-availability">{{ 'landing.availability' | translate }}</p>
-      </div>
-    </section>
+      <!-- ── SECTION 6: FONCTIONNALITES ACTUELLES ET FUTURES ────────────────── -->
+      <section class="feature-section feature-section--alt">
+        <div class="section-inner">
+          <div class="features-split-container">
+            <!-- Left Side: Available Features -->
+            <div class="features-column-block">
+              <h2 class="features-column-block__title">{{ 'landing.features.title.current' | translate }}</h2>
+              <div class="features-summary-list">
+                <div class="feature-summary-item">
+                  <ion-icon name="chatbubble-outline" class="avail-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.chat1to1.title' | translate }}</h3>
+                    <p>{{ 'landing.features.chat1to1.desc' | translate }}</p>
+                  </div>
+                </div>
+                <div class="feature-summary-item">
+                  <ion-icon name="key-outline" class="avail-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.keys.title' | translate }}</h3>
+                    <p>{{ 'landing.features.keys.desc' | translate }}</p>
+                  </div>
+                </div>
+                <div class="feature-summary-item">
+                  <ion-icon name="sync-outline" class="avail-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.sync.title' | translate }}</h3>
+                    <p>{{ 'landing.features.sync.desc' | translate }}</p>
+                  </div>
+                </div>
+                <div class="feature-summary-item">
+                  <ion-icon name="people-outline" class="avail-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.invite.title' | translate }}</h3>
+                    <p>{{ 'landing.features.invite.desc' | translate }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-    <!-- ── Footer ────────────────────────────────────────────────────────── -->
+            <!-- Right Side: Coming Soon (Roadmap) -->
+            <div class="features-column-block features-column-block--upcoming">
+              <h2 class="features-column-block__title">{{ 'landing.features.title.upcoming' | translate }}</h2>
+              <div class="features-summary-list">
+                <div class="feature-summary-item">
+                  <ion-icon name="people-outline" class="upcoming-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.groups.title' | translate }}</h3>
+                    <p>{{ 'landing.features.groups.desc' | translate }}</p>
+                  </div>
+                </div>
+                <div class="feature-summary-item">
+                  <ion-icon name="chatbubble-outline" class="upcoming-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.reply.title' | translate }}</h3>
+                    <p>{{ 'landing.features.reply.desc' | translate }}</p>
+                  </div>
+                </div>
+                <div class="feature-summary-item">
+                  <ion-icon name="globe-outline" class="upcoming-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.embeds.title' | translate }}</h3>
+                    <p>{{ 'landing.features.embeds.desc' | translate }}</p>
+                  </div>
+                </div>
+                <div class="feature-summary-item">
+                  <ion-icon name="document-text-outline" class="upcoming-icon"></ion-icon>
+                  <div>
+                    <h3>{{ 'landing.features.files.title' | translate }}</h3>
+                    <p>{{ 'landing.features.files.desc' | translate }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── SECTION 7: FAQ ──────────────────────────────────────────────── -->
+      <section class="feature-section">
+        <div class="section-inner">
+          <h2 class="features-title-center">{{ 'landing.faq.title' | translate }}</h2>
+          <div class="faq-grid">
+            <div class="faq-item">
+              <h3>{{ 'landing.faq.q1' | translate }}</h3>
+              <p>{{ 'landing.faq.a1' | translate }}</p>
+            </div>
+            <div class="faq-item">
+              <h3>{{ 'landing.faq.q2' | translate }}</h3>
+              <p>{{ 'landing.faq.a2' | translate }}</p>
+            </div>
+            <div class="faq-item">
+              <h3>{{ 'landing.faq.q3' | translate }}</h3>
+              <p>{{ 'landing.faq.a3' | translate }}</p>
+            </div>
+            <div class="faq-item">
+              <h3>{{ 'landing.faq.q4' | translate }}</h3>
+              <p>{{ 'landing.faq.a4' | translate }}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── SECTION 8: BOTTOM CALL-TO-ACTION ────────────────────────────── -->
+      <section class="bottom-cta-section">
+        <div class="section-inner bottom-cta-inner">
+          <h2 class="bottom-cta-title">{{ 'landing.bottom.title' | translate }}</h2>
+          <p class="bottom-cta-desc">{{ 'landing.bottom.desc' | translate }}</p>
+          <button class="cta-button" (click)="goToLogin()">
+            {{ 'landing.cta.login' | translate }}
+            <ion-icon name="arrow-forward-outline"></ion-icon>
+          </button>
+        </div>
+      </section>
+
+    }
+
+    <!-- Footer -->
     <footer class="landing-footer">
-      <div class="landing-footer__inner">
-        <div class="landing-footer__brand">
-          <span class="landing-footer__logo">Bluvy</span>
-          <span class="landing-footer__by">{{ 'landing.footer.by' | translate }}</span>
-        </div>
-        <nav class="landing-footer__links">
+      <div class="footer-inner">
+        <div class="footer-links">
           <a [routerLink]="'/privacy'">{{ 'landing.footer.privacy' | translate }}</a>
+          <span class="dot">•</span>
           <a [routerLink]="'/terms'">{{ 'landing.footer.terms' | translate }}</a>
+          <span class="dot">•</span>
           <a [routerLink]="'/mentions'">{{ 'landing.footer.mentions' | translate }}</a>
-          <a [routerLink]="'/licenses'">{{ 'landing.footer.licenses' | translate }}</a>
-        </nav>
-        <div class="landing-lang-switcher">
-          <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'fr'" (click)="i18n.setLocale('fr')">FR</button>
-          <span class="lang-sep">|</span>
-          <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'en'" (click)="i18n.setLocale('en')">EN</button>
+          <span class="dot">•</span>
+          <a href="https://github.com/Thomasfds/bluvy-client" target="_blank" rel="noopener noreferrer">GitHub</a>
         </div>
-        <p class="landing-footer__copy">{{ 'landing.footer.copyright' | translate }}</p>
+        <p class="copyright">{{ 'landing.footer.copyright' | translate }}</p>
       </div>
     </footer>
-
   </div>
-  }
 </ion-content>

@@ -1,5 +1,6 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, NgZone } from '@angular/core';
 import { Router } from '@angular/router';
+import { App } from '@capacitor/app';
 import { MlsRepository } from '../mls/mls.repository';
 import { MlsCoordinatorBase } from '../mls/coordinator/mls-coordinator.base';
 import { AuthService } from './auth.service';
@@ -16,9 +17,11 @@ export class NavigationRedirectService {
   private readonly mlsRepo     = inject(MlsRepository);
   private readonly coordinator = inject(MlsCoordinatorBase);
   private readonly authSvc     = inject(AuthService);
+  private readonly ngZone      = inject(NgZone);
 
   constructor() {
     this.captureHashContext();
+    this.setupNativeLinkListener();
   }
 
   /**
@@ -100,5 +103,35 @@ export class NavigationRedirectService {
     }
 
     return false;
+  }
+
+  private setupNativeLinkListener(): void {
+    void App.addListener('appUrlOpen', ({ url }) => {
+      try {
+        const parsedUrl = new URL(url);
+        // An invite link will contain the target DID in the hash (e.g., #did:plc:...)
+        const hash = parsedUrl.hash;
+        if (!hash) return;
+
+        const match = hash.match(/^#(did:[a-z0-9\.\-:]+)(?:\+(did:[a-z0-9\.\-:]+))?$/i);
+        if (match) {
+          const targetDid = match[1]!;
+          const viewerDid = match[2] || null;
+
+          sessionStorage.setItem('bluvy_invite_context', JSON.stringify({ targetDid, viewerDid }));
+
+          this.ngZone.run(async () => {
+            if (this.authSvc.isAuthenticated()) {
+              const user = this.authSvc.currentUser();
+              if (user) {
+                await this.processPendingInvite(user.did);
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.error('[NavigationRedirectService] appUrlOpen error:', err);
+      }
+    });
   }
 }

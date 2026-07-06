@@ -1,3 +1,5 @@
+import './app/core/infrastructure/webcrypto-polyfill';
+
 if (typeof window !== 'undefined' && window.location.hash) {
   const hash = window.location.hash;
   const match = hash.match(/^#(did:[a-z0-9\.\-:]+)(?:\+(did:[a-z0-9\.\-:]+))?$/i);

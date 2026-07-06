@@ -1,6 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
+import { ApiClientService } from '../../core/infrastructure/api-client.service';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
 import { OAuthService } from '../../core/auth/oauth.service';
@@ -20,7 +20,7 @@ export class LoginPage implements OnInit {
   private auth     = inject(AuthService);
   private oauthSvc = inject(OAuthService);
   private i18n     = inject(TranslationService);
-  private http     = inject(HttpClient);
+  private apiClient = inject(ApiClientService);
 
   handle   = '';
   loading  = false;
@@ -34,14 +34,11 @@ export class LoginPage implements OnInit {
         const context = JSON.parse(cached);
         if (context.viewerDid) {
           const url = `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(context.viewerDid)}`;
-          this.http.get<any>(url).subscribe({
-            next: profile => {
-              if (profile?.handle) {
-                this.handle = profile.handle;
-              }
-            },
-            error: () => {}
-          });
+          this.apiClient.get<any>(url, { skipAuth: true }).then(profile => {
+            if (profile?.handle) {
+              this.handle = profile.handle;
+            }
+          }).catch(() => {});
         }
       } catch {}
     }
@@ -85,10 +82,20 @@ export class LoginPage implements OnInit {
     this.error   = '';
 
     try {
+      console.log('[LoginPage] calling signIn');
       await this.oauthSvc.signIn(handle);
-      // On web: the page redirects — execution stops here.
-      // On native: signIn() awaits the App Link callback internally.
+      console.log('[LoginPage] signIn completed, session:', !!this.oauthSvc.session);
+      const session = this.oauthSvc.session;
+      if (session) {
+        console.log('[LoginPage] calling loginWithOAuthSession');
+        await this.auth.loginWithOAuthSession(session);
+        console.log('[LoginPage] loginWithOAuthSession completed');
+      } else {
+        console.log('[LoginPage] session is null');
+        this.loading = false;
+      }
     } catch (err: unknown) {
+      console.error('[LoginPage] error during login:', err);
       this.error = this.extractError(err);
       this.loading = false;
     }
