@@ -7,6 +7,13 @@
   flex-direction: column;
   min-height: 100%;
   padding: 0 var(--space-6) var(--space-8);
+  box-sizing: border-box;
+
+  @media (min-width: 768px) {
+    max-width: 440px;
+    margin: 0 auto;
+    justify-content: center;
+  }
 }
 
 .login-page__hero {

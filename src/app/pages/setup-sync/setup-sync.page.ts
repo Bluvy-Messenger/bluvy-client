@@ -24,6 +24,7 @@ import { ROUTES } from '../../core/routes';
     TranslatePipe,
   ],
   templateUrl: './setup-sync.page.html',
+  styleUrls: ['./setup-sync.page.scss'],
 })
 export class SetupSyncPage {
   private syncSvc = inject(SyncService);

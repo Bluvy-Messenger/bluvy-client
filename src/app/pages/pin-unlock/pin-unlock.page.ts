@@ -23,6 +23,7 @@ import { ROUTES } from '../../core/routes';
     TranslatePipe,
   ],
   templateUrl: './pin-unlock.page.html',
+  styleUrls: ['./pin-unlock.page.scss'],
 })
 export class PinUnlockPage implements OnInit, OnDestroy {
   private syncSvc     = inject(SyncService);

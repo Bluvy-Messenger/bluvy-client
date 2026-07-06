@@ -23,6 +23,7 @@ import { ROUTES } from '../../core/routes';
     TranslatePipe,
   ],
   templateUrl: './recovery-unlock.page.html',
+  styleUrls: ['./recovery-unlock.page.scss'],
 })
 export class RecoveryUnlockPage {
   private syncSvc     = inject(SyncService);
