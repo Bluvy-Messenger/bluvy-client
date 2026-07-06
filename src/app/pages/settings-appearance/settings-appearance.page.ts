@@ -13,16 +13,12 @@ import { ROUTES } from '../../core/routes';
   styleUrls: ['./settings-appearance.page.scss'],
 })
 export class SettingsAppearancePage {
-  @Input() embedded = false;
-  @Output() navigateBack = new EventEmitter<void>();
-
   private router   = inject(Router);
   private themeSvc = inject(ThemeService);
 
   readonly preference = this.themeSvc.preference;
 
   goBack(): void {
-    if (this.embedded) { this.navigateBack.emit(); return; }
     void this.router.navigate([ROUTES.settings]);
   }
 

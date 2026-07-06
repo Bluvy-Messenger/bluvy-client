@@ -13,14 +13,10 @@ import { ROUTES } from '../../core/routes';
   styleUrls: ['./settings-language.page.scss'],
 })
 export class SettingsLanguagePage {
-  @Input() embedded = false;
-  @Output() navigateBack = new EventEmitter<void>();
-
   private router = inject(Router);
   protected i18n = inject(TranslationService);
 
   goBack(): void {
-    if (this.embedded) { this.navigateBack.emit(); return; }
     void this.router.navigate([ROUTES.settings]);
   }
 

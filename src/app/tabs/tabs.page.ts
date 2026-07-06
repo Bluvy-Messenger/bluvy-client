@@ -1,4 +1,4 @@
-import { Component, inject, computed, effect } from '@angular/core';
+import { Component, inject, computed } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import { filter, map, startWith } from 'rxjs';
@@ -10,6 +10,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 import { AvatarComponent } from '../components/ui/avatar/avatar.component';
 import { BreakpointService } from '../core/layout/breakpoint.service';
 import { AuthService } from '../core/auth/auth.service';
+import { SidebarListComponent } from '../components/chat/sidebar-list/sidebar-list.component';
 import { ROUTES } from '../core/routes';
 
 @Component({
@@ -23,6 +24,7 @@ import { ROUTES } from '../core/routes';
     UnreadBadgeComponent,
     AvatarComponent,
     TranslatePipe,
+    SidebarListComponent,
   ],
 })
 export class TabsPage {
@@ -42,20 +44,10 @@ export class TabsPage {
   );
 
   readonly isConvRoute = computed(() =>
-    /\/messages\/.+/.test(this.currentUrl() ?? ''));
+    /\/conversations\/.+/.test(this.currentUrl() ?? ''));
 
   readonly showTabBar = computed(() =>
     !this.bpSvc.isTablet() && !this.isConvRoute());
-
-  constructor() {
-    // Redirect away from the mobile-only menu page on tablet/desktop
-    effect(() => {
-      const url = this.currentUrl();
-      if (this.bpSvc.isTablet() && url?.startsWith(ROUTES.more)) {
-        void this.router.navigate([ROUTES.messages]);
-      }
-    });
-  }
 
   isActive(prefix: string): boolean {
     const url = this.currentUrl() ?? '';

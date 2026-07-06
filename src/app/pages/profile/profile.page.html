@@ -1,0 +1,32 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'menu.profile' | translate }}</h1>
+</div>
+
+<ion-content>
+  <div class="profile-card">
+    <div class="profile-card__avatar">
+      <app-avatar
+        [src]="authSvc.currentUser()?.avatarUrl ?? null"
+        [handle]="authSvc.currentUser()?.handle || ''"
+        size="xl"
+      ></app-avatar>
+    </div>
+
+    <div class="profile-card__info">
+      <span class="profile-card__name">
+        {{ authSvc.currentUser()?.displayName || authSvc.currentUser()?.handle }}
+      </span>
+      <span class="profile-card__handle">&#64;{{ authSvc.currentUser()?.handle }}</span>
+    </div>
+
+    <div class="profile-details">
+      <div class="detail-row">
+        <span class="detail-label">DID</span>
+        <span class="detail-value">{{ authSvc.currentUser()?.did }}</span>
+      </div>
+    </div>
+  </div>
+</ion-content>

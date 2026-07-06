@@ -27,7 +27,7 @@ export class LoginPage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     if (this.auth.isAuthenticated()) {
-      await this.router.navigate([ROUTES.messages]);
+      await this.router.navigate([ROUTES.conversations]);
       return;
     }
 
@@ -46,7 +46,7 @@ export class LoginPage implements OnInit {
     try {
       const restored = await this.auth.restoreSession();
       if (restored) {
-        await this.router.navigate([ROUTES.messages]);
+        await this.router.navigate([ROUTES.conversations]);
       }
     } finally {
       this.checking = false;

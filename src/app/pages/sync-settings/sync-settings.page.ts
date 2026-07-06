@@ -15,9 +15,6 @@ import { ROUTES } from '../../core/routes';
   styleUrls: ['./sync-settings.page.scss'],
 })
 export class SyncSettingsPage implements OnInit, OnDestroy {
-  @Input() embedded = false;
-  @Output() navigateBack = new EventEmitter<void>();
-
   private syncSvc = inject(SyncService);
   private router  = inject(Router);
   private i18n    = inject(TranslationService);
@@ -83,8 +80,7 @@ export class SyncSettingsPage implements OnInit, OnDestroy {
   }
 
   goBack(): void {
-    if (this.embedded) { this.navigateBack.emit(); return; }
-    void this.router.navigate([ROUTES.more]);
+    void this.router.navigate([ROUTES.security]);
   }
 
   // ── Change PIN ─────────────────────────────────────────────────────────────

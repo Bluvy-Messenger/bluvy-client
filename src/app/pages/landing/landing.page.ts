@@ -31,7 +31,7 @@ export class LandingPage implements OnInit {
     });
 
     if (this.auth.isAuthenticated()) {
-      await this.router.navigate([ROUTES.messages]);
+      await this.router.navigate([ROUTES.conversations]);
       return;
     }
     // Dev loopback: APP_INITIALIZER stored an OAuth session from the hash callback.
@@ -49,7 +49,7 @@ export class LandingPage implements OnInit {
     // chance to check stored tokens. A returning user with a still-valid
     // session should skip the marketing page entirely.
     if (await this.auth.restoreSession()) {
-      await this.router.navigate([ROUTES.messages]);
+      await this.router.navigate([ROUTES.conversations]);
     }
   }
 

@@ -124,7 +124,7 @@ export class AuthService {
     // If MBK loaded from SecureLocalStorage → navigate to conversations.
     // Otherwise, setupRequired$ or pinRequired$ subscription handles navigation.
     if (this.syncSvc.isMbkAvailable()) {
-      await this.router.navigate([ROUTES.messages]);
+      await this.router.navigate([ROUTES.conversations]);
     }
   }
 

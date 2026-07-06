@@ -1,11 +1,12 @@
-import { Component, EventEmitter, Input, OnInit, Output, inject } from '@angular/core';
-import { Location } from '@angular/common';
+import { Component, OnInit, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { DeviceRepository } from '../../core/device/device.repository';
 import { AuthService } from '../../core/auth/auth.service';
 import type { DeviceItem } from '../../core/device/device.repository';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-devices',
@@ -17,11 +18,8 @@ import { TranslationService } from '../../core/i18n/translation.service';
 export class DevicesPage implements OnInit {
   private deviceRepo = inject(DeviceRepository);
   private authSvc    = inject(AuthService);
-  private location   = inject(Location);
+  private router     = inject(Router);
   private i18n       = inject(TranslationService);
-
-  @Input()  embedded     = false;
-  @Output() navigateBack = new EventEmitter<void>();
 
   devices:         DeviceItem[] = [];
   currentDeviceId  = '';
@@ -75,8 +73,7 @@ export class DevicesPage implements OnInit {
   }
 
   goBack(): void {
-    if (this.embedded) { this.navigateBack.emit(); return; }
-    this.location.back();
+    void this.router.navigate([ROUTES.security]);
   }
 
   platformIcon(platform: string): string {

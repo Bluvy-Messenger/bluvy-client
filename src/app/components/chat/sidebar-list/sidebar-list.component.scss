@@ -1,0 +1,184 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--color-surface);
+
+  @media (max-width: 767px) {
+    background: transparent !important;
+  }
+}
+
+.t-list-header {
+  flex-shrink: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.t-list-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+}
+
+.t-list-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+// ── Search zone (below header, in content) ────────────────────────────────
+
+.search-zone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-bg);
+  border-radius: var(--radius-full);
+  padding: 9px var(--space-3);
+  margin: var(--space-2) var(--space-3) var(--space-2);
+  flex-shrink: 0;
+
+  &__icon {
+    font-size: var(--icon-size-sm);
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+  }
+
+  &__input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+
+    &::placeholder { color: var(--color-text-secondary); }
+  }
+}
+
+// ── Conversation list ─────────────────────────────────────────────────────
+
+.conv-list {
+  display: flex;
+  flex-direction: column;
+}
+
+// Selected conversation on desktop
+.conversation-item--selected {
+  background: var(--color-interactive-hover);
+}
+
+// ── Loading / error / empty ───────────────────────────────────────────────
+
+.loading-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: var(--radius-full);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+  gap: var(--space-3);
+
+  &__icon {
+    font-size: 44px;
+    color: var(--color-text-secondary);
+    opacity: 0.3;
+  }
+
+  &__title {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-primary);
+    margin: 0;
+    font-family: var(--font-sans);
+  }
+
+  &__desc {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin: 0;
+    max-width: 240px;
+    line-height: 1.5;
+    font-family: var(--font-sans);
+  }
+}
+
+// ── Contact list (tablet left panel) ─────────────────────────────────────
+
+.section-sep {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4) var(--space-1);
+}
+
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-4);
+  cursor: pointer;
+  border-radius: 10px;
+  margin: 2px var(--space-2);
+  transition: background var(--duration-fast);
+
+  &:hover { background: var(--color-interactive-hover); }
+  &:active { background: var(--color-interactive-active); }
+
+  &--selected {
+    background: var(--color-interactive-hover);
+  }
+}
+
+.contact-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.contact-name {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-handle {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}

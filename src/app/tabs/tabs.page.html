@@ -4,7 +4,7 @@
     <aside class="sidebar">
 
       <!-- Profile -->
-      <div class="sidebar-profile" (click)="navigate(routes.more)">
+      <div class="sidebar-profile" (click)="navigate(routes.menu)">
         <app-avatar
           [src]="auth.currentUser()?.avatarUrl ?? null"
           [handle]="auth.currentUser()?.handle || ''"
@@ -22,8 +22,8 @@
       <nav class="sidebar-nav">
         <button
           class="sidebar-item"
-          [class.sidebar-item--active]="isActive(routes.messages)"
-          (click)="navigate(routes.messages)"
+          [class.sidebar-item--active]="isActive(routes.conversations)"
+          (click)="navigate(routes.conversations)"
         >
           <ion-icon name="chatbubble-outline" class="sidebar-item__icon"></ion-icon>
           <span class="sidebar-item__label">{{ 'tabs.conversations' | translate }}</span>
@@ -91,6 +91,10 @@
       </div>
 
     </aside>
+
+    <div class="sidebar-list">
+      <app-sidebar-list></app-sidebar-list>
+    </div>
   }
 
   <div class="app-main">
@@ -102,7 +106,7 @@
     }
     <ion-tabs>
       <ion-tab-bar slot="bottom" [class.tab-bar--hidden]="!showTabBar()">
-        <ion-tab-button tab="messages" [href]="routes.messages">
+        <ion-tab-button tab="conversations" [href]="routes.conversations">
           <ion-icon name="chatbubble-outline"></ion-icon>
           <span class="tab-label">{{ 'tabs.conversations' | translate }}</span>
           @if (receiptsSvc.totalUnread$ | async; as total) {
@@ -117,7 +121,7 @@
           <span class="tab-label">{{ 'tabs.contacts' | translate }}</span>
         </ion-tab-button>
 
-        <ion-tab-button tab="more" [href]="routes.more">
+        <ion-tab-button tab="menu" [href]="routes.menu">
           <ion-icon name="menu-outline"></ion-icon>
           <span class="tab-label">{{ 'tabs.menu' | translate }}</span>
         </ion-tab-button>

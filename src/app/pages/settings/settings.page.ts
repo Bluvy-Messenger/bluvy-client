@@ -12,23 +12,17 @@ import { ROUTES } from '../../core/routes';
   styleUrls: ['./settings.page.scss'],
 })
 export class SettingsPage {
-  @Input() embedded = false;
-  @Output() navigateBack   = new EventEmitter<void>();
-  @Output() openSubPage    = new EventEmitter<string>();
-
   private router = inject(Router);
+
   goBack(): void {
-    if (this.embedded) { this.navigateBack.emit(); return; }
-    void this.router.navigate([ROUTES.more]);
+    void this.router.navigate([ROUTES.menu]);
   }
 
   openAppearance(): void {
-    if (this.embedded) { this.openSubPage.emit('appearance'); return; }
     void this.router.navigate([ROUTES.settingsAppearance]);
   }
 
   openLanguage(): void {
-    if (this.embedded) { this.openSubPage.emit('language'); return; }
     void this.router.navigate([ROUTES.settingsLanguage]);
   }
 

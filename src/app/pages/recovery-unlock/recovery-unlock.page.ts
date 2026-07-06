@@ -101,10 +101,10 @@ export class RecoveryUnlockPage {
       if (!environment.production) console.error('[RecoveryUnlock] restore failed:', err);
     }
     this.working = false;
-    await this.router.navigate([ROUTES.messages]);
+    await this.router.navigate([ROUTES.conversations]);
   }
 
   async onSkipPin(): Promise<void> {
-    await this.router.navigate([ROUTES.messages]);
+    await this.router.navigate([ROUTES.conversations]);
   }
 }

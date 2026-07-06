@@ -71,7 +71,7 @@ export class PinUnlockPage implements OnInit, OnDestroy {
         await this.coordinator.injectRestoredGroupStates(result.restoredGroupStates, user, device);
       }
 
-      await this.router.navigate([ROUTES.messages]);
+      await this.router.navigate([ROUTES.conversations]);
     } catch (err: unknown) {
       this.restoring = false;
       const httpErr = err as { status?: number };

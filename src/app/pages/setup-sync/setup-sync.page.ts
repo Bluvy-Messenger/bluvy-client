@@ -79,7 +79,7 @@ export class SetupSyncPage {
   }
 
   async onContinue(): Promise<void> {
-    await this.router.navigate([ROUTES.messages]);
+    await this.router.navigate([ROUTES.conversations]);
   }
 
   private chunk(s: string, n: number): string[] {

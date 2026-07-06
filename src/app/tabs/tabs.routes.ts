@@ -7,9 +7,14 @@ export const routes: Routes = [
     component: TabsPage,
     children: [
       {
-        path: 'messages',
+        path: 'conversations',
         loadComponent: () =>
           import('../pages/conversations/conversations.page').then(m => m.ConversationsPage),
+      },
+      {
+        path: 'conversations/:id',
+        loadComponent: () =>
+          import('../pages/conversation/conversation.page').then(m => m.ConversationPage),
       },
       {
         path: 'contacts',
@@ -17,12 +22,12 @@ export const routes: Routes = [
           import('../pages/contacts/contacts.page').then(m => m.ContactsPage),
       },
       {
-        path: 'messages/:id',
+        path: 'contacts/:did',
         loadComponent: () =>
-          import('../pages/conversation/conversation.page').then(m => m.ConversationPage),
+          import('../pages/contact-detail/contact-detail.page').then(m => m.ContactDetailPage),
       },
       {
-        path: 'more',
+        path: 'menu',
         loadComponent: () =>
           import('../pages/menu/menu.page').then(m => m.MenuPage),
       },
@@ -63,9 +68,24 @@ export const routes: Routes = [
         loadComponent: () =>
           import('../pages/about/about.page').then(m => m.AboutPage),
       },
+      // Legacy route redirects
+      {
+        path: 'messages',
+        redirectTo: 'conversations',
+        pathMatch: 'full',
+      },
+      {
+        path: 'messages/:id',
+        redirectTo: 'conversations/:id',
+      },
+      {
+        path: 'more',
+        redirectTo: 'menu',
+        pathMatch: 'full',
+      },
       {
         path: '',
-        redirectTo: 'messages',
+        redirectTo: 'conversations',
         pathMatch: 'full',
       },
     ],
