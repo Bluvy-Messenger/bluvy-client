@@ -267,6 +267,10 @@ ion-content {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .t-menu-profile {

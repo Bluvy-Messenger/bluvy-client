@@ -87,4 +87,11 @@ export class MlsRepository {
     const raw = await this.apiClient.get<MlsMyDevicesResponse>('/v1/devices/mine');
     return validateMlsMyDevicesResponse(raw);
   }
+
+  discover(targetDid: string): Promise<{ conversation: any; keyPackage: any; isNew: boolean }> {
+    return this.apiClient.post<{ conversation: any; keyPackage: any; isNew: boolean }>(
+      '/v1/discovery',
+      { targetDid },
+    );
+  }
 }

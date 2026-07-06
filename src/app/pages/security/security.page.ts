@@ -3,6 +3,7 @@ import { Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-security',
@@ -12,25 +13,17 @@ import { TranslatePipe } from '../../core/i18n/translate.pipe';
   styleUrls: ['./security.page.scss'],
 })
 export class SecurityPage {
-  private location = inject(Location);
   private router   = inject(Router);
 
-  @Input()  embedded     = false;
-  @Output() navigateBack = new EventEmitter<void>();
-  @Output() openSubPage  = new EventEmitter<string>();
-
   goBack(): void {
-    if (this.embedded) { this.navigateBack.emit(); return; }
-    this.location.back();
+    void this.router.navigate([ROUTES.menu]);
   }
 
   openDevices(): void {
-    if (this.embedded) { this.openSubPage.emit('devices'); return; }
-    void this.router.navigate(['/tabs/devices']);
+    void this.router.navigate([ROUTES.devices]);
   }
 
   openSync(): void {
-    if (this.embedded) { this.openSubPage.emit('sync-settings'); return; }
-    void this.router.navigate(['/tabs/sync-settings']);
+    void this.router.navigate([ROUTES.settingsSync]);
   }
 }

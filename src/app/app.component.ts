@@ -26,6 +26,7 @@ import { DeviceProvisioningService } from './core/device/device-provisioning.ser
 import { KeyPackageService } from './core/mls/key-package/key-package.service';
 import { MlsCoordinatorBase } from './core/mls/coordinator/mls-coordinator.base';
 import { ThemeService } from './core/theme/theme.service';
+import { NavigationRedirectService } from './core/auth/navigation-redirect.service';
 
 @Component({
   selector: 'app-root',
@@ -41,6 +42,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   constructor() {
     inject(ThemeService);
+    inject(NavigationRedirectService);
     addIcons({
       chatbubbleOutline, peopleOutline, menuOutline, searchOutline,
       personOutline, chevronForwardOutline, phonePortraitOutline,

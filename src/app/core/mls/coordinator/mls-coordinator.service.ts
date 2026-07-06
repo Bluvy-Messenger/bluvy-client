@@ -197,6 +197,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:           UserProfile,
     device:         DeviceInfo,
     signal?:        AbortSignal,
+    preConsumedKeyPackage?: { keyPackage: string; deviceId: string },
   ): Promise<void> {
     assertMls(!!participantDid, 'ensureGroupReady: participantDid required', { convId });
     assertMls(!!convId,         'ensureGroupReady: convId required');
@@ -213,7 +214,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
     this.transitionState(convId, ConversationMlsState.Initializing);
     try {
-      await this.mlsSvc.ensureGroupReady(convId, participantDid, user, device, signal);
+      await this.mlsSvc.ensureGroupReady(convId, participantDid, user, device, signal, preConsumedKeyPackage);
       this.transitionState(convId, ConversationMlsState.Ready);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -246,6 +247,18 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   ): Promise<void> {
     assertMls(!!participantDid, 'prepareConversation: participantDid required');
     await this.mlsSvc.prepareConversationInitialization(user, device, participantDid);
+  }
+
+  override async prepareConversationWithKeyPackage(
+    user:           UserProfile,
+    device:         DeviceInfo,
+    participantDid: string,
+    convId:         string,
+    keyPackage:     { keyPackage: string; deviceId: string }
+  ): Promise<void> {
+    assertMls(!!participantDid, 'prepareConversationWithKeyPackage: participantDid required');
+    assertMls(!!convId,         'prepareConversationWithKeyPackage: convId required');
+    await this.ensureGroupReady(convId, participantDid, user, device, undefined, keyPackage);
   }
 
   // ── Messaging ─────────────────────────────────────────────────────────────

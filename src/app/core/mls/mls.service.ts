@@ -137,6 +137,7 @@ export class MlsService {
     user:           UserProfile,
     device:         SessionDevice,
     signal?:        AbortSignal,
+    preConsumedKeyPackage?: { keyPackage: string; deviceId: string },
   ): Promise<void> {
     const scope = this.makeScope(user.did, device.id);
 
@@ -202,13 +203,17 @@ export class MlsService {
     const initialGroupState = await createGroup(groupId, selfKP.publicPackage, selfKP.privatePackage, [], cs);
 
     let consumed: { keyPackage: string; deviceId: string };
-    try {
-      consumed = await this.mlsRepo.consumeKeyPackage(participantDid);
-    } catch (err) {
-      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
-        throw new Error("This contact hasn't set up encrypted messaging yet. Ask them to open the app.");
+    if (preConsumedKeyPackage) {
+      consumed = preConsumedKeyPackage;
+    } else {
+      try {
+        consumed = await this.mlsRepo.consumeKeyPackage(participantDid);
+      } catch (err) {
+        if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
+          throw new Error("This contact hasn't set up encrypted messaging yet. Ask them to open the app.");
+        }
+        throw err;
       }
-      throw err;
     }
 
     const decodedKP = decodeMlsMessage(this.base64ToBytes(consumed.keyPackage), 0)?.[0];
@@ -993,6 +998,10 @@ export class MlsService {
 
   private makeScope(userDid: string, deviceId: string): string {
     return `mls:${userDid}:${deviceId}`;
+  }
+
+  getStorageScope(userDid: string, deviceId: string): string {
+    return this.makeScope(userDid, deviceId);
   }
 
   private serializePrivatePackage(value: PrivateKeyPackage): SerializedPrivateKeyPackage {

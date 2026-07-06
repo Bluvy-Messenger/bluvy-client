@@ -56,12 +56,21 @@ export abstract class MlsCoordinatorBase {
     user:           UserProfile,
     device:         DeviceInfo,
     signal?:        AbortSignal,
+    preConsumedKeyPackage?: { keyPackage: string; deviceId: string },
   ): Promise<void>;
 
   abstract clearConversationGroup(convId: string, user: UserProfile, device: DeviceInfo): Promise<void>;
 
   // Pre-fetch key packages for a participant before opening a conversation.
   abstract prepareConversation(user: UserProfile, device: DeviceInfo, participantDid: string): Promise<void>;
+
+  abstract prepareConversationWithKeyPackage(
+    user:           UserProfile,
+    device:         DeviceInfo,
+    participantDid: string,
+    convId:         string,
+    keyPackage:     { keyPackage: string; deviceId: string }
+  ): Promise<void>;
 
   // ── Messaging ─────────────────────────────────────────────────────────────
   // Never throws — always returns a DecryptResult with state: plaintext | pending_decrypt | undecryptable.

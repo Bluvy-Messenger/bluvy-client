@@ -1,0 +1,89 @@
+@if (bpSvc.isTablet()) {
+  <div class="t-list-header">
+    <span class="t-list-title">
+      {{ (activeTab === 'conversations' ? 'tabs.conversations' : 'tabs.contacts') | translate }}
+    </span>
+  </div>
+}
+
+<div class="search-zone">
+  <ion-icon name="search-outline" class="search-zone__icon"></ion-icon>
+  @if (activeTab === 'conversations') {
+    <input class="search-zone__input" [placeholder]="'common.search' | translate" readonly />
+  } @else {
+    <input class="search-zone__input" [placeholder]="'common.search' | translate" (input)="onContactSearch($event)" />
+  }
+</div>
+
+<div class="t-list-body">
+  @if (activeTab === 'conversations') {
+    @if (loading) {
+      <div class="loading-center"><div class="spinner"></div></div>
+    }
+    @if (!loading && error) {
+      <div class="ion-text-center ion-padding">
+        <ion-text color="danger">{{ error }}</ion-text>
+      </div>
+    }
+    @if (!loading && !error && conversations.length === 0) {
+      <div class="empty-state">
+        <ion-icon name="chatbubble-outline" class="empty-state__icon"></ion-icon>
+        <p class="empty-state__title">{{ 'conversations.empty.title' | translate }}</p>
+        <p class="empty-state__desc">{{ 'conversations.empty.desc' | translate }}</p>
+      </div>
+    }
+    @if (!loading && conversations.length > 0) {
+      <div class="conv-list">
+        @for (conv of conversations; track conv.id) {
+          <app-conversation-item
+            [avatarSrc]="conv.participant.avatarUrl ?? null"
+            [handle]="conv.participant.handle"
+            [name]="conv.participant.displayName || conv.participant.handle"
+            [preview]="getPreview(conv)"
+            [time]="conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ''"
+            [unreadCount]="conv.unreadCount"
+            [online]="(presenceSvc.status$(conv.participant.did) | async) === 'online'"
+            [class.conversation-item--selected]="selectedConvId() === conv.id"
+            (open)="openConversation(conv)"
+          ></app-conversation-item>
+        }
+      </div>
+    }
+  }
+
+  @if (activeTab === 'contacts') {
+    @if (contactsLoading) {
+      <div class="loading-center"><div class="spinner"></div></div>
+    }
+    @if (!contactsLoading && filteredBluvy.length > 0) {
+      <div class="section-sep">{{ 'conversations.section.bluvy' | translate }}</div>
+      @for (c of filteredBluvy; track c.did) {
+        <div class="contact-row" [class.contact-row--selected]="selectedContactDid() === c.did" (click)="openContactConversation(c)">
+          <app-avatar [src]="c.avatarUrl ?? null" [handle]="c.handle" size="md"></app-avatar>
+          <div class="contact-info">
+            <span class="contact-name">{{ c.displayName || c.handle }}</span>
+            <span class="contact-handle">@{{ c.handle }}</span>
+          </div>
+        </div>
+      }
+    }
+    @if (!contactsLoading && filteredBluesky.length > 0) {
+      <div class="section-sep">{{ 'conversations.section.invite' | translate }}</div>
+      @for (c of filteredBluesky; track c.did) {
+        <div class="contact-row" [class.contact-row--selected]="selectedContactDid() === c.did" (click)="openContactProfile(c)">
+          <app-avatar [src]="c.avatarUrl ?? null" [handle]="c.handle" size="md"></app-avatar>
+          <div class="contact-info">
+            <span class="contact-name">{{ c.displayName || c.handle }}</span>
+            <span class="contact-handle">@{{ c.handle }}</span>
+          </div>
+        </div>
+      }
+    }
+    @if (!contactsLoading && filteredBluvy.length === 0 && filteredBluesky.length === 0) {
+      <div class="empty-state">
+        <ion-icon name="people-outline" class="empty-state__icon"></ion-icon>
+        <p class="empty-state__title">{{ 'conversations.contacts.empty.title' | translate }}</p>
+      </div>
+    }
+  }
+</div>

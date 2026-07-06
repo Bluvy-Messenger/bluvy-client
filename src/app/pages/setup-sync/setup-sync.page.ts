@@ -10,6 +10,7 @@ import {
 import { SyncService } from '../../core/sync/sync.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-setup-sync',
@@ -23,6 +24,7 @@ import { TranslationService } from '../../core/i18n/translation.service';
     TranslatePipe,
   ],
   templateUrl: './setup-sync.page.html',
+  styleUrls: ['./setup-sync.page.scss'],
 })
 export class SetupSyncPage {
   private syncSvc = inject(SyncService);
@@ -78,7 +80,7 @@ export class SetupSyncPage {
   }
 
   async onContinue(): Promise<void> {
-    await this.router.navigate(['/tabs/conversations']);
+    await this.router.navigate([ROUTES.conversations]);
   }
 
   private chunk(s: string, n: number): string[] {

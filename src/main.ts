@@ -1,3 +1,16 @@
+if (typeof window !== 'undefined' && window.location.hash) {
+  const hash = window.location.hash;
+  const match = hash.match(/^#(did:[a-z0-9\.\-:]+)(?:\+(did:[a-z0-9\.\-:]+))?$/i);
+  if (match) {
+    const targetDid = match[1]!;
+    const viewerDid = match[2] || null;
+    sessionStorage.setItem('bluvy_invite_context', JSON.stringify({ targetDid, viewerDid }));
+    // Clear hash immediately so the router doesn't get confused
+    window.location.hash = '';
+    window.history.replaceState(null, '', window.location.pathname);
+  }
+}
+
 import { bootstrapApplication } from '@angular/platform-browser';
 import { RouteReuseStrategy, provideRouter, withPreloading, PreloadAllModules } from '@angular/router';
 import { IonicRouteStrategy, provideIonicAngular, ToastController } from '@ionic/angular/standalone';

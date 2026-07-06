@@ -1,10 +1,47 @@
 <ion-content>
-  <div class="landing">
+  @if (inviter && !showFeatures) {
+    <div class="invite-page animate-fade-in">
+      <div class="invite-page__card">
+        <div class="invite-logo">
+          <img src="assets/icons/icon-192.webp" alt="Bluvy" class="invite-logo__img" />
+        </div>
 
-    <!-- ── Hero ─────────────────────────────────────────────────────────── -->
-    <section class="landing-hero">
-      <div class="landing-hero__inner">
-        <div class="landing-logo">
+        <div class="invite-avatar-wrap">
+          @if (inviter.avatarUrl) {
+            <img [src]="inviter.avatarUrl" alt="Avatar" class="invite-avatar" />
+          } @else {
+            <div class="invite-avatar-placeholder">
+              <ion-icon name="person-outline"></ion-icon>
+            </div>
+          }
+        </div>
+
+        <h1 class="invite-title">
+          <strong>{{ inviter.displayName }}</strong> vous invite à rejoindre Bluvy
+        </h1>
+        <p class="invite-handle">&#64;{{ inviter.handle }}</p>
+
+        <p class="invite-description">
+          Échangez en toute confidentialité. Bluvy est une messagerie privée sécurisée, décentralisée et entièrement chiffrée de bout en bout (protocole MLS) construite sur le réseau Bluesky.
+        </p>
+
+        <button class="landing-cta landing-cta--invite" (click)="goToLogin()">
+          Accepter l'invitation et commencer
+          <ion-icon name="arrow-forward-outline"></ion-icon>
+        </button>
+
+        <button class="invite-secondary-link" (click)="showFeatures = true">
+          Découvrir les fonctionnalités de Bluvy
+        </button>
+      </div>
+    </div>
+  } @else {
+    <div class="landing">
+
+      <!-- ── Hero ─────────────────────────────────────────────────────────── -->
+      <section class="landing-hero">
+        <div class="landing-hero__inner">
+          <div class="landing-logo">
           <img src="assets/icons/icon-192.webp" alt="Bluvy Messenger" class="landing-logo__img" />
         </div>
         <h1 class="landing-hero__title">Bluvy Messenger</h1>
@@ -109,4 +146,5 @@
     </footer>
 
   </div>
+  }
 </ion-content>

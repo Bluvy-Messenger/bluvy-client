@@ -11,6 +11,7 @@ import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.b
 import { environment } from '../../../environments/environment';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-recovery-unlock',
@@ -22,6 +23,7 @@ import { TranslationService } from '../../core/i18n/translation.service';
     TranslatePipe,
   ],
   templateUrl: './recovery-unlock.page.html',
+  styleUrls: ['./recovery-unlock.page.scss'],
 })
 export class RecoveryUnlockPage {
   private syncSvc     = inject(SyncService);
@@ -100,10 +102,10 @@ export class RecoveryUnlockPage {
       if (!environment.production) console.error('[RecoveryUnlock] restore failed:', err);
     }
     this.working = false;
-    await this.router.navigate(['/tabs/conversations']);
+    await this.router.navigate([ROUTES.conversations]);
   }
 
   async onSkipPin(): Promise<void> {
-    await this.router.navigate(['/tabs/conversations']);
+    await this.router.navigate([ROUTES.conversations]);
   }
 }

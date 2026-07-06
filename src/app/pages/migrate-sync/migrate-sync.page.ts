@@ -36,6 +36,7 @@ function isArgon2idHkdfParams(params: unknown): params is Argon2idHkdfParams {
     TranslatePipe,
   ],
   templateUrl: './migrate-sync.page.html',
+  styleUrls: ['./migrate-sync.page.scss'],
 })
 export class MigrateSyncPage {
   private authSvc         = inject(AuthService);

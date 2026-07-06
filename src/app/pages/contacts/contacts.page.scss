@@ -55,6 +55,8 @@ ion-content {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 4px;
+    max-width: 760px;
+    margin: 0 auto;
   }
 }
 

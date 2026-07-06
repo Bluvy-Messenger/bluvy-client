@@ -1,4 +1,4 @@
-package com.skychat.app;
+package bluvy.application.official;
 
 import com.getcapacitor.BridgeActivity;
 

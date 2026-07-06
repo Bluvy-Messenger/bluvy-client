@@ -1,0 +1,9 @@
+@media (min-width: 768px) {
+  ion-content > ion-card,
+  ion-content > ion-button,
+  ion-content > div {
+    max-width: 440px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}

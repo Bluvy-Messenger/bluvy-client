@@ -317,3 +317,139 @@ ion-content {
   .landing-footer { padding: var(--space-6) var(--space-4); }
   .landing-hero__tagline { font-size: var(--text-base); }
 }
+
+// ── Invite Page ─────────────────────────────────────────────────────────────
+
+.invite-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  background: var(--color-bg);
+  padding: var(--space-12) var(--space-6);
+  box-sizing: border-box;
+
+  &__card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    padding: var(--space-12) var(--space-8);
+    max-width: 520px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+
+    @media (max-width: 600px) {
+      padding: var(--space-8) var(--space-6);
+    }
+  }
+}
+
+.invite-logo {
+  margin-bottom: var(--space-8);
+
+  &__img {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-lg);
+  }
+}
+
+.invite-avatar-wrap {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  border: 3px solid var(--color-primary);
+  margin-bottom: var(--space-6);
+  background: var(--color-bg);
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(10, 124, 255, 0.15);
+}
+
+.invite-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.invite-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 124, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  ion-icon { font-size: 40px; }
+}
+
+.invite-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  line-height: 1.4;
+  margin: 0;
+
+  strong {
+    color: var(--color-text-primary);
+    font-weight: var(--weight-bold);
+  }
+}
+
+.invite-handle {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin: var(--space-2) 0 var(--space-8) 0;
+}
+
+.invite-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin: 0 0 var(--space-8) 0;
+  max-width: 400px;
+}
+
+.landing-cta--invite {
+  width: 100%;
+  justify-content: center;
+  padding: 14px var(--space-6);
+  margin-top: 0;
+  margin-bottom: var(--space-6);
+  box-shadow: 0 4px 12px rgba(10, 124, 255, 0.25);
+}
+
+.invite-secondary-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+  opacity: 0.8;
+  transition: opacity var(--duration-fast), color var(--duration-fast);
+  padding: var(--space-2);
+
+  &:hover {
+    opacity: 1;
+    color: var(--color-primary);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
