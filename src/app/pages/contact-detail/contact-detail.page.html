@@ -1,0 +1,62 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'contacts.title' | translate }}</h1>
+</div>
+
+<ion-content>
+  @if (loading) {
+    <div class="loading-center">
+      <div class="spinner"></div>
+    </div>
+  } @else if (error) {
+    <div class="ion-text-center ion-padding">
+      <p style="color: var(--color-danger)">{{ error }}</p>
+    </div>
+  } @else if (contact || blueskyProfile) {
+    <div class="profile-card">
+      <div class="profile-card__avatar">
+        <app-avatar
+          [src]="contact?.avatarUrl || blueskyProfile?.avatarUrl || null"
+          [handle]="contact?.handle || blueskyProfile?.handle || ''"
+          size="xl"
+        ></app-avatar>
+      </div>
+
+      <div class="profile-card__info">
+        <span class="profile-card__name">
+          {{ contact?.displayName || blueskyProfile?.displayName || contact?.handle || blueskyProfile?.handle }}
+        </span>
+        <span class="profile-card__handle">&#64;{{ contact?.handle || blueskyProfile?.handle }}</span>
+      </div>
+
+      <div class="profile-card__actions">
+        @if (contact) {
+          <button class="action-btn" [disabled]="openingConv" (click)="openMessage()">
+            @if (openingConv) {
+              <div class="spinner spinner--sm"></div>
+            } @else {
+              <ion-icon name="chatbubble-outline"></ion-icon>
+              <span>{{ 'contacts.message' | translate }}</span>
+            }
+          </button>
+        } @else if (blueskyProfile) {
+          <button class="action-btn action-btn--invite" [disabled]="inviting" (click)="invite()">
+            @if (inviting) {
+              <div class="spinner spinner--sm"></div>
+            } @else {
+              <ion-icon name="paper-plane-outline"></ion-icon>
+              <span>{{ 'contacts.invite' | translate }}</span>
+            }
+          </button>
+        }
+      </div>
+    </div>
+  } @else {
+    <div class="empty-state">
+      <ion-icon name="person-outline" class="empty-state__icon"></ion-icon>
+      <p class="empty-state__title">Contact introuvable</p>
+    </div>
+  }
+</ion-content>

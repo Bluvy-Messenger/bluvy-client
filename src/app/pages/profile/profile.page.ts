@@ -1,25 +1,23 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
+import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
+import { AuthService } from '../../core/auth/auth.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { environment } from '../../../environments/environment';
 import { ROUTES } from '../../core/routes';
 
 @Component({
-  selector: 'app-about',
+  selector: 'app-profile',
+  templateUrl: './profile.page.html',
+  styleUrls: ['./profile.page.scss'],
   standalone: true,
-  imports: [IonContent, IonIcon, TranslatePipe],
-  templateUrl: './about.page.html',
-  styleUrls: ['./about.page.scss'],
+  imports: [IonContent, IonIcon, AvatarComponent, TranslatePipe],
 })
-export class AboutPage {
+export class ProfilePage {
+  readonly authSvc = inject(AuthService);
   private router   = inject(Router);
-
-  readonly version = environment.version;
 
   goBack(): void {
     void this.router.navigate([ROUTES.menu]);
   }
-
-  navigate(path: string): void { void this.router.navigate([path]); }
 }

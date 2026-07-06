@@ -11,6 +11,7 @@ import { SyncService } from '../../core/sync/sync.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-pin-unlock',
@@ -71,7 +72,7 @@ export class PinUnlockPage implements OnInit, OnDestroy {
         await this.coordinator.injectRestoredGroupStates(result.restoredGroupStates, user, device);
       }
 
-      await this.router.navigate(['/tabs/conversations']);
+      await this.router.navigate([ROUTES.conversations]);
     } catch (err: unknown) {
       this.restoring = false;
       const httpErr = err as { status?: number };
@@ -88,6 +89,6 @@ export class PinUnlockPage implements OnInit, OnDestroy {
   }
 
   goToRecovery(): void {
-    void this.router.navigate(['/recovery-unlock']);
+    void this.router.navigate([ROUTES.recoveryUnlock]);
   }
 }

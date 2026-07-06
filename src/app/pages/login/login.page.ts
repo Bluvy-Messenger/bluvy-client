@@ -5,6 +5,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { OAuthService } from '../../core/auth/oauth.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-login',
@@ -26,7 +27,7 @@ export class LoginPage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     if (this.auth.isAuthenticated()) {
-      await this.router.navigate(['/tabs/conversations']);
+      await this.router.navigate([ROUTES.conversations]);
       return;
     }
 
@@ -45,7 +46,7 @@ export class LoginPage implements OnInit {
     try {
       const restored = await this.auth.restoreSession();
       if (restored) {
-        await this.router.navigate(['/tabs/conversations']);
+        await this.router.navigate([ROUTES.conversations]);
       }
     } finally {
       this.checking = false;

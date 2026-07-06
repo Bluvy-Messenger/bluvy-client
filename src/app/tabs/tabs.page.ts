@@ -1,4 +1,4 @@
-import { Component, inject, computed, effect } from '@angular/core';
+import { Component, inject, computed } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import { filter, map, startWith } from 'rxjs';
@@ -10,6 +10,8 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 import { AvatarComponent } from '../components/ui/avatar/avatar.component';
 import { BreakpointService } from '../core/layout/breakpoint.service';
 import { AuthService } from '../core/auth/auth.service';
+import { SidebarListComponent } from '../components/chat/sidebar-list/sidebar-list.component';
+import { ROUTES } from '../core/routes';
 
 @Component({
   selector: 'app-tabs',
@@ -22,9 +24,11 @@ import { AuthService } from '../core/auth/auth.service';
     UnreadBadgeComponent,
     AvatarComponent,
     TranslatePipe,
+    SidebarListComponent,
   ],
 })
 export class TabsPage {
+  readonly routes       = ROUTES;
   readonly receiptsSvc = inject(ReceiptsService);
   readonly bpSvc       = inject(BreakpointService);
   readonly auth        = inject(AuthService);
@@ -40,20 +44,10 @@ export class TabsPage {
   );
 
   readonly isConvRoute = computed(() =>
-    /\/tabs\/conversations\/.+/.test(this.currentUrl() ?? ''));
+    /\/conversations\/.+/.test(this.currentUrl() ?? ''));
 
   readonly showTabBar = computed(() =>
     !this.bpSvc.isTablet() && !this.isConvRoute());
-
-  constructor() {
-    // Redirect away from the mobile-only menu page on tablet/desktop
-    effect(() => {
-      const url = this.currentUrl();
-      if (this.bpSvc.isTablet() && url?.startsWith('/tabs/menu')) {
-        void this.router.navigate(['/tabs/conversations']);
-      }
-    });
-  }
 
   isActive(prefix: string): boolean {
     const url = this.currentUrl() ?? '';
@@ -62,7 +56,7 @@ export class TabsPage {
 
   isSecurityActive(): boolean {
     const url = this.currentUrl() ?? '';
-    return url.startsWith('/tabs/security') || url.startsWith('/tabs/devices');
+    return url.startsWith(ROUTES.security) || url.startsWith(ROUTES.devices);
   }
 
   navigate(path: string): void { void this.router.navigate([path]); }

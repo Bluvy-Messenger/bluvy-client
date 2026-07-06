@@ -7,6 +7,7 @@ import { OAuthService } from '../../core/auth/oauth.service';
 import { SeoService } from '../../core/services/seo.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-landing',
@@ -26,20 +27,20 @@ export class LandingPage implements OnInit {
     this.seo.set({
       title:         'Bluvy Messenger',
       description:   'La messagerie privée construite sur Bluesky. Chiffrement de bout en bout MLS, vos clés, votre contrôle. Gratuit sur Web, Android et iOS.',
-      canonicalPath: '/',
+      canonicalPath: ROUTES.welcome,
     });
 
     if (this.auth.isAuthenticated()) {
-      await this.router.navigate(['/tabs/conversations']);
+      await this.router.navigate([ROUTES.conversations]);
       return;
     }
     // Dev loopback: APP_INITIALIZER stored an OAuth session from the hash callback.
     if (this.oauthSvc.session) {
-      await this.router.navigate(['/login']);
+      await this.router.navigate([ROUTES.login]);
       return;
     }
     if (Capacitor.isNativePlatform()) {
-      await this.router.navigate(['/login']);
+      await this.router.navigate([ROUTES.login]);
       return;
     }
 
@@ -48,9 +49,9 @@ export class LandingPage implements OnInit {
     // chance to check stored tokens. A returning user with a still-valid
     // session should skip the marketing page entirely.
     if (await this.auth.restoreSession()) {
-      await this.router.navigate(['/tabs/conversations']);
+      await this.router.navigate([ROUTES.conversations]);
     }
   }
 
-  goToLogin(): void { void this.router.navigate(['/login']); }
+  goToLogin(): void { void this.router.navigate([ROUTES.login]); }
 }

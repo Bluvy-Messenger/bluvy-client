@@ -4,7 +4,7 @@
     <aside class="sidebar">
 
       <!-- Profile -->
-      <div class="sidebar-profile" (click)="navigate('/tabs/menu')">
+      <div class="sidebar-profile" (click)="navigate(routes.menu)">
         <app-avatar
           [src]="auth.currentUser()?.avatarUrl ?? null"
           [handle]="auth.currentUser()?.handle || ''"
@@ -22,8 +22,8 @@
       <nav class="sidebar-nav">
         <button
           class="sidebar-item"
-          [class.sidebar-item--active]="isActive('/tabs/conversations')"
-          (click)="navigate('/tabs/conversations')"
+          [class.sidebar-item--active]="isActive(routes.conversations)"
+          (click)="navigate(routes.conversations)"
         >
           <ion-icon name="chatbubble-outline" class="sidebar-item__icon"></ion-icon>
           <span class="sidebar-item__label">{{ 'tabs.conversations' | translate }}</span>
@@ -36,8 +36,8 @@
 
         <button
           class="sidebar-item"
-          [class.sidebar-item--active]="isActive('/tabs/contacts')"
-          (click)="navigate('/tabs/contacts')"
+          [class.sidebar-item--active]="isActive(routes.contacts)"
+          (click)="navigate(routes.contacts)"
         >
           <ion-icon name="people-outline" class="sidebar-item__icon"></ion-icon>
           <span class="sidebar-item__label">{{ 'tabs.contacts' | translate }}</span>
@@ -51,7 +51,7 @@
         <button
           class="sidebar-item"
           [class.sidebar-item--active]="isSecurityActive()"
-          (click)="navigate('/tabs/security')"
+          (click)="navigate(routes.security)"
         >
           <ion-icon name="shield-checkmark-outline" class="sidebar-item__icon"></ion-icon>
           <span class="sidebar-item__label">{{ 'tabs.security' | translate }}</span>
@@ -59,8 +59,8 @@
 
         <button
           class="sidebar-item"
-          [class.sidebar-item--active]="isActive('/tabs/settings')"
-          (click)="navigate('/tabs/settings')"
+          [class.sidebar-item--active]="isActive(routes.settings)"
+          (click)="navigate(routes.settings)"
         >
           <ion-icon name="settings-outline" class="sidebar-item__icon"></ion-icon>
           <span class="sidebar-item__label">{{ 'tabs.settings' | translate }}</span>
@@ -68,8 +68,8 @@
 
         <button
           class="sidebar-item"
-          [class.sidebar-item--active]="isActive('/tabs/about')"
-          (click)="navigate('/tabs/about')"
+          [class.sidebar-item--active]="isActive(routes.about)"
+          (click)="navigate(routes.about)"
         >
           <ion-icon name="information-circle-outline" class="sidebar-item__icon"></ion-icon>
           <span class="sidebar-item__label">{{ 'tabs.about' | translate }}</span>
@@ -91,6 +91,10 @@
       </div>
 
     </aside>
+
+    <div class="sidebar-list">
+      <app-sidebar-list></app-sidebar-list>
+    </div>
   }
 
   <div class="app-main">
@@ -102,7 +106,7 @@
     }
     <ion-tabs>
       <ion-tab-bar slot="bottom" [class.tab-bar--hidden]="!showTabBar()">
-        <ion-tab-button tab="conversations" href="/tabs/conversations">
+        <ion-tab-button tab="conversations" [href]="routes.conversations">
           <ion-icon name="chatbubble-outline"></ion-icon>
           <span class="tab-label">{{ 'tabs.conversations' | translate }}</span>
           @if (receiptsSvc.totalUnread$ | async; as total) {
@@ -112,12 +116,12 @@
           }
         </ion-tab-button>
 
-        <ion-tab-button tab="contacts" href="/tabs/contacts">
+        <ion-tab-button tab="contacts" [href]="routes.contacts">
           <ion-icon name="people-outline"></ion-icon>
           <span class="tab-label">{{ 'tabs.contacts' | translate }}</span>
         </ion-tab-button>
 
-        <ion-tab-button tab="menu" href="/tabs/menu">
+        <ion-tab-button tab="menu" [href]="routes.menu">
           <ion-icon name="menu-outline"></ion-icon>
           <span class="tab-label">{{ 'tabs.menu' | translate }}</span>
         </ion-tab-button>

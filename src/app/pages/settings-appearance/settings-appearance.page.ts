@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { ThemeService, type ThemeMode } from '../../core/theme/theme.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-settings-appearance',
@@ -12,17 +13,13 @@ import { TranslatePipe } from '../../core/i18n/translate.pipe';
   styleUrls: ['./settings-appearance.page.scss'],
 })
 export class SettingsAppearancePage {
-  @Input() embedded = false;
-  @Output() navigateBack = new EventEmitter<void>();
-
   private router   = inject(Router);
   private themeSvc = inject(ThemeService);
 
   readonly preference = this.themeSvc.preference;
 
   goBack(): void {
-    if (this.embedded) { this.navigateBack.emit(); return; }
-    void this.router.navigate(['/tabs/settings']);
+    void this.router.navigate([ROUTES.settings]);
   }
 
   setMode(mode: ThemeMode): void {

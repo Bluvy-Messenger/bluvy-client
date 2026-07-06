@@ -11,6 +11,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom, timeout } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TokenRepository } from './token.repository';
+import { ROUTES } from '../routes';
 
 export interface ApiHttpOptions {
   headers?:  Record<string, string>;
@@ -155,7 +156,7 @@ export class ApiClientService {
     const refreshToken = await this.tokens.getRefreshToken();
     if (!refreshToken) {
       await this.tokens.clearTokens();
-      await this.router.navigate(['/login']);
+      await this.router.navigate([ROUTES.login]);
       return false;
     }
     try {
@@ -170,7 +171,7 @@ export class ApiClientService {
       return true;
     } catch {
       await this.tokens.clearTokens();
-      await this.router.navigate(['/login']);
+      await this.router.navigate([ROUTES.login]);
       return false;
     }
   }

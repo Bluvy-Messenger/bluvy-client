@@ -65,6 +65,7 @@ export const fr: Record<string, string> = {
   'conversations.section.bluvy': 'Sur Bluvy',
   'conversations.section.invite': 'À inviter',
   'conversations.contacts.empty.title': 'Aucun contact',
+  'conversations.contacts.welcome': 'Sélectionnez un contact',
   'conversations.welcome': 'Sélectionnez une conversation',
 
   'conversation.loading': 'Chargement...',

@@ -17,6 +17,7 @@ import type { UserProfile, AuthSessionResponse } from './auth.types';
 import { TokenRepository } from '../infrastructure/token.repository';
 import { SecureLocalStorageService } from '../secure-local-storage/secure-local-storage.service';
 import { MessageCacheService } from '../conversation/message-cache.service';
+import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
 
@@ -57,8 +58,8 @@ export class AuthService {
           const refreshed = await this.refreshTokens();
           if (!refreshed && !this.isAuthenticated()) {
             this.socketSvc.disconnect();
-            if (!this.router.url.startsWith('/login')) {
-              await this.router.navigate(['/login']);
+            if (!this.router.url.startsWith(ROUTES.login)) {
+              await this.router.navigate([ROUTES.login]);
             }
           }
         } finally {
@@ -75,13 +76,13 @@ export class AuthService {
     if (this._syncListenersBound) return;
     this._syncListenersBound = true;
     this.syncSvc.setupRequired$.subscribe(() => {
-      void this.router.navigate(['/setup-sync']);
+      void this.router.navigate([ROUTES.setupSync]);
     });
     this.syncSvc.pinRequired$.subscribe(() => {
-      void this.router.navigate(['/pin-unlock']);
+      void this.router.navigate([ROUTES.pinUnlock]);
     });
     this.syncSvc.migrationRequired$.subscribe(() => {
-      void this.router.navigate(['/migrate-sync']);
+      void this.router.navigate([ROUTES.migrateSync]);
     });
   }
 
@@ -123,7 +124,7 @@ export class AuthService {
     // If MBK loaded from SecureLocalStorage → navigate to conversations.
     // Otherwise, setupRequired$ or pinRequired$ subscription handles navigation.
     if (this.syncSvc.isMbkAvailable()) {
-      await this.router.navigate(['/tabs/conversations']);
+      await this.router.navigate([ROUTES.conversations]);
     }
   }
 
@@ -150,7 +151,7 @@ export class AuthService {
 
     this.socketSvc.disconnect();
     await this.clearSession();
-    await this.router.navigate(['/login']);
+    await this.router.navigate([ROUTES.login]);
   }
 
   async restoreSession(): Promise<boolean> {
