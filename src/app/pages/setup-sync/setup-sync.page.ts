@@ -10,6 +10,7 @@ import {
 import { SyncService } from '../../core/sync/sync.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-setup-sync',
@@ -78,7 +79,7 @@ export class SetupSyncPage {
   }
 
   async onContinue(): Promise<void> {
-    await this.router.navigate(['/tabs/conversations']);
+    await this.router.navigate([ROUTES.messages]);
   }
 
   private chunk(s: string, n: number): string[] {

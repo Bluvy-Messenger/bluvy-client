@@ -1,9 +1,10 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+import { rootGuard } from './core/guards/root.guard';
 
 export const routes: Routes = [
   {
-    path: '',
+    path: 'welcome',
     loadComponent: () => import('./pages/landing/landing.page').then(m => m.LandingPage),
   },
   {
@@ -51,8 +52,8 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
-    path: 'tabs',
+    path: '',
     loadChildren: () => import('./tabs/tabs.routes').then(m => m.routes),
-    canActivate: [authGuard],
+    canActivate: [rootGuard],
   },
 ];

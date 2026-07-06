@@ -5,6 +5,7 @@ import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { SyncService } from '../../core/sync/sync.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-sync-settings',
@@ -83,7 +84,7 @@ export class SyncSettingsPage implements OnInit, OnDestroy {
 
   goBack(): void {
     if (this.embedded) { this.navigateBack.emit(); return; }
-    void this.router.navigate(['/tabs/menu']);
+    void this.router.navigate([ROUTES.more]);
   }
 
   // ── Change PIN ─────────────────────────────────────────────────────────────

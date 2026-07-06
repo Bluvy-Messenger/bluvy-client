@@ -7,7 +7,7 @@ export const routes: Routes = [
     component: TabsPage,
     children: [
       {
-        path: 'conversations',
+        path: 'messages',
         loadComponent: () =>
           import('../pages/conversations/conversations.page').then(m => m.ConversationsPage),
       },
@@ -17,17 +17,17 @@ export const routes: Routes = [
           import('../pages/contacts/contacts.page').then(m => m.ContactsPage),
       },
       {
-        path: 'conversations/:id',
+        path: 'messages/:id',
         loadComponent: () =>
           import('../pages/conversation/conversation.page').then(m => m.ConversationPage),
       },
       {
-        path: 'menu',
+        path: 'more',
         loadComponent: () =>
           import('../pages/menu/menu.page').then(m => m.MenuPage),
       },
       {
-        path: 'sync-settings',
+        path: 'settings/sync',
         loadComponent: () =>
           import('../pages/sync-settings/sync-settings.page').then(m => m.SyncSettingsPage),
       },
@@ -65,7 +65,7 @@ export const routes: Routes = [
       },
       {
         path: '',
-        redirectTo: 'conversations',
+        redirectTo: 'messages',
         pathMatch: 'full',
       },
     ],

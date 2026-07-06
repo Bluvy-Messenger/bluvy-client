@@ -10,6 +10,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 import { AvatarComponent } from '../components/ui/avatar/avatar.component';
 import { BreakpointService } from '../core/layout/breakpoint.service';
 import { AuthService } from '../core/auth/auth.service';
+import { ROUTES } from '../core/routes';
 
 @Component({
   selector: 'app-tabs',
@@ -25,6 +26,7 @@ import { AuthService } from '../core/auth/auth.service';
   ],
 })
 export class TabsPage {
+  readonly routes       = ROUTES;
   readonly receiptsSvc = inject(ReceiptsService);
   readonly bpSvc       = inject(BreakpointService);
   readonly auth        = inject(AuthService);
@@ -40,7 +42,7 @@ export class TabsPage {
   );
 
   readonly isConvRoute = computed(() =>
-    /\/tabs\/conversations\/.+/.test(this.currentUrl() ?? ''));
+    /\/messages\/.+/.test(this.currentUrl() ?? ''));
 
   readonly showTabBar = computed(() =>
     !this.bpSvc.isTablet() && !this.isConvRoute());
@@ -49,8 +51,8 @@ export class TabsPage {
     // Redirect away from the mobile-only menu page on tablet/desktop
     effect(() => {
       const url = this.currentUrl();
-      if (this.bpSvc.isTablet() && url?.startsWith('/tabs/menu')) {
-        void this.router.navigate(['/tabs/conversations']);
+      if (this.bpSvc.isTablet() && url?.startsWith(ROUTES.more)) {
+        void this.router.navigate([ROUTES.messages]);
       }
     });
   }
@@ -62,7 +64,7 @@ export class TabsPage {
 
   isSecurityActive(): boolean {
     const url = this.currentUrl() ?? '';
-    return url.startsWith('/tabs/security') || url.startsWith('/tabs/devices');
+    return url.startsWith(ROUTES.security) || url.startsWith(ROUTES.devices);
   }
 
   navigate(path: string): void { void this.router.navigate([path]); }

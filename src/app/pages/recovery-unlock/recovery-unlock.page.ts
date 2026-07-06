@@ -11,6 +11,7 @@ import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.b
 import { environment } from '../../../environments/environment';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-recovery-unlock',
@@ -100,10 +101,10 @@ export class RecoveryUnlockPage {
       if (!environment.production) console.error('[RecoveryUnlock] restore failed:', err);
     }
     this.working = false;
-    await this.router.navigate(['/tabs/conversations']);
+    await this.router.navigate([ROUTES.messages]);
   }
 
   async onSkipPin(): Promise<void> {
-    await this.router.navigate(['/tabs/conversations']);
+    await this.router.navigate([ROUTES.messages]);
   }
 }

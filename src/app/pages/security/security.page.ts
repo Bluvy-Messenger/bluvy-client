@@ -3,6 +3,7 @@ import { Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-security',
@@ -26,11 +27,11 @@ export class SecurityPage {
 
   openDevices(): void {
     if (this.embedded) { this.openSubPage.emit('devices'); return; }
-    void this.router.navigate(['/tabs/devices']);
+    void this.router.navigate([ROUTES.devices]);
   }
 
   openSync(): void {
     if (this.embedded) { this.openSubPage.emit('sync-settings'); return; }
-    void this.router.navigate(['/tabs/sync-settings']);
+    void this.router.navigate([ROUTES.settingsSync]);
   }
 }

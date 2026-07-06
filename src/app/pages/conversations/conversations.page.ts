@@ -32,6 +32,7 @@ import { DevicesPage } from '../devices/devices.page';
 import { AboutPage } from '../about/about.page';
 import { environment } from '../../../environments/environment';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 const SYNC_INTERVAL_MS = 3 * 60 * 1000;
 
@@ -145,7 +146,7 @@ export class ConversationsPage implements OnInit, OnDestroy {
       this.selectedConvId = conv.id;
       this.rightPanelView = 'conversation';
     } else {
-      void this.router.navigate(['/tabs/conversations', conv.id]);
+      void this.router.navigate([ROUTES.message(conv.id)]);
     }
   }
 
@@ -175,7 +176,7 @@ export class ConversationsPage implements OnInit, OnDestroy {
 
   menuGoToSettings(): void {
     if (this.bpSvc.isTablet()) { this.rightPanelView = 'settings'; this.selectedConvId = null; return; }
-    void this.router.navigate(['/tabs/settings']);
+    void this.router.navigate([ROUTES.settings]);
   }
 
   onPanelBack(): void {

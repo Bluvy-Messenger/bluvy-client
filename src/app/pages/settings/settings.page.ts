@@ -2,6 +2,7 @@ import { Component, Input, Output, EventEmitter, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-settings',
@@ -18,21 +19,21 @@ export class SettingsPage {
   private router = inject(Router);
   goBack(): void {
     if (this.embedded) { this.navigateBack.emit(); return; }
-    void this.router.navigate(['/tabs/menu']);
+    void this.router.navigate([ROUTES.more]);
   }
 
   openAppearance(): void {
     if (this.embedded) { this.openSubPage.emit('appearance'); return; }
-    void this.router.navigate(['/tabs/settings/appearance']);
+    void this.router.navigate([ROUTES.settingsAppearance]);
   }
 
   openLanguage(): void {
     if (this.embedded) { this.openSubPage.emit('language'); return; }
-    void this.router.navigate(['/tabs/settings/language']);
+    void this.router.navigate([ROUTES.settingsLanguage]);
   }
 
   openDevices(): void {
-    void this.router.navigate(['/tabs/devices']);
+    void this.router.navigate([ROUTES.devices]);
   }
 
   confirmingDelete = false;

@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { TranslationService } from '../../core/i18n/translation.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-settings-language',
@@ -20,7 +21,7 @@ export class SettingsLanguagePage {
 
   goBack(): void {
     if (this.embedded) { this.navigateBack.emit(); return; }
-    void this.router.navigate(['/tabs/settings']);
+    void this.router.navigate([ROUTES.settings]);
   }
 
   setLocale(locale: 'fr' | 'en'): void {

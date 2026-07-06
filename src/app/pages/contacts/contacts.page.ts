@@ -15,6 +15,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { PresenceService } from '../../core/presence/presence.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 const INVITE_URL = 'https://bluvy.app';
 
@@ -108,7 +109,7 @@ export class ContactsPage implements OnInit {
         void this.coordinator.prepareConversation(user, device, contact.did).catch(() => undefined);
       }
 
-      await this.router.navigate(['/tabs/conversations', conv.id]);
+      await this.router.navigate([ROUTES.message(conv.id)]);
     } catch {
       this.error = 'Could not start conversation. Please try again.';
     } finally {
