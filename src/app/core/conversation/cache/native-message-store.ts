@@ -52,7 +52,7 @@ export class NativeMessageStore implements IMessageStore {
     ]);
     
     const isConn = await this.sqlite.isConnection(DB_NAME, false);
-    if (isConn) {
+    if (isConn.result) {
       this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
     } else {
       this.db = await this.sqlite.createConnection(

@@ -1,8 +1,10 @@
+ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
+
 .profile {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: calc(var(--space-6) + env(safe-area-inset-top, 0px)) var(--space-4) var(--space-5);
+  padding: calc(var(--space-6) + var(--safe-area-top)) var(--space-4) var(--space-5);
 
   &__info {
     display: flex;

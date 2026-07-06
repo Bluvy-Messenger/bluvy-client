@@ -66,6 +66,13 @@
   // ── Interactive states ───────────────────────────────────────────────────
   --color-interactive-hover:  rgba(0, 0, 0, 0.04);
   --color-interactive-active: rgba(0, 0, 0, 0.07);
+
+  // ── Safe Area ────────────────────────────────────────────────────────────────
+  --safe-area-top: 0px;
+}
+
+html.ios {
+  --safe-area-top: env(safe-area-inset-top, 0px);
 }
 
 @media (prefers-color-scheme: dark) {
