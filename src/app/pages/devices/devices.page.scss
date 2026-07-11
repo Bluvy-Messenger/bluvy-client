@@ -5,7 +5,12 @@
   background: var(--color-bg);
 }
 
-ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
+ion-content {
+  --background: var(--color-bg);
+  --padding-top: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
 
 .ss-header {
   display: flex;
@@ -119,7 +124,7 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
     font-size: var(--text-xs);
     font-weight: var(--weight-medium);
     color: var(--color-primary);
-    background: rgba(10, 124, 255, 0.1);
+    background: var(--color-interactive-active);
     border-radius: var(--radius-full);
     padding: 2px 8px;
   }

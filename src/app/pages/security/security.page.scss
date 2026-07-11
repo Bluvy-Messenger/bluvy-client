@@ -5,7 +5,12 @@
   background: var(--color-bg);
 }
 
-ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
+ion-content {
+  --background: var(--color-bg);
+  --padding-top: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
 
 .ss-header {
   display: flex;

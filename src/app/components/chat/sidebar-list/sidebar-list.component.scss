@@ -38,9 +38,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: var(--color-bg);
+  background: var(--color-search-bg);
+  border: none;
   border-radius: var(--radius-full);
-  padding: 9px var(--space-3);
+  padding: 10px var(--space-4);
   margin: var(--space-2) var(--space-3) var(--space-2);
   flex-shrink: 0;
 
@@ -68,6 +69,10 @@
 .conv-list {
   display: flex;
   flex-direction: column;
+
+  app-conversation-item {
+    border-bottom: 1px solid var(--color-border);
+  }
 }
 
 // Selected conversation on desktop
@@ -143,14 +148,23 @@
   padding: var(--space-3) var(--space-4) var(--space-1);
 }
 
+.contact-list {
+  display: flex;
+  flex-direction: column;
+
+  .contact-row {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border-bottom: 1px solid var(--color-border);
+  }
+}
+
 .contact-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: 10px var(--space-4);
   cursor: pointer;
-  border-radius: 10px;
-  margin: 2px var(--space-2);
   transition: background var(--duration-fast);
 
   &:hover { background: var(--color-interactive-hover); }

@@ -107,7 +107,7 @@
     <ion-tabs>
       <ion-tab-bar slot="bottom" [class.tab-bar--hidden]="!showTabBar()">
         <ion-tab-button tab="conversations" [href]="routes.conversations">
-          <ion-icon name="chatbubble-outline"></ion-icon>
+          <ion-icon [name]="isActive(routes.conversations) ? 'chatbubble' : 'chatbubble-outline'"></ion-icon>
           <span class="tab-label">{{ 'tabs.conversations' | translate }}</span>
           @if (receiptsSvc.totalUnread$ | async; as total) {
             @if (total > 0) {
@@ -117,12 +117,12 @@
         </ion-tab-button>
 
         <ion-tab-button tab="contacts" [href]="routes.contacts">
-          <ion-icon name="people-outline"></ion-icon>
+          <ion-icon [name]="isActive(routes.contacts) ? 'people' : 'people-outline'"></ion-icon>
           <span class="tab-label">{{ 'tabs.contacts' | translate }}</span>
         </ion-tab-button>
 
         <ion-tab-button tab="menu" [href]="routes.menu">
-          <ion-icon name="menu-outline"></ion-icon>
+          <ion-icon [name]="isActive(routes.menu) ? 'menu' : 'menu-outline'"></ion-icon>
           <span class="tab-label">{{ 'tabs.menu' | translate }}</span>
         </ion-tab-button>
       </ion-tab-bar>

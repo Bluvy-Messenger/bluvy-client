@@ -1,5 +1,5 @@
 ion-content {
-  --background: var(--color-surface);
+  --background: var(--color-bg);
 }
 
 // ── Tablet split shell ────────────────────────────────────────────────────
@@ -124,9 +124,10 @@ ion-content {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: var(--color-bg);
+  background: var(--color-search-bg);
+  border: none;
   border-radius: var(--radius-full);
-  padding: 9px var(--space-3);
+  padding: 10px var(--space-4);
   margin: var(--space-2) var(--space-3) var(--space-2);
   flex-shrink: 0;
 

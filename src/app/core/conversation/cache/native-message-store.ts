@@ -2,7 +2,7 @@ import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacito
 import type { EncryptedCacheRecord, IMessageStore } from './message-cache.types';
 
 const DB_NAME    = 'skychat-cache';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const SCHEMA_V1: string[] = [
   `CREATE TABLE IF NOT EXISTS message_cache (
@@ -49,6 +49,7 @@ export class NativeMessageStore implements IMessageStore {
     await this.sqlite.addUpgradeStatement(DB_NAME, [
       { toVersion: 1, statements: SCHEMA_V1 },
       { toVersion: 2, statements: SCHEMA_V2 },
+      { toVersion: 3, statements: [] },
     ]);
     
     const isConn = await this.sqlite.isConnection(DB_NAME, false);

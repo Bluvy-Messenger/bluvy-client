@@ -58,10 +58,10 @@
   gap: var(--space-3);
   padding: var(--space-5) var(--space-4) var(--space-4);
   cursor: pointer;
-  transition: background var(--duration-fast);
+  transition: background var(--duration-fast) ease, transform var(--duration-fast) ease;
 
   &:hover { background: var(--color-interactive-hover); }
-  &:active { opacity: 0.8; }
+  &:active { transform: scale(0.98); }
 
   &__info {
     display: flex;
@@ -117,20 +117,20 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  padding: 9px var(--space-3);
+  padding: 10px var(--space-4);
   background: none;
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   font-family: var(--font-sans);
   text-align: left;
-  transition: background var(--duration-fast);
+  transition: background var(--duration-fast) ease, transform var(--duration-fast) ease;
 
   &:hover { background: var(--color-interactive-hover); }
-  &:active { opacity: 0.7; }
+  &:active { transform: scale(0.98); }
 
   &--active {
-    background: rgba(10, 124, 255, 0.08);
+    background: var(--color-interactive-focus-bg);
 
     .sidebar-item__icon { color: var(--color-primary); }
     .sidebar-item__label { color: var(--color-primary); font-weight: var(--weight-semibold); }
@@ -139,7 +139,8 @@
   &--danger {
     .sidebar-item__icon,
     .sidebar-item__label { color: var(--color-danger); }
-    &:hover { background: rgba(239, 68, 68, 0.06); }
+    &:hover { background: rgba(239, 68, 68, 0.05); }
+    &:active { background: rgba(239, 68, 68, 0.1); transform: scale(0.98); }
   }
 
   &__icon {
@@ -173,17 +174,52 @@
 
 // ── Tab bar (mobile only) ─────────────────────────────────────────────────────
 
+ion-tab-bar {
+  --background: var(--color-surface);
+  --border: none;
+  border-top: 1px solid var(--color-border);
+  height: calc(54px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.02);
+  contain: none;
+}
+
 ion-tab-button {
   --color: var(--color-text-secondary);
   --color-selected: var(--color-primary);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  justify-content: center;
+  align-items: center;
   padding: 0;
+  height: 100%;
+  position: relative;
+  background: transparent;
+
+  // Touch highlight removal
+  --ripple-color: transparent;
 
   ion-icon {
     font-size: 22px;
-    transition: color var(--duration-fast);
+    transition: transform var(--duration-fast) cubic-bezier(0.175, 0.885, 0.32, 1.275), color var(--duration-fast) ease;
+  }
+
+  &.tab-selected ion-icon {
+    transform: scale(1.1);
+  }
+
+  &.tab-selected {
+    .tab-label {
+      color: var(--color-primary);
+      font-weight: var(--weight-semibold);
+    }
+  }
+
+  app-unread-badge {
+    position: absolute;
+    top: 4px;
+    right: calc(50% - 20px);
+    z-index: 10;
   }
 }
 
@@ -192,6 +228,8 @@ ion-tab-button {
   font-size: 10px;
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
+  margin-top: 2px;
+  transition: color var(--duration-fast) ease;
 }
 
 .tab-bar--hidden {
@@ -206,17 +244,17 @@ ion-tab-button {
   gap: var(--space-2);
   margin: 0 var(--space-2) var(--space-2);
   padding: 7px var(--space-3);
-  background: rgba(245, 158, 11, 0.10);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: var(--color-interactive-focus-bg);
+  border: 1px solid var(--color-interactive-active);
   border-radius: var(--radius-md);
 
-  ion-icon { font-size: 15px; color: #d97706; flex-shrink: 0; }
+  ion-icon { font-size: 15px; color: var(--color-primary); flex-shrink: 0; }
 
   &__label {
     font-family: var(--font-sans);
     font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
-    color: #92400e;
+    color: var(--color-primary);
   }
 }
 
@@ -225,30 +263,14 @@ ion-tab-button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: rgba(245, 158, 11, 0.12);
-  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+  background: var(--color-interactive-focus-bg);
+  border-bottom: 1px solid var(--color-interactive-active);
   padding: 5px var(--space-4);
   font-family: var(--font-sans);
   font-size: 11px;
   font-weight: var(--weight-semibold);
-  color: #92400e;
+  color: var(--color-primary);
   flex-shrink: 0;
 
-  ion-icon { font-size: 13px; color: #d97706; }
-}
-
-@media (prefers-color-scheme: dark) {
-  .sidebar-beta {
-    background: rgba(245, 158, 11, 0.08);
-    border-color: rgba(245, 158, 11, 0.20);
-    ion-icon { color: #fbbf24; }
-    &__label { color: #fcd34d; }
-  }
-
-  .app-beta-bar {
-    background: rgba(245, 158, 11, 0.10);
-    border-color: rgba(245, 158, 11, 0.20);
-    color: #fcd34d;
-    ion-icon { color: #fbbf24; }
-  }
+  ion-icon { font-size: 13px; color: var(--color-primary); }
 }

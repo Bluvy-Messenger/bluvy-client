@@ -11,18 +11,20 @@
   --color-success:        #22C55E;
   --color-warning:        #F59E0B;
   --color-danger:         #EF4444;
+  --color-bubble-recv:    var(--color-surface);
+  --color-bubble-recv-border: var(--color-border);
 
   // ── Typography ───────────────────────────────────────────────────────────────
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-  --text-xs:   11px;
-  --text-sm:   13px;
+  --text-xs:   11.3px;
+  --text-sm:   13.1px;
   --text-base: 15px;
-  --text-md:   17px;
-  --text-lg:   20px;
-  --text-xl:   24px;
-  --text-2xl:  30px;
+  --text-md:   16.9px;
+  --text-lg:   18.8px;
+  --text-xl:   20.6px;
+  --text-2xl:  24.3px;
 
   --weight-regular:  400;
   --weight-medium:   500;
@@ -83,39 +85,230 @@ html.md.plt-hybrid {
   --ion-safe-area-top: 0px;
 }
 
+// ── Palette-based overrides (managed by ThemeService) ───────────────────────
+
+// 1. Bluesky palette overrides
+html.palette-bluesky {
+  --color-bg:             #FFFFFF; // Unified white background
+  --color-surface:        #FFFFFF; // Unified white surface
+  --color-primary:        #0085ff; // Vibrant Bluesky Blue
+  --color-primary-hover:  #0059D6;
+  --color-primary-active: #0048AD;
+  --color-border:         #DCE2EA;
+  --color-text-primary:   #0B0F19;
+  --color-text-secondary: #667B99;
+  --color-bubble-recv:    #EFF2F6;
+  --color-bubble-recv-border: #DCE2EA;
+  --color-search-bg:      #EFF2F6; // Light grey search
+  --focus-ring:           0 0 0 3px rgba(0, 133, 255, 0.15);
+  --color-interactive-hover:  rgba(0, 133, 255, 0.03);
+  --color-interactive-active: rgba(0, 133, 255, 0.08);
+  --color-interactive-focus-bg: rgba(0, 133, 255, 0.05);
+}
+
+html.palette-bluesky.theme-dark {
+  --color-bg:             #151D28; // Unified Dim Blue background
+  --color-surface:        #151D28; // Unified Dim Blue surface
+  --color-border:         #2C3A4E;
+  --color-text-primary:   #FFFFFF;
+  --color-text-secondary: #ABB8C9;
+  --color-bubble-recv:    #222E3F;
+  --color-bubble-recv-border: transparent;
+  --color-search-bg:      #222E3F; // Dim Blue search
+  --focus-ring:           0 0 0 3px rgba(0, 133, 255, 0.3);
+  --color-interactive-hover:  rgba(0, 133, 255, 0.06);
+  --color-interactive-active: rgba(0, 133, 255, 0.12);
+  --color-interactive-focus-bg: rgba(0, 133, 255, 0.15);
+}
+
+// 2. mu.social palette overrides
+html.palette-mu {
+  --color-bg:             #F7F7F2; // Unified warm off-white background
+  --color-surface:        #F7F7F2; // Unified warm off-white surface
+  --color-primary:        #DB4AA6; // Eurosky Pink Accent
+  --color-primary-hover:  #C04293;
+  --color-primary-active: #A73981;
+  --color-border:         #E0DED9;
+  --color-text-primary:   #212121;
+  --color-text-secondary: #797876;
+  --color-bubble-recv:    #EDEBE5;
+  --color-bubble-recv-border: #E0DED9;
+  --color-search-bg:      #EDEBE5; // Subdued mu search
+  --focus-ring:           0 0 0 3px rgba(219, 74, 166, 0.15);
+  --color-interactive-hover:  rgba(219, 74, 166, 0.03);
+  --color-interactive-active: rgba(219, 74, 166, 0.08);
+  --color-interactive-focus-bg: rgba(219, 74, 166, 0.05);
+}
+
+html.palette-mu.theme-dark {
+  --color-bg:             #1A1A1A; // Unified Soft Charcoal Grey background
+  --color-surface:        #1A1A1A; // Unified Soft Charcoal Grey surface
+  --color-border:         #242424;
+  --color-text-primary:   #FFFFFF;
+  --color-text-secondary: #ABAAA6;
+  --color-bubble-recv:    #1F1F1F;
+  --color-bubble-recv-border: transparent;
+  --color-search-bg:      #1F1F1F; // Charcoal search
+  --focus-ring:           0 0 0 3px rgba(219, 74, 166, 0.3);
+  --color-interactive-hover:  rgba(219, 74, 166, 0.06);
+  --color-interactive-active: rgba(219, 74, 166, 0.12);
+  --color-interactive-focus-bg: rgba(219, 74, 166, 0.15);
+}
+
+// 3. Media query support for theme "auto" (prefers-color-scheme: dark)
 @media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg:             #0F172A;
-    --color-surface:        #1E293B;
-    --color-text-primary:   #F8FAFC;
-    --color-text-secondary: #CBD5E1;
-    --color-border:         #334155;
-    --color-interactive-hover:  rgba(255, 255, 255, 0.06);
-    --color-interactive-active: rgba(255, 255, 255, 0.10);
+  html.palette-bluesky:not(.theme-light) {
+    --color-bg:             #151D28;
+    --color-surface:        #151D28;
+    --color-border:         #2C3A4E;
+    --color-text-primary:   #FFFFFF;
+    --color-text-secondary: #ABB8C9;
+    --color-bubble-recv:    #222E3F;
+    --color-bubble-recv-border: transparent;
+    --color-search-bg:      #222E3F;
+    --focus-ring:           0 0 0 3px rgba(0, 133, 255, 0.3);
+    --color-interactive-hover:  rgba(0, 133, 255, 0.06);
+    --color-interactive-active: rgba(0, 133, 255, 0.12);
+    --color-interactive-focus-bg: rgba(0, 133, 255, 0.15);
+  }
+  
+  html.palette-mu:not(.theme-light) {
+    --color-bg:             #1A1A1A;
+    --color-surface:        #1A1A1A;
+    --color-border:         #242424;
+    --color-text-primary:   #FFFFFF;
+    --color-text-secondary: #ABAAA6;
+    --color-bubble-recv:    #1F1F1F;
+    --color-bubble-recv-border: transparent;
+    --color-search-bg:      #1F1F1F;
+    --focus-ring:           0 0 0 3px rgba(219, 74, 166, 0.3);
+    --color-interactive-hover:  rgba(219, 74, 166, 0.06);
+    --color-interactive-active: rgba(219, 74, 166, 0.12);
+    --color-interactive-focus-bg: rgba(219, 74, 166, 0.15);
   }
 }
 
-// ── Class-based overrides (managed by ThemeService) ───────────────────────
+// ── Advanced display options overrides ──────────────────────────────────────
 
-html.theme-dark {
-  --color-bg:             #0F172A;
-  --color-surface:        #1E293B;
-  --color-text-primary:   #F8FAFC;
-  --color-text-secondary: #CBD5E1;
-  --color-border:         #334155;
-  --color-interactive-hover:  rgba(255, 255, 255, 0.06);
-  --color-interactive-active: rgba(255, 255, 255, 0.10);
-}
-
-// Restore light palette even when system prefers dark
-@media (prefers-color-scheme: dark) {
-  html.theme-light {
-    --color-bg:             #F7F9FC;
-    --color-surface:        #FFFFFF;
-    --color-text-primary:   #111827;
-    --color-text-secondary: #6B7280;
-    --color-border:         #E5E7EB;
-    --color-interactive-hover:  rgba(0, 0, 0, 0.04);
-    --color-interactive-active: rgba(0, 0, 0, 0.07);
+// 1. OLED Black Dark Mode
+html.theme-dark-black {
+  &.palette-bluesky {
+    --color-bg:             #000000;
+    --color-surface:        #000000;
+    --color-border:         #1C2533;
+    --color-bubble-recv:    #19222E;
+    --color-search-bg:      #19222E;
+  }
+  
+  &.palette-mu {
+    --color-bg:             #000000;
+    --color-surface:        #000000;
+    --color-border:         #242424;
+    --color-bubble-recv:    #1F1F1F;
+    --color-search-bg:      #1F1F1F;
   }
 }
+
+// 2. Accent color overrides
+html.accent-blue {
+  --color-primary:        #0085ff;
+  --color-primary-hover:  #0059D6;
+  --color-primary-active: #0048AD;
+  --focus-ring:           0 0 0 3px rgba(0, 133, 255, 0.15);
+  --color-interactive-hover:  rgba(0, 133, 255, 0.03);
+  --color-interactive-active: rgba(0, 133, 255, 0.08);
+  --color-interactive-focus-bg: rgba(0, 133, 255, 0.05);
+}
+
+html.accent-pink {
+  --color-primary:        #DB4AA6;
+  --color-primary-hover:  #C04293;
+  --color-primary-active: #A73981;
+  --focus-ring:           0 0 0 3px rgba(219, 74, 166, 0.15);
+  --color-interactive-hover:  rgba(219, 74, 166, 0.03);
+  --color-interactive-active: rgba(219, 74, 166, 0.08);
+  --color-interactive-focus-bg: rgba(219, 74, 166, 0.05);
+}
+
+html.accent-orange {
+  --color-primary:        #F2571F;
+  --color-primary-hover:  #DB5019;
+  --color-primary-active: #C54A12;
+  --focus-ring:           0 0 0 3px rgba(242, 87, 31, 0.15);
+  --color-interactive-hover:  rgba(242, 87, 31, 0.03);
+  --color-interactive-active: rgba(242, 87, 31, 0.08);
+  --color-interactive-focus-bg: rgba(242, 87, 31, 0.05);
+}
+
+// Dark modes & system-dark accents overrides
+html.accent-blue.theme-dark,
+html.accent-blue.theme-dark-black {
+  --focus-ring:           0 0 0 3px rgba(0, 133, 255, 0.3);
+  --color-interactive-hover:  rgba(0, 133, 255, 0.06);
+  --color-interactive-active: rgba(0, 133, 255, 0.12);
+  --color-interactive-focus-bg: rgba(0, 133, 255, 0.15);
+}
+
+html.accent-pink.theme-dark,
+html.accent-pink.theme-dark-black {
+  --focus-ring:           0 0 0 3px rgba(219, 74, 166, 0.3);
+  --color-interactive-hover:  rgba(219, 74, 166, 0.06);
+  --color-interactive-active: rgba(219, 74, 166, 0.12);
+  --color-interactive-focus-bg: rgba(219, 74, 166, 0.15);
+}
+
+html.accent-orange.theme-dark,
+html.accent-orange.theme-dark-black {
+  --focus-ring:           0 0 0 3px rgba(242, 87, 31, 0.3);
+  --color-interactive-hover:  rgba(242, 87, 31, 0.06);
+  --color-interactive-active: rgba(242, 87, 31, 0.12);
+  --color-interactive-focus-bg: rgba(242, 87, 31, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+  html.accent-blue:not(.theme-light) {
+    --focus-ring:           0 0 0 3px rgba(0, 133, 255, 0.3);
+    --color-interactive-hover:  rgba(0, 133, 255, 0.06);
+    --color-interactive-active: rgba(0, 133, 255, 0.12);
+    --color-interactive-focus-bg: rgba(0, 133, 255, 0.15);
+  }
+  html.accent-pink:not(.theme-light) {
+    --focus-ring:           0 0 0 3px rgba(219, 74, 166, 0.3);
+    --color-interactive-hover:  rgba(219, 74, 166, 0.06);
+    --color-interactive-active: rgba(219, 74, 166, 0.12);
+    --color-interactive-focus-bg: rgba(219, 74, 166, 0.15);
+  }
+  html.accent-orange:not(.theme-light) {
+    --focus-ring:           0 0 0 3px rgba(242, 87, 31, 0.3);
+    --color-interactive-hover:  rgba(242, 87, 31, 0.06);
+    --color-interactive-active: rgba(242, 87, 31, 0.12);
+    --color-interactive-focus-bg: rgba(242, 87, 31, 0.15);
+  }
+}
+
+// 3. Font Family Option
+html.font-system {
+  --font-sans: system-ui, -apple-system, sans-serif;
+}
+
+// 4. Font Size Options
+html.font-size-small {
+  --text-xs:   10px;
+  --text-sm:   11.5px;
+  --text-base: 13.5px;
+  --text-md:   15px;
+  --text-lg:   17px;
+  --text-xl:   18.5px;
+  --text-2xl:  22px;
+}
+
+html.font-size-large {
+  --text-xs:   12.5px;
+  --text-sm:   14.5px;
+  --text-base: 16.5px;
+  --text-md:   18.5px;
+  --text-lg:   20.5px;
+  --text-xl:   22.5px;
+  --text-2xl:  26.5px;
+}
+

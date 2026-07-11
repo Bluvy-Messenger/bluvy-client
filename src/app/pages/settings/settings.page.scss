@@ -86,11 +86,11 @@ ion-content {
 
 .ss-block {
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
 }
 
 // ── Settings rows ─────────────────────────────────────────────────────────
@@ -100,14 +100,25 @@ ion-content {
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  background: none;
+  background: transparent;
   border: none;
+  border-bottom: 1px solid var(--color-border);
   cursor: pointer;
-  padding: var(--space-1) 0;
+  padding: 14px var(--space-4);
   color: var(--color-text-primary);
-  transition: opacity var(--duration-fast);
+  transition: background var(--duration-fast) ease, opacity var(--duration-fast) ease;
 
-  &:active { opacity: 0.7; }
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: var(--color-interactive-hover);
+  }
+
+  &:active {
+    background: var(--color-interactive-active);
+  }
 }
 
 .settings-row__icon {

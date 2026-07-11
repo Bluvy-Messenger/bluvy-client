@@ -68,14 +68,33 @@ ion-content {
   --padding-end: 1rem;
 }
 
-// Class-based dark mode bubble override (ThemeService)
-html.theme-dark app-message-bubble .bubble--theirs {
-  background: #2C3348 !important;
-  border-color: transparent !important;
+ion-card {
+  --background: var(--color-surface);
+  --border-color: var(--color-border);
+  --border-width: 1px;
+  --border-style: solid;
+  border-radius: var(--radius-md) !important;
+  box-shadow: none !important;
+  margin: var(--space-3) 0 !important;
 }
 
 ion-list {
   background: var(--color-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-loading {
+  background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-bg) 50%, var(--color-surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────── */
@@ -97,4 +116,73 @@ ion-title {
   padding-inline-start: var(--space-4);
   text-align: left;
 }
+
+ion-input {
+  --background: var(--color-search-bg);
+  --color: var(--color-text-primary);
+  --placeholder-color: var(--color-text-secondary);
+  --border-radius: 10px !important;
+  --border-color: transparent;
+  --border-width: 1px;
+  --border-style: solid;
+  --padding-start: 14px !important;
+  --padding-end: 14px !important;
+  --padding-top: 11px !important;
+  --padding-bottom: 11px !important;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  margin-bottom: var(--space-3);
+
+  &.has-focus {
+    --background: var(--color-interactive-focus-bg);
+    --border-color: var(--color-primary);
+  }
+}
+
+ion-checkbox {
+  --border-radius: 6px !important;
+  --border-width: 1.5px;
+  --border-color: var(--color-border);
+  --checkbox-background-checked: var(--color-primary);
+  --border-color-checked: var(--color-primary);
+}
+
+// ── Segmented Controls (Reusable Display Utility) ─────────────────────────
+
+.theme-segments {
+  display: flex;
+  background: var(--color-search-bg);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--color-border);
+}
+
+.segment-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-align: center;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+
+  &:hover {
+    color: var(--color-text-primary);
+  }
+
+  &--active {
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font-weight: var(--weight-semibold);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+}
+
 

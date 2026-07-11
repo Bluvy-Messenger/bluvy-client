@@ -26,10 +26,6 @@ export class SettingsPage {
     void this.router.navigate([ROUTES.settingsLanguage]);
   }
 
-  openDevices(): void {
-    void this.router.navigate([ROUTES.devices]);
-  }
-
   confirmingDelete = false;
 
   confirmDeleteAccount(): void {

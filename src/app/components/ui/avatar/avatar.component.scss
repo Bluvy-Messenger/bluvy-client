@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-primary);
+  background: var(--color-search-bg);
 
   img {
     width: 100%;
@@ -15,7 +15,7 @@
   }
 
   &__initials {
-    color: #fff;
+    color: var(--color-text-secondary);
     font-family: var(--font-sans);
     font-weight: var(--weight-semibold);
     line-height: 1;

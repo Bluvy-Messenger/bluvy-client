@@ -5,7 +5,7 @@ import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
 import { App } from '@capacitor/app';
 import { addIcons } from 'ionicons';
 import {
-  chatbubbleOutline, peopleOutline, menuOutline, searchOutline,
+  chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
   personOutline, chevronForwardOutline, phonePortraitOutline,
   shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
   logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
@@ -17,8 +17,9 @@ import {
   documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
   // devices + security + settings
   laptopOutline, trashOutline, syncOutline,
-  // language + beta
+  // language + beta + appearance
   globe, globeOutline, flaskOutline,
+  colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -44,7 +45,7 @@ export class AppComponent implements OnInit, OnDestroy {
     inject(ThemeService);
     inject(NavigationRedirectService);
     addIcons({
-      chatbubbleOutline, peopleOutline, menuOutline, searchOutline,
+      chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
       personOutline, chevronForwardOutline, phonePortraitOutline,
       shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
       logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
@@ -55,6 +56,7 @@ export class AppComponent implements OnInit, OnDestroy {
       documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
       laptopOutline, trashOutline, syncOutline,
       globe, globeOutline, flaskOutline,
+      colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
     });
   }
 

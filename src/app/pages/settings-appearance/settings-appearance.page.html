@@ -9,63 +9,74 @@
   <div class="ss-content">
     <p class="theme-label">{{ 'appearance.label' | translate }}</p>
 
-    <!-- Mobile: checkbox list -->
-    <div class="theme-list">
-      <button
-        class="theme-list-item"
-        [class.theme-list-item--active]="preference() === 'light'"
-        (click)="setMode('light')"
-      >
-        <ion-icon [name]="preference() === 'light' ? 'sunny' : 'sunny-outline'" class="theme-list-item__icon"></ion-icon>
-        <span class="theme-list-item__label">{{ 'appearance.light' | translate }}</span>
-        <ion-icon [name]="preference() === 'light' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="theme-list-item__check"></ion-icon>
+    <!-- SECTION 1: Mode de couleur -->
+    <div class="ss-section-title">{{ 'appearance.color_mode' | translate }}</div>
+    <div class="theme-segments">
+      <button class="segment-btn" [class.segment-btn--active]="preference() === 'light'" (click)="setMode('light')">
+        {{ 'appearance.light' | translate }}
       </button>
-      <button
-        class="theme-list-item"
-        [class.theme-list-item--active]="preference() === 'dark'"
-        (click)="setMode('dark')"
-      >
-        <ion-icon [name]="preference() === 'dark' ? 'moon' : 'moon-outline'" class="theme-list-item__icon"></ion-icon>
-        <span class="theme-list-item__label">{{ 'appearance.dark' | translate }}</span>
-        <ion-icon [name]="preference() === 'dark' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="theme-list-item__check"></ion-icon>
+      <button class="segment-btn" [class.segment-btn--active]="preference() === 'dark'" (click)="setMode('dark')">
+        {{ 'appearance.dark' | translate }}
       </button>
-      <button
-        class="theme-list-item"
-        [class.theme-list-item--active]="preference() === 'auto'"
-        (click)="setMode('auto')"
-      >
-        <ion-icon [name]="preference() === 'auto' ? 'contrast' : 'contrast-outline'" class="theme-list-item__icon"></ion-icon>
-        <span class="theme-list-item__label">{{ 'appearance.system' | translate }}</span>
-        <ion-icon [name]="preference() === 'auto' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="theme-list-item__check"></ion-icon>
+      <button class="segment-btn" [class.segment-btn--active]="preference() === 'auto'" (click)="setMode('auto')">
+        {{ 'appearance.system' | translate }}
       </button>
     </div>
 
-    <!-- Tablet+: card grid -->
-    <div class="theme-grid">
-      <button
-        class="theme-card"
-        [class.theme-card--active]="preference() === 'light'"
-        (click)="setMode('light')"
-      >
-        <ion-icon [name]="preference() === 'light' ? 'sunny' : 'sunny-outline'" class="theme-card__icon"></ion-icon>
-        <span class="theme-card__name">{{ 'appearance.light' | translate }}</span>
+    <!-- SECTION 2: Thème sombre style (Atténué / Sombre) -->
+    <div class="ss-section-title">{{ 'appearance.dark_theme' | translate }}</div>
+    <div class="theme-segments">
+      <button class="segment-btn" [class.segment-btn--active]="darkThemeStyle() === 'dim'" (click)="setDarkThemeStyle('dim')">
+        {{ 'appearance.dark_theme.dim' | translate }}
       </button>
-      <button
-        class="theme-card"
-        [class.theme-card--active]="preference() === 'dark'"
-        (click)="setMode('dark')"
-      >
-        <ion-icon [name]="preference() === 'dark' ? 'moon' : 'moon-outline'" class="theme-card__icon"></ion-icon>
-        <span class="theme-card__name">{{ 'appearance.dark' | translate }}</span>
-      </button>
-      <button
-        class="theme-card"
-        [class.theme-card--active]="preference() === 'auto'"
-        (click)="setMode('auto')"
-      >
-        <ion-icon [name]="preference() === 'auto' ? 'contrast' : 'contrast-outline'" class="theme-card__icon"></ion-icon>
-        <span class="theme-card__name">{{ 'appearance.system' | translate }}</span>
+      <button class="segment-btn" [class.segment-btn--active]="darkThemeStyle() === 'black'" (click)="setDarkThemeStyle('black')">
+        {{ 'appearance.dark_theme.black' | translate }}
       </button>
     </div>
+
+    <!-- SECTION 3: Thème de fond (Brand Theme) -->
+    <div class="ss-section-title">{{ 'appearance.palette.label' | translate }}</div>
+    <div class="theme-segments">
+      <button class="segment-btn" [class.segment-btn--active]="palette() === 'bluesky'" (click)="setPalette('bluesky')">
+        {{ 'appearance.palette.bluesky' | translate }}
+      </button>
+      <button class="segment-btn" [class.segment-btn--active]="palette() === 'mu'" (click)="setPalette('mu')">
+        {{ 'appearance.palette.mu' | translate }}
+      </button>
+    </div>
+
+    <!-- SECTION 4: Accent Color -->
+    <div class="ss-section-title">{{ 'appearance.accent_color' | translate }}</div>
+    <div class="accent-picker">
+      <button class="accent-dot accent-dot--blue" [class.accent-dot--active]="accentColor() === 'blue'" (click)="setAccentColor('blue')" [attr.aria-label]="'appearance.accent.blue' | translate"></button>
+      <button class="accent-dot accent-dot--pink" [class.accent-dot--active]="accentColor() === 'pink'" (click)="setAccentColor('pink')" [attr.aria-label]="'appearance.accent.pink' | translate"></button>
+      <button class="accent-dot accent-dot--orange" [class.accent-dot--active]="accentColor() === 'orange'" (click)="setAccentColor('orange')" [attr.aria-label]="'appearance.accent.orange' | translate"></button>
+    </div>
+
+    <!-- SECTION 5: Police de caractère -->
+    <div class="ss-section-title">{{ 'appearance.font_family' | translate }}</div>
+    <div class="theme-segments">
+      <button class="segment-btn" [class.segment-btn--active]="fontFamily() === 'theme'" (click)="setFontFamily('theme')">
+        {{ 'appearance.font.theme' | translate }}
+      </button>
+      <button class="segment-btn" [class.segment-btn--active]="fontFamily() === 'system'" (click)="setFontFamily('system')">
+        {{ 'appearance.font.system' | translate }}
+      </button>
+    </div>
+
+    <!-- SECTION 6: Taille de police -->
+    <div class="ss-section-title">{{ 'appearance.font_size' | translate }}</div>
+    <div class="theme-segments">
+      <button class="segment-btn" [class.segment-btn--active]="fontSize() === 'small'" (click)="setFontSize('small')">
+        {{ 'appearance.font_size.small' | translate }}
+      </button>
+      <button class="segment-btn" [class.segment-btn--active]="fontSize() === 'default'" (click)="setFontSize('default')">
+        {{ 'appearance.font_size.default' | translate }}
+      </button>
+      <button class="segment-btn" [class.segment-btn--active]="fontSize() === 'large'" (click)="setFontSize('large')">
+        {{ 'appearance.font_size.large' | translate }}
+      </button>
+    </div>
+
   </div>
 </ion-content>
