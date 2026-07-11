@@ -105,7 +105,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
       } else if (url?.startsWith('/conversations')) {
         this.activeTab = 'conversations';
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   async ngOnInit(): Promise<void> {

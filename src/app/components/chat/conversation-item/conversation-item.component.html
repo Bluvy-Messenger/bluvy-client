@@ -1,4 +1,4 @@
-<button class="conv-item" (click)="open.emit()">
+<button class="conv-item" (click)="$any($event.currentTarget).blur(); open.emit()">
   <div class="conv-item__avatar">
     <app-avatar [src]="avatarSrc" [handle]="handle" size="lg"></app-avatar>
     <app-presence-indicator [online]="online"></app-presence-indicator>

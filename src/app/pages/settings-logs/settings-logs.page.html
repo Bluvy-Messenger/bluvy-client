@@ -1,0 +1,63 @@
+<div class="log-header">
+  <button class="log-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'journal.title' | translate }}</h1>
+
+  <div class="log-actions">
+    <button
+      class="log-action-btn"
+      (click)="copyLogs()"
+      [attr.aria-label]="'journal.copy' | translate"
+      [class.log-action-btn--success]="copied()"
+    >
+      <ion-icon [name]="copied() ? 'checkmark-outline' : 'document-text-outline'"></ion-icon>
+    </button>
+    <button
+      class="log-action-btn log-action-btn--danger"
+      (click)="clearLogs()"
+      [attr.aria-label]="'journal.clear' | translate"
+    >
+      <ion-icon name="trash-outline"></ion-icon>
+    </button>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="log-filters">
+  <button class="filter-btn" [class.filter-btn--active]="filter() === 'all'" (click)="setFilter('all')">
+    {{ 'journal.filter.all' | translate }}
+  </button>
+  <button class="filter-btn filter-btn--info" [class.filter-btn--active]="filter() === 'log'" (click)="setFilter('log')">
+    {{ 'journal.filter.info' | translate }}
+  </button>
+  <button class="filter-btn filter-btn--warn" [class.filter-btn--active]="filter() === 'warn'" (click)="setFilter('warn')">
+    {{ 'journal.filter.warn' | translate }}
+  </button>
+  <button class="filter-btn filter-btn--error" [class.filter-btn--active]="filter() === 'error'" (click)="setFilter('error')">
+    {{ 'journal.filter.error' | translate }}
+  </button>
+</div>
+
+<ion-content>
+  <div class="log-list">
+    @if (entries.length === 0) {
+      <div class="log-empty">
+        <ion-icon name="document-text-outline" class="log-empty__icon"></ion-icon>
+        <p>{{ 'journal.empty' | translate }}</p>
+      </div>
+    }
+    @for (entry of entries; track entry.id) {
+      <div class="log-entry" [class]="'log-entry--' + entry.level">
+        <div class="log-entry__header">
+          <span class="log-entry__tag">{{ entry.tag }}</span>
+          <span class="log-entry__time">{{ formatTime(entry.timestamp) }}</span>
+        </div>
+        <p class="log-entry__message">{{ entry.message }}</p>
+        @if (entry.detail) {
+          <pre class="log-entry__detail">{{ entry.detail }}</pre>
+        }
+      </div>
+    }
+  </div>
+</ion-content>

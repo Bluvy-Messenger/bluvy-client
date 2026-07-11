@@ -68,6 +68,11 @@ export const routes: Routes = [
         loadComponent: () =>
           import('../pages/about/about.page').then(m => m.AboutPage),
       },
+      {
+        path: 'about/log',
+        loadComponent: () =>
+          import('../pages/settings-logs/settings-logs.page').then(m => m.SettingsLogsPage),
+      },
       // Legacy route redirects
       {
         path: 'message',

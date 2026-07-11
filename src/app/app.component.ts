@@ -15,6 +15,7 @@ import {
   // landing + legal + about
   arrowForwardOutline, fingerPrintOutline, keyOutline,
   documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
+  chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
   // devices + security + settings
   laptopOutline, trashOutline, syncOutline,
   // language + beta + appearance
@@ -28,6 +29,7 @@ import { KeyPackageService } from './core/mls/key-package/key-package.service';
 import { MlsCoordinatorBase } from './core/mls/coordinator/mls-coordinator.base';
 import { ThemeService } from './core/theme/theme.service';
 import { NavigationRedirectService } from './core/auth/navigation-redirect.service';
+import { JournalService } from './core/journal/journal.service';
 
 @Component({
   selector: 'app-root',
@@ -44,6 +46,7 @@ export class AppComponent implements OnInit, OnDestroy {
   constructor() {
     inject(ThemeService);
     inject(NavigationRedirectService);
+    inject(JournalService); // Start console interception at boot
     addIcons({
       chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
       personOutline, chevronForwardOutline, phonePortraitOutline,
@@ -57,6 +60,7 @@ export class AppComponent implements OnInit, OnDestroy {
       laptopOutline, trashOutline, syncOutline,
       globe, globeOutline, flaskOutline,
       colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
+      chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
     });
   }
 

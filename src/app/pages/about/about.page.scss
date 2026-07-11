@@ -91,6 +91,7 @@ ion-content {
   padding: var(--space-1) 0;
   color: var(--color-text-primary);
   transition: opacity var(--duration-fast);
+  text-decoration: none;
   &:active { opacity: 0.7; }
 }
 
