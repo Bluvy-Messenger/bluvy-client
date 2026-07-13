@@ -8,7 +8,7 @@
   <base href="/"/>
 
   <meta name="color-scheme" content="light dark"/>
-  <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0"/>
   <meta name="format-detection" content="telephone=no"/>
   <meta name="msapplication-tap-highlight" content="no"/>
   <meta name="description" content="Bluvy Messenger — messagerie privée chiffrée de bout en bout, basée sur Bluesky."/>
@@ -26,7 +26,19 @@
 
   <link rel="icon" type="image/png" href="assets/icon/favicon.png"/>
 
-  <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdn.bsky.app; connect-src 'self' http://localhost:3000 ws://localhost:3000 https://api.skychat.app wss://api.skychat.app https://public.api.bsky.app https://plc.directory; object-src 'none'; base-uri 'self'; form-action 'self';" /> -->
+  <!--
+    CSP kept commented out for now — the drafted policy below referenced a stale API
+    domain (api.skychat.app instead of bluvy.app, see src/environments/environment.prod.ts)
+    and, more importantly, AT Protocol login is federated: @atproto/oauth-client-browser
+    can need to reach an arbitrary user PDS domain during sign-in, which a fixed
+    connect-src allowlist would block for anyone not on bsky.social/eurosky. Enabling
+    this needs either a wildcard/dynamic connect-src for PDS traffic or a report-only
+    rollout verified against a real login flow before enforcing — not done here since
+    this session has no browser to test against (see audit method limitations).
+    Domain list below is corrected for reference: bluvy.app (API/socket), api.qrserver.com
+    (QR code image), cdn.bsky.app (avatars), public.api.bsky.app + plc.directory (AT Proto).
+  -->
+  <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdn.bsky.app https://api.qrserver.com; connect-src 'self' http://localhost:3000 ws://localhost:3000 https://bluvy.app wss://bluvy.app https://public.api.bsky.app https://plc.directory; object-src 'none'; base-uri 'self'; form-action 'self';" /> -->
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">

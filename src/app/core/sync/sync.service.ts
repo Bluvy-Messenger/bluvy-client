@@ -441,6 +441,13 @@ export class SyncService {
             switch (type) {
               case 'message': {
                 const p     = raw as unknown as SyncMessagePlaintext;
+
+                // Respect a local-only "Clear Local History" on this device: don't let
+                // the backup silently repopulate messages the user cleared here, while
+                // still allowing genuine multi-device restores of everything else.
+                const clearedAt = this.messageCacheSvc.getHistoryClearedAt(p.conversationId);
+                if (clearedAt !== null && p.createdAt <= clearedAt) break;
+
                 const isMine = p.senderDid !== undefined
                   ? p.senderDid === this.userDid
                   : false;

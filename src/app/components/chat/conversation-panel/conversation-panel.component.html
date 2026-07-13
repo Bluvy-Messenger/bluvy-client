@@ -19,7 +19,7 @@
     }
   </div>
 
-  <div class="panel__messages" #messagesContainer>
+  <div class="panel__messages" #messagesContainer role="log" aria-live="polite" aria-relevant="additions">
     @if (loading) {
       <div class="panel__loading">
         <div class="spinner"></div>

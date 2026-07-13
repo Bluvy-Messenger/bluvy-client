@@ -22,4 +22,5 @@ export class AboutPage {
   }
 
   navigate(path: string): void { void this.router.navigate([path]); }
+  openLog(): void { void this.router.navigate([ROUTES.aboutLog]); }
 }

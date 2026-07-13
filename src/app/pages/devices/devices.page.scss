@@ -5,7 +5,12 @@
   background: var(--color-bg);
 }
 
-ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
+ion-content {
+  --background: var(--color-bg);
+  --padding-top: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
 
 .ss-header {
   display: flex;
@@ -30,9 +35,12 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
   border: none;
   cursor: pointer;
   padding: var(--space-1);
+  min-width: 44px;
+  min-height: 44px;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
+  justify-content: center;
   border-radius: var(--radius-full);
   flex-shrink: 0;
 
@@ -119,7 +127,7 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
     font-size: var(--text-xs);
     font-weight: var(--weight-medium);
     color: var(--color-primary);
-    background: rgba(10, 124, 255, 0.1);
+    background: var(--color-interactive-active);
     border-radius: var(--radius-full);
     padding: 2px 8px;
   }
@@ -184,6 +192,7 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
   align-items: center;
   justify-content: center;
   min-width: 44px;
+  min-height: 44px;
 
   &:disabled { opacity: 0.5; cursor: default; }
   &:not(:disabled):active { opacity: 0.8; }
@@ -198,11 +207,21 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
   color: var(--color-text-secondary);
   cursor: pointer;
   border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
 
   &:active { background: var(--color-interactive-hover); }
 }
 
 // ── Misc ──────────────────────────────────────────────────────────────────────
+
+.devices-revoke-all {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
 
 .devices-hint {
   display: flex;

@@ -1,100 +1,110 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>{{ 'recovery_unlock.title' | translate }}</ion-title>
-  </ion-toolbar>
-</ion-header>
-
-<ion-content class="ion-padding">
-
+<ion-content class="pin-page-content">
   @if (step === 'key') {
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>{{ 'recovery_unlock.key.title' | translate }}</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        <p>{{ 'recovery_unlock.key.desc' | translate }}</p>
+    <div class="pin-page">
+      <div class="pin-page__hero">
+        <ion-icon name="key-outline" class="pin-page__icon"></ion-icon>
+        <h1 class="pin-page__title">{{ 'recovery_unlock.key.title' | translate }}</h1>
+        <p class="pin-page__subtitle">{{ 'recovery_unlock.key.desc' | translate }}</p>
+      </div>
 
-        <ion-input
-          [value]="recoveryInput"
-          (ionInput)="onRecoveryInput($event)"
-          [placeholder]="'recovery_unlock.key.placeholder' | translate"
-          type="text"
-          autocorrect="off"
-          autocapitalize="none"
-          spellcheck="false"
-          style="margin: 12px 0;"
-        ></ion-input>
+      <div class="pin-page__form">
+        <div class="form-field">
+          <label class="form-field__label" for="recovery-key-input">{{ 'recovery_unlock.key.placeholder' | translate }}</label>
+          <input
+            id="recovery-key-input"
+            class="form-field__input"
+            type="text"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            [value]="recoveryInput"
+            (input)="recoveryInput = $any($event.target).value"
+            [attr.aria-invalid]="error ? 'true' : null"
+            [attr.aria-describedby]="error ? 'recovery-key-error' : null"
+          />
+        </div>
 
         @if (error) {
-          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+          <p class="form-error" id="recovery-key-error" role="alert">{{ error }}</p>
         }
 
-        <ion-button
-          expand="block"
+        <button
+          type="button"
+          class="primary-btn"
           [disabled]="working || !recoveryInput.trim()"
           (click)="onUnlockWithRecovery()">
           @if (working) {
-            <ion-spinner name="crescent"></ion-spinner>
+            <div class="spinner spinner--sm"></div>
           } @else {
             {{ 'recovery_unlock.key.submit' | translate }}
           }
-        </ion-button>
-      </ion-card-content>
-    </ion-card>
+        </button>
+      </div>
+    </div>
   }
 
   @if (step === 'pin') {
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>{{ 'recovery_unlock.pin.title' | translate }}</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        <p>{{ 'recovery_unlock.pin.desc' | translate }}</p>
+    <div class="pin-page">
+      <div class="pin-page__hero">
+        <ion-icon name="lock-closed-outline" class="pin-page__icon"></ion-icon>
+        <h1 class="pin-page__title">{{ 'recovery_unlock.pin.title' | translate }}</h1>
+        <p class="pin-page__subtitle">{{ 'recovery_unlock.pin.desc' | translate }}</p>
+      </div>
 
-        <ion-input
-          [value]="pin"
-          (ionInput)="onPinInput($event)"
-          [placeholder]="'recovery_unlock.pin.new' | translate"
-          type="password"
-          inputmode="numeric"
-          maxlength="8"
-          style="margin: 12px 0 8px;"
-        ></ion-input>
+      <div class="pin-page__form">
+        <div class="form-field">
+          <label class="form-field__label" for="recovery-pin-input">{{ 'recovery_unlock.pin.new' | translate }}</label>
+          <input
+            id="recovery-pin-input"
+            class="form-field__input"
+            type="password"
+            inputmode="numeric"
+            autocomplete="new-password"
+            maxlength="8"
+            [value]="pin"
+            (input)="pin = $any($event.target).value"
+            [attr.aria-invalid]="error ? 'true' : null"
+            [attr.aria-describedby]="error ? 'recovery-pin-error' : null"
+          />
+        </div>
 
-        <ion-input
-          [value]="pinConfirm"
-          (ionInput)="onPinConfirmInput($event)"
-          [placeholder]="'recovery_unlock.pin.confirm' | translate"
-          type="password"
-          inputmode="numeric"
-          maxlength="8"
-          style="margin-bottom: 12px;"
-        ></ion-input>
+        <div class="form-field">
+          <label class="form-field__label" for="recovery-pin-confirm-input">{{ 'recovery_unlock.pin.confirm' | translate }}</label>
+          <input
+            id="recovery-pin-confirm-input"
+            class="form-field__input"
+            type="password"
+            inputmode="numeric"
+            autocomplete="new-password"
+            maxlength="8"
+            [value]="pinConfirm"
+            (input)="pinConfirm = $any($event.target).value"
+            [attr.aria-invalid]="error ? 'true' : null"
+            [attr.aria-describedby]="error ? 'recovery-pin-error' : null"
+          />
+        </div>
 
         @if (error) {
-          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+          <p class="form-error" id="recovery-pin-error" role="alert">{{ error }}</p>
         }
 
-        <ion-button
-          expand="block"
+        <button
+          type="button"
+          class="primary-btn"
           [disabled]="working || !pin || !pinConfirm"
           (click)="onSetNewPin()">
           @if (working) {
-            <ion-spinner name="crescent"></ion-spinner>
+            <div class="spinner spinner--sm"></div>
           } @else {
             {{ 'recovery_unlock.pin.submit' | translate }}
           }
-        </ion-button>
+        </button>
 
-        <ion-button
-          expand="block"
-          fill="clear"
-          style="margin-top: 8px;"
-          (click)="onSkipPin()">
+        <button type="button" class="text-btn" (click)="onSkipPin()">
           {{ 'recovery_unlock.pin.skip' | translate }}
-        </ion-button>
-      </ion-card-content>
-    </ion-card>
+        </button>
+      </div>
+    </div>
   }
-
 </ion-content>

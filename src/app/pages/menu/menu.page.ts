@@ -17,6 +17,10 @@ export class MenuPage {
   auth           = inject(AuthService);
   private router = inject(Router);
 
+  openProfile(): void {
+    void this.router.navigate([ROUTES.profile]);
+  }
+
   openSecurity(): void {
     void this.router.navigate([ROUTES.security]);
   }

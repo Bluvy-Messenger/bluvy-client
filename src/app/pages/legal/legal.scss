@@ -5,7 +5,12 @@
   background: var(--color-bg);
 }
 
-ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
+ion-content {
+  --background: var(--color-bg);
+  --padding-top: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
 
 .ss-header {
   display: flex;
@@ -30,9 +35,12 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
   border: none;
   cursor: pointer;
   padding: var(--space-1);
+  min-width: 44px;
+  min-height: 44px;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
+  justify-content: center;
   border-radius: var(--radius-full);
   flex-shrink: 0;
 
@@ -167,7 +175,7 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
 }
 
 .legal-highlight {
-  background: rgba(10, 124, 255, 0.06);
+  background: var(--color-interactive-hover);
   border-left: 3px solid var(--color-primary);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   padding: var(--space-3) var(--space-4);

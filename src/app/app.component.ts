@@ -2,10 +2,12 @@ import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
 import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
+import { ConnectivityService } from './core/infrastructure/connectivity.service';
+import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
 import { addIcons } from 'ionicons';
 import {
-  chatbubbleOutline, peopleOutline, menuOutline, searchOutline,
+  chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
   personOutline, chevronForwardOutline, phonePortraitOutline,
   shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
   logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
@@ -15,10 +17,14 @@ import {
   // landing + legal + about
   arrowForwardOutline, fingerPrintOutline, keyOutline,
   documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
+  chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
   // devices + security + settings
   laptopOutline, trashOutline, syncOutline,
-  // language + beta
+  // language + beta + appearance
   globe, globeOutline, flaskOutline,
+  colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
+  ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
+  archiveOutline, folderOpenOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -27,11 +33,13 @@ import { KeyPackageService } from './core/mls/key-package/key-package.service';
 import { MlsCoordinatorBase } from './core/mls/coordinator/mls-coordinator.base';
 import { ThemeService } from './core/theme/theme.service';
 import { NavigationRedirectService } from './core/auth/navigation-redirect.service';
+import { JournalService } from './core/journal/journal.service';
 
 @Component({
   selector: 'app-root',
   templateUrl: 'app.component.html',
-  imports: [IonApp, IonRouterOutlet],
+  styleUrl: 'app.component.scss',
+  imports: [IonApp, IonRouterOutlet, TranslatePipe],
 })
 export class AppComponent implements OnInit, OnDestroy {
   private authSvc      = inject(AuthService);
@@ -39,12 +47,14 @@ export class AppComponent implements OnInit, OnDestroy {
   private provisionSvc = inject(DeviceProvisioningService);
   private kpSvc        = inject(KeyPackageService);
   private coordinator  = inject(MlsCoordinatorBase);
+  readonly connectivitySvc = inject(ConnectivityService);
 
   constructor() {
     inject(ThemeService);
     inject(NavigationRedirectService);
+    inject(JournalService); // Start console interception at boot
     addIcons({
-      chatbubbleOutline, peopleOutline, menuOutline, searchOutline,
+      chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
       personOutline, chevronForwardOutline, phonePortraitOutline,
       shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
       logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
@@ -55,6 +65,10 @@ export class AppComponent implements OnInit, OnDestroy {
       documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
       laptopOutline, trashOutline, syncOutline,
       globe, globeOutline, flaskOutline,
+      colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
+      chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
+      ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
+      archiveOutline, folderOpenOutline,
     });
   }
 

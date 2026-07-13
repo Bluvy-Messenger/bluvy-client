@@ -19,9 +19,10 @@ import { ApiClientService } from '../infrastructure/api-client.service';
 export class ConversationRepository {
   private apiClient = inject(ApiClientService);
 
-  getConversations(cursor?: string, limit = 20): Observable<ConversationsPage> {
+  getConversations(cursor?: string, limit = 20, archived?: boolean): Observable<ConversationsPage> {
     const params: Record<string, string> = { limit: String(limit) };
     if (cursor) params['cursor'] = cursor;
+    if (archived !== undefined) params['archived'] = String(archived);
     return from(this.apiClient.get<ConversationsPage>('/v1/conversations', { params })).pipe(
       map(mapConversationsPage),
     );
@@ -48,5 +49,13 @@ export class ConversationRepository {
     )).pipe(
       map(mapMessagesPage),
     );
+  }
+
+  deleteConversation(id: string): Observable<void> {
+    return from(this.apiClient.delete<void>(`/v1/conversations/${encodeURIComponent(id)}`));
+  }
+
+  archiveConversation(id: string, archived: boolean): Observable<void> {
+    return from(this.apiClient.post<void>(`/v1/conversations/${encodeURIComponent(id)}/archive`, { archived }));
   }
 }

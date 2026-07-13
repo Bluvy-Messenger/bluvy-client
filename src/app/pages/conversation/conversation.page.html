@@ -24,6 +24,13 @@
     } @else {
       <ion-title>{{ 'conversation.fallback' | translate }}</ion-title>
     }
+    @if (conversation) {
+      <ion-buttons slot="end">
+        <ion-button (click)="openPopover($event)" [attr.aria-label]="'conversation.options' | translate">
+          <ion-icon slot="icon-only" name="ellipsis-vertical-outline"></ion-icon>
+        </ion-button>
+      </ion-buttons>
+    }
   </ion-toolbar>
 </ion-header>
 
@@ -37,20 +44,36 @@
       <ion-text color="danger">{{ error }}</ion-text>
     </div>
   } @else {
-    <div class="messages-list">
-      @for (msg of displayMessages; track msg.id; let i = $index) {
-        @if (getDateSeparator(i); as label) {
-          <div class="date-sep">{{ label }}</div>
+    @if (displayMessages.length === 0) {
+      <div class="chat-empty">
+        <app-avatar
+          [src]="conversation?.participant?.avatarUrl ?? null"
+          [handle]="conversation?.participant?.handle ?? ''"
+          size="xl"
+        ></app-avatar>
+        <h2 class="chat-empty__name">{{ conversation?.participant?.displayName || conversation?.participant?.handle }}</h2>
+        <span class="chat-empty__handle">&#64;{{ conversation?.participant?.handle }}</span>
+        <p class="chat-empty__subtitle">
+          {{ 'conversation.empty_chat_desc' | translate : { handle: conversation?.participant?.handle || '' } }}
+        </p>
+      </div>
+    } @else {
+      <div class="messages-list" role="log" aria-live="polite" aria-relevant="additions">
+        @for (msg of displayMessages; track msg.id; let i = $index) {
+          @if (getDateSeparator(i); as label) {
+            <div class="date-sep">{{ label }}</div>
+          }
+          <app-message-bubble
+            [text]="msg.displayText"
+            [isMine]="msg.isMine"
+            [timestamp]="msg.createdAt"
+            [pending]="msg.pending"
+            [position]="getMessagePosition(i)"
+            [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+          ></app-message-bubble>
         }
-        <app-message-bubble
-          [text]="msg.displayText"
-          [isMine]="msg.isMine"
-          [timestamp]="msg.createdAt"
-          [pending]="msg.pending"
-          [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
-        ></app-message-bubble>
-      }
-    </div>
+      </div>
+    }
 
     @if ((typingUsers$ | async)?.length) {
       <app-typing-indicator
@@ -89,3 +112,41 @@
     (send)="sendMessage($event)"
   ></app-message-composer>
 </ion-footer>
+
+<ion-popover #optionsPopover dismissOnSelect="true" [keepContentsMounted]="true">
+  <ng-template>
+    <div class="popover-menu">
+      <button class="popover-item" (click)="viewProfile()">
+        <ion-icon name="person-outline" class="popover-item__icon"></ion-icon>
+        <span class="popover-item__label">{{ 'conversation.action.profile' | translate }}</span>
+      </button>
+      @if (environment.features.muteConversation) {
+        <button class="popover-item" (click)="toggleMute()">
+          <ion-icon [name]="isMuted() ? 'volume-high-outline' : 'volume-mute-outline'" class="popover-item__icon"></ion-icon>
+          <span class="popover-item__label">{{ (isMuted() ? 'conversation.action.unmute' : 'conversation.action.mute') | translate }}</span>
+        </button>
+      }
+      @if (conversation?.archived) {
+        <button class="popover-item" (click)="toggleArchive()">
+          <ion-icon name="folder-open-outline" class="popover-item__icon"></ion-icon>
+          <span class="popover-item__label">{{ 'conversation.action.unarchive' | translate }}</span>
+        </button>
+      } @else {
+        <button class="popover-item" (click)="toggleArchive()">
+          <ion-icon name="archive-outline" class="popover-item__icon"></ion-icon>
+          <span class="popover-item__label">{{ 'conversation.action.archive' | translate }}</span>
+        </button>
+      }
+      <button class="popover-item popover-item--danger" (click)="clearLocalHistoryPrompt()">
+        <ion-icon name="trash-outline" class="popover-item__icon"></ion-icon>
+        <span class="popover-item__label">{{ 'conversation.action.clear_history' | translate }}</span>
+      </button>
+      @if (environment.features.deleteConversation) {
+        <button class="popover-item popover-item--danger" (click)="deleteConversationPrompt()">
+          <ion-icon name="ban-outline" class="popover-item__icon"></ion-icon>
+          <span class="popover-item__label">{{ 'conversation.action.delete' | translate }}</span>
+        </button>
+      }
+    </div>
+  </ng-template>
+</ion-popover>

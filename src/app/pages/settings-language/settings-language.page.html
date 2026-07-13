@@ -9,45 +9,24 @@
   <div class="ss-content">
     <p class="lang-label">{{ 'settings.language.label' | translate }}</p>
 
-    <!-- Mobile: checkbox list -->
-    <div class="lang-list">
+    <div class="theme-segments" role="radiogroup">
       <button
-        class="lang-list-item"
-        [class.lang-list-item--active]="i18n.locale === 'fr'"
+        class="segment-btn"
+        role="radio"
+        [attr.aria-checked]="i18n.locale === 'fr'"
+        [class.segment-btn--active]="i18n.locale === 'fr'"
         (click)="setLocale('fr')"
       >
-        <ion-icon [name]="i18n.locale === 'fr' ? 'globe' : 'globe-outline'" class="lang-list-item__icon"></ion-icon>
-        <span class="lang-list-item__label">Français</span>
-        <ion-icon [name]="i18n.locale === 'fr' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="lang-list-item__check"></ion-icon>
+        Français
       </button>
       <button
-        class="lang-list-item"
-        [class.lang-list-item--active]="i18n.locale === 'en'"
+        class="segment-btn"
+        role="radio"
+        [attr.aria-checked]="i18n.locale === 'en'"
+        [class.segment-btn--active]="i18n.locale === 'en'"
         (click)="setLocale('en')"
       >
-        <ion-icon [name]="i18n.locale === 'en' ? 'globe' : 'globe-outline'" class="lang-list-item__icon"></ion-icon>
-        <span class="lang-list-item__label">English</span>
-        <ion-icon [name]="i18n.locale === 'en' ? 'checkmark-circle' : 'checkmark-circle-outline'" class="lang-list-item__check"></ion-icon>
-      </button>
-    </div>
-
-    <!-- Tablet+: card grid -->
-    <div class="lang-grid">
-      <button
-        class="lang-card"
-        [class.lang-card--active]="i18n.locale === 'fr'"
-        (click)="setLocale('fr')"
-      >
-        <ion-icon [name]="i18n.locale === 'fr' ? 'globe' : 'globe-outline'" class="lang-card__icon"></ion-icon>
-        <span class="lang-card__name">Français</span>
-      </button>
-      <button
-        class="lang-card"
-        [class.lang-card--active]="i18n.locale === 'en'"
-        (click)="setLocale('en')"
-      >
-        <ion-icon [name]="i18n.locale === 'en' ? 'globe' : 'globe-outline'" class="lang-card__icon"></ion-icon>
-        <span class="lang-card__name">English</span>
+        English
       </button>
     </div>
   </div>

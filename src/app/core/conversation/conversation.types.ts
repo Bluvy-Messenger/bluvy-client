@@ -23,6 +23,7 @@ export interface ConversationListItem {
   lastMessageSenderDid: string | null;
   unreadCount:          number;
   participant:          ConversationParticipant;
+  archived?:            boolean;
 }
 
 export type ConversationsPage = Paginated<ConversationListItem>;

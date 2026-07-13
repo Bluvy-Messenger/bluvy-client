@@ -40,4 +40,5 @@ export interface IMessageStore {
   updateSenderDid(id: string, senderDid: string, isMine: boolean): Promise<boolean>;
   delete(id: string): Promise<void>;
   clear(): Promise<void>;
+  clearConversation(conversationId: string): Promise<void>;
 }

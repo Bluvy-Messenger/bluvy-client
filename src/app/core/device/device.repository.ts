@@ -22,4 +22,8 @@ export class DeviceRepository {
   async revokeDevice(deviceId: string): Promise<void> {
     await this.apiClient.delete<void>(`/v1/devices/${deviceId}`);
   }
+
+  async revokeAllDevices(): Promise<{ revokedCount: number }> {
+    return this.apiClient.delete<{ revokedCount: number }>('/v1/devices');
+  }
 }

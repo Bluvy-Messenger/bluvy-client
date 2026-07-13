@@ -36,9 +36,12 @@ ion-content {
   border: none;
   cursor: pointer;
   padding: var(--space-1);
+  min-width: 44px;
+  min-height: 44px;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
+  justify-content: center;
   border-radius: var(--radius-full);
   flex-shrink: 0;
 
@@ -81,7 +84,8 @@ ion-content {
 
 .ss-block {
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
@@ -122,19 +126,28 @@ ion-content {
 
 .ss-input {
   width: 100%;
-  padding: 13px var(--space-3);
+  padding: 11px var(--space-3);
   box-sizing: border-box;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  border-radius: 10px;
   font-family: var(--font-sans);
   font-size: var(--text-base);
-  background: var(--color-bg);
+  background: var(--color-search-bg);
   color: var(--color-text-primary);
-  outline: none;
-  transition: border-color var(--duration-fast);
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
 
   &::placeholder { color: var(--color-text-secondary); }
-  &:focus { border-color: var(--color-primary); }
+
+  &:hover {
+    border-color: var(--color-border);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-interactive-focus-bg);
+    border-color: var(--color-primary);
+    box-shadow: var(--focus-ring);
+  }
 }
 
 // ── Buttons ───────────────────────────────────────────────────────────────

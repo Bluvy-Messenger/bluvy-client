@@ -152,6 +152,22 @@ export class MessageCacheService {
     await this.keyStore.clearKey();
   }
 
+  async clearConversation(conversationId: string): Promise<void> {
+    await this.msgStore.clearConversation(conversationId);
+    localStorage.setItem(this.historyClearedKey(conversationId), String(Date.now()));
+  }
+
+  // Watermark set by clearConversation(): gap-fill must not re-decrypt server
+  // messages older than this — their MLS ratchet generation is already consumed.
+  getHistoryClearedAt(conversationId: string): number | null {
+    const raw = localStorage.getItem(this.historyClearedKey(conversationId));
+    return raw === null ? null : Number(raw);
+  }
+
+  private historyClearedKey(conversationId: string): string {
+    return 'history_cleared_' + conversationId;
+  }
+
   // ── Private ────────────────────────────────────────────────────────────────
 
   private async encryptMessage(

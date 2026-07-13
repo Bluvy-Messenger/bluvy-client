@@ -20,6 +20,7 @@ import { ContactsService } from '../../../core/contact/contacts.service';
 import type { Contact, BlueskyProfile } from '../../../core/contact/contact.types';
 import { MlsCoordinatorBase } from '../../../core/mls/coordinator/mls-coordinator.base';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslationService } from '../../../core/i18n/translation.service';
 import { ROUTES } from '../../../core/routes';
 import { environment } from '../../../../environments/environment';
 
@@ -50,10 +51,12 @@ export class SidebarListComponent implements OnInit, OnDestroy {
   readonly bpSvc       = inject(BreakpointService);
   private contactsSvc  = inject(ContactsService);
   private coordinator  = inject(MlsCoordinatorBase);
+  private i18n         = inject(TranslationService);
 
   conversations: ConversationListItem[] = [];
   loading = false;
   error   = '';
+  viewingArchived = false;
 
   activeTab: 'conversations' | 'contacts' = 'conversations';
 
@@ -105,11 +108,25 @@ export class SidebarListComponent implements OnInit, OnDestroy {
       } else if (url?.startsWith('/conversations')) {
         this.activeTab = 'conversations';
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   async ngOnInit(): Promise<void> {
     this.setupSocketSubs();
+    this.subs.add(
+      this.convSvc.conversationDeleted$.subscribe(deletedId => {
+        this.conversations = this.conversations.filter(c => c.id !== deletedId);
+      })
+    );
+    this.subs.add(
+      this.convSvc.conversationArchived$.subscribe(event => {
+        if (event.archived) {
+          this.conversations = this.conversations.filter(c => c.id !== event.id);
+        } else {
+          void this.load();
+        }
+      })
+    );
     this.periodicTimer = setInterval(() => void this.load(), SYNC_INTERVAL_MS);
     await this.load();
   }
@@ -124,7 +141,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error   = '';
     try {
-      const page = await firstValueFrom(this.convSvc.getConversations(undefined, 50));
+      const page = await firstValueFrom(this.convSvc.getConversations(undefined, 50, this.viewingArchived));
       this.conversations = page.data;
 
       const counts: Record<string, number> = {};
@@ -162,6 +179,16 @@ export class SidebarListComponent implements OnInit, OnDestroy {
 
   openMenu(): void {
     void this.router.navigate([ROUTES.menu]);
+  }
+
+  openArchives(): void {
+    this.viewingArchived = true;
+    void this.load();
+  }
+
+  closeArchives(): void {
+    this.viewingArchived = false;
+    void this.load();
   }
 
   async loadContacts(): Promise<void> {
@@ -227,15 +254,16 @@ export class SidebarListComponent implements OnInit, OnDestroy {
 
   formatTime(ts: number | null): string {
     if (!ts) return '';
-    const d   = new Date(ts);
-    const now = new Date();
+    const d      = new Date(ts);
+    const now    = new Date();
+    const locale = this.i18n.locale === 'fr' ? 'fr-FR' : 'en-US';
     if (d.toDateString() === now.toDateString()) {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     }
     if (now.getTime() - d.getTime() < 7 * 24 * 60 * 60 * 1000) {
-      return d.toLocaleDateString([], { weekday: 'short' });
+      return d.toLocaleDateString(locale, { weekday: 'short' });
     }
-    return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
   }
 
   private setupSocketSubs(): void {
