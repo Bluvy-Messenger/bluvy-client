@@ -5,7 +5,12 @@
   background: var(--color-bg);
 }
 
-ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
+ion-content {
+  --background: var(--color-bg);
+  --padding-top: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
 
 .ss-header {
   display: flex;
@@ -30,9 +35,12 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
   border: none;
   cursor: pointer;
   padding: var(--space-1);
+  min-width: 44px;
+  min-height: 44px;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
+  justify-content: center;
   border-radius: var(--radius-full);
   flex-shrink: 0;
 
@@ -65,11 +73,11 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
 
 .ss-block {
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
 }
 
 .settings-row {
@@ -77,16 +85,32 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  background: none;
+  background: transparent;
   border: none;
+  border-bottom: 1px solid var(--color-border);
   cursor: pointer;
-  padding: var(--space-1) 0;
+  padding: 14px var(--space-4);
   color: var(--color-text-primary);
-  transition: opacity var(--duration-fast);
-  &:active { opacity: 0.7; }
+  transition: background var(--duration-fast) ease, opacity var(--duration-fast) ease;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: var(--color-interactive-hover);
+  }
+
+  &:active {
+    background: var(--color-interactive-active);
+  }
 }
 
-.settings-row__icon { color: var(--color-text-secondary); font-size: 22px; flex-shrink: 0; }
+.settings-row__icon {
+  color: var(--color-text-secondary);
+  font-size: 22px;
+  flex-shrink: 0;
+}
 
 .settings-row__body {
   flex: 1;
@@ -109,4 +133,8 @@ ion-content { --padding-top: 0; --padding-start: 0; --padding-end: 0; }
   color: var(--color-text-secondary);
 }
 
-.settings-row__chevron { color: var(--color-text-secondary); font-size: 20px; flex-shrink: 0; }
+.settings-row__chevron {
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  flex-shrink: 0;
+}

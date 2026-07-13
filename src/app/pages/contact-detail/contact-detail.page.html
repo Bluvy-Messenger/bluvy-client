@@ -2,73 +2,188 @@
   <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
     <ion-icon name="chevron-back-outline"></ion-icon>
   </button>
-  <h1>{{ 'contacts.title' | translate }}</h1>
+  <h1>{{ contact?.displayName || blueskyProfile?.displayName || contact?.handle || blueskyProfile?.handle || ('contacts.title' | translate) }}</h1>
 </div>
 
 <ion-content>
-  <div class="profile-wrapper">
-    @if (loading) {
-      <div class="loading-center">
-        <div class="spinner"></div>
+  @if (loading) {
+    <div class="loading-center">
+      <div class="spinner"></div>
+    </div>
+  } @else if (error) {
+    <div class="ion-text-center ion-padding">
+      <p style="color: var(--color-danger)">{{ error }}</p>
+    </div>
+  } @else if (contact || blueskyProfile) {
+    <div class="profile-container">
+      <!-- Banner Area -->
+      <div class="profile-banner">
+        <div class="profile-banner__gradient"></div>
       </div>
-    } @else if (error) {
-      <div class="ion-text-center ion-padding">
-        <p style="color: var(--color-danger)">{{ error }}</p>
-      </div>
-    } @else if (contact || blueskyProfile) {
-      <div class="profile-card">
-        <div class="profile-card__avatar">
-          <app-avatar
-            [src]="contact?.avatarUrl || blueskyProfile?.avatarUrl || null"
-            [handle]="contact?.handle || blueskyProfile?.handle || ''"
-            size="xl"
-          ></app-avatar>
+
+      <!-- Avatar & Core Info -->
+      <div class="profile-header">
+        <div class="profile-header__top-row">
+          <div class="profile-header__avatar-container">
+            <app-avatar
+              [src]="contact?.avatarUrl || blueskyProfile?.avatarUrl || null"
+              [handle]="contact?.handle || blueskyProfile?.handle || ''"
+              size="xl"
+            ></app-avatar>
+          </div>
+          
+          <div class="profile-header__primary-actions">
+            @if (contact) {
+              <button class="btn-primary" [disabled]="openingConv" (click)="openMessage()">
+                @if (openingConv) {
+                  <div class="spinner spinner--sm spinner--light"></div>
+                } @else {
+                  <ion-icon name="chatbubble-outline"></ion-icon>
+                  <span>{{ 'contacts.message' | translate }}</span>
+                }
+              </button>
+            } @else if (blueskyProfile) {
+              <button class="btn-primary btn-primary--invite" [disabled]="inviting" (click)="invite()">
+                @if (inviting) {
+                  <div class="spinner spinner--sm"></div>
+                } @else {
+                  <ion-icon name="paper-plane-outline"></ion-icon>
+                  <span>{{ 'contacts.invite' | translate }}</span>
+                }
+              </button>
+            }
+          </div>
         </div>
 
-        <div class="profile-card__info">
-          <span class="profile-card__name">
+        <div class="profile-header__details">
+          <h2 class="profile-header__name">
             {{ contact?.displayName || blueskyProfile?.displayName || contact?.handle || blueskyProfile?.handle }}
-          </span>
-          <span class="profile-card__handle">&#64;{{ contact?.handle || blueskyProfile?.handle }}</span>
+          </h2>
+          <span class="profile-header__handle">&#64;{{ contact?.handle || blueskyProfile?.handle }}</span>
         </div>
+      </div>
 
-        <div class="profile-card__actions">
-          @if (contact) {
-            <button class="action-btn" [disabled]="openingConv" (click)="openMessage()">
-              @if (openingConv) {
-                <div class="spinner spinner--sm"></div>
-              } @else {
-                <ion-icon name="chatbubble-outline"></ion-icon>
-                <span>{{ 'contacts.message' | translate }}</span>
-              }
-            </button>
-          } @else if (blueskyProfile) {
-            <button class="action-btn action-btn--invite" [disabled]="inviting" (click)="invite()">
-              @if (inviting) {
-                <div class="spinner spinner--sm"></div>
-              } @else {
-                <ion-icon name="paper-plane-outline"></ion-icon>
-                <span>{{ 'contacts.invite' | translate }}</span>
-              }
-            </button>
-          }
+      <!-- Biography / Description -->
+      @if (bio) {
+        <div class="profile-section">
+          <p class="profile-bio">{{ bio }}</p>
         </div>
+      }
+
+      <!-- Profile Body (Single Column Blocks) -->
+      <div class="profile-body">
+        
+        <!-- Security MLS -->
+        @if (contact) {
+          <div class="profile-card-section">
+            <h3 class="profile-section-title">{{ 'contact_detail.security' | translate }}</h3>
+            <div class="profile-card-box">
+              <div class="info-row">
+                <ion-icon name="shield-checkmark-outline" class="info-icon info-icon--active"></ion-icon>
+                <div class="info-text">
+                  <h4>{{ 'contact_detail.encryption' | translate }}</h4>
+                  <p>MLS (Messaging Layer Security)</p>
+                </div>
+              </div>
+              <div class="info-divider"></div>
+              <div class="info-row">
+                <ion-icon name="finger-print-outline" class="info-icon"></ion-icon>
+                <div class="info-text">
+                  <h4>{{ 'contact_detail.safety_number' | translate }}</h4>
+                  <p class="safety-code">{{ getSafetyNumber() }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Liens partagés -->
+        @if (contact) {
+          <div class="profile-card-section">
+            <h3 class="profile-section-title">{{ 'contact_detail.shared_links' | translate }}</h3>
+            <div class="profile-card-box">
+              @if (sharedLinks.length === 0) {
+                <div class="links-empty">
+                  <ion-icon name="link-outline" class="links-empty__icon"></ion-icon>
+                  <p>{{ 'contact_detail.no_shared_links' | translate }}</p>
+                </div>
+              } @else {
+                <div class="links-list-wrapper">
+                  <div class="links-list">
+                    @for (link of sharedLinks; track link) {
+                      <a [href]="link" target="_blank" rel="noopener noreferrer" class="link-row">
+                        <ion-icon name="document-text-outline" class="link-icon"></ion-icon>
+                        <span class="link-url">{{ link }}</span>
+                      </a>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Actions de Gestion -->
+        @if (contact) {
+          <div class="profile-card-section">
+            <h3 class="profile-section-title">{{ 'contact_detail.actions' | translate }}</h3>
+            <div class="profile-actions-row">
+              @if (environment.features.muteConversation) {
+                <button class="profile-action-btn" [disabled]="!conversationId" (click)="toggleMute()">
+                  <div class="profile-action-btn__icon-wrapper">
+                    <ion-icon [name]="isMuted() ? 'volume-high-outline' : 'volume-mute-outline'"></ion-icon>
+                  </div>
+                  <span class="profile-action-btn__label">
+                    {{ (isMuted() ? 'contact_detail.action.unmute' : 'contact_detail.action.mute') | translate }}
+                  </span>
+                </button>
+              }
+
+              <button class="profile-action-btn profile-action-btn--danger" [disabled]="!conversationId" (click)="clearLocalHistoryPrompt()">
+                <div class="profile-action-btn__icon-wrapper">
+                  <ion-icon name="trash-outline"></ion-icon>
+                </div>
+                <span class="profile-action-btn__label">
+                  {{ 'contact_detail.action.clear_history' | translate }}
+                </span>
+              </button>
+
+              @if (environment.features.blockUser) {
+                <button class="profile-action-btn profile-action-btn--danger" (click)="blockContact()">
+                  <div class="profile-action-btn__icon-wrapper">
+                    <ion-icon name="ban-outline"></ion-icon>
+                  </div>
+                  <span class="profile-action-btn__label">
+                    {{ (isBlocked() ? 'contact_detail.action.unblock' : 'contact_detail.action.block') | translate }}
+                  </span>
+                </button>
+              }
+            </div>
+          </div>
+        }
+        
       </div>
-    } @else {
-      <div class="empty-state">
-        <ion-icon name="person-outline" class="empty-state__icon"></ion-icon>
-        <p class="empty-state__title">Contact introuvable</p>
-      </div>
-    }
-  </div>
+    </div>
+  } @else {
+    <div class="empty-state">
+      <ion-icon name="person-outline" class="empty-state__icon"></ion-icon>
+      <p class="empty-state__title">Contact introuvable</p>
+    </div>
+  }
 </ion-content>
 
-<ion-modal [isOpen]="isInviteModalOpen" (didDismiss)="isInviteModalOpen = false" initialBreakpoint="0.75" [breakpoints]="[0, 0.75, 0.95]">
+<ion-modal
+  [isOpen]="isInviteModalOpen"
+  (didDismiss)="isInviteModalOpen = false"
+  initialBreakpoint="0.75"
+  [breakpoints]="[0, 0.75, 0.95]"
+  aria-labelledby="invite-modal-title"
+>
   <ng-template>
     <div class="invite-modal-content">
       <div class="invite-modal-header">
-        <h2>Inviter ce contact</h2>
-        <button class="close-btn" (click)="isInviteModalOpen = false" aria-label="Close">
+        <h2 id="invite-modal-title">Inviter ce contact</h2>
+        <button class="close-btn" (click)="isInviteModalOpen = false" [attr.aria-label]="'common.close' | translate">
           <ion-icon name="close"></ion-icon>
         </button>
       </div>

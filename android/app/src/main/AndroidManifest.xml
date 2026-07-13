@@ -24,12 +24,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- HTTPS App Links for OAuth callback — requires assetlinks.json at https://bluvy.app/.well-known/assetlinks.json -->
+            <!-- HTTPS App Links for OAuth callback and invitation links — requires assetlinks.json at https://bluvy.app/.well-known/assetlinks.json -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="bluvy.app" android:pathPrefix="/oauth/callback" />
+                <data android:scheme="https" android:host="bluvy.app" android:pathPrefix="/message" />
             </intent-filter>
 
         </activity>

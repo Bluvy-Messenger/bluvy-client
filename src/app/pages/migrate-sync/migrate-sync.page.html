@@ -36,16 +36,20 @@
         <ion-textarea
           [(ngModel)]="recoveryKeyInput"
           rows="4"
+          [label]="'migrate_sync.key.placeholder' | translate"
+          label-placement="floating"
           [placeholder]="'migrate_sync.key.placeholder' | translate"
           autocomplete="off"
           autocorrect="off"
           autocapitalize="off"
           spellcheck="false"
+          [attr.aria-invalid]="error ? 'true' : null"
+          [attr.aria-describedby]="error ? 'migrate-key-error' : null"
           style="margin: 12px 0; font-family: monospace; font-size: 14px; letter-spacing: 1px;"
         ></ion-textarea>
 
         @if (error) {
-          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+          <ion-text color="danger"><p id="migrate-key-error" role="alert">{{ error }}</p></ion-text>
         }
 
         <ion-button

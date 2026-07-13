@@ -1,77 +1,74 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>{{ 'setup_sync.title' | translate }}</ion-title>
-  </ion-toolbar>
-</ion-header>
-
-<ion-content class="ion-padding">
-
+<ion-content class="pin-page-content">
   @if (step === 'pin') {
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>{{ 'setup_sync.pin.title' | translate }}</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        <p>{{ 'setup_sync.pin.desc' | translate }}</p>
+    <div class="pin-page">
+      <div class="pin-page__hero">
+        <ion-icon name="shield-checkmark-outline" class="pin-page__icon"></ion-icon>
+        <h1 class="pin-page__title">{{ 'setup_sync.pin.title' | translate }}</h1>
+        <p class="pin-page__subtitle">{{ 'setup_sync.pin.desc' | translate }}</p>
+      </div>
 
-        <ion-input
-          [value]="pin"
-          (ionInput)="onPinInput($event)"
-          [placeholder]="'setup_sync.pin.placeholder' | translate"
-          type="password"
-          inputmode="numeric"
-          maxlength="8"
-          style="margin: 12px 0 8px;"
-        ></ion-input>
+      <div class="pin-page__form">
+        <div class="form-field">
+          <label class="form-field__label" for="setup-pin-input">{{ 'setup_sync.pin.placeholder' | translate }}</label>
+          <input
+            id="setup-pin-input"
+            class="form-field__input"
+            type="password"
+            inputmode="numeric"
+            autocomplete="new-password"
+            maxlength="8"
+            [value]="pin"
+            (input)="pin = $any($event.target).value"
+            [attr.aria-invalid]="error ? 'true' : null"
+            [attr.aria-describedby]="error ? 'setup-pin-error' : null"
+          />
+        </div>
 
-        <ion-input
-          [value]="pinConfirm"
-          (ionInput)="onPinConfirmInput($event)"
-          [placeholder]="'setup_sync.pin.confirm' | translate"
-          type="password"
-          inputmode="numeric"
-          maxlength="8"
-          style="margin-bottom: 12px;"
-        ></ion-input>
+        <div class="form-field">
+          <label class="form-field__label" for="setup-pin-confirm-input">{{ 'setup_sync.pin.confirm' | translate }}</label>
+          <input
+            id="setup-pin-confirm-input"
+            class="form-field__input"
+            type="password"
+            inputmode="numeric"
+            autocomplete="new-password"
+            maxlength="8"
+            [value]="pinConfirm"
+            (input)="pinConfirm = $any($event.target).value"
+            [attr.aria-invalid]="error ? 'true' : null"
+            [attr.aria-describedby]="error ? 'setup-pin-error' : null"
+          />
+        </div>
 
         @if (error) {
-          <ion-text color="danger"><p>{{ error }}</p></ion-text>
+          <p class="form-error" id="setup-pin-error" role="alert">{{ error }}</p>
         }
 
-        <ion-button
-          expand="block"
+        <button
+          type="button"
+          class="primary-btn"
           [disabled]="working || !pin || !pinConfirm"
           (click)="onSetupPin()">
           @if (working) {
-            <ion-spinner name="crescent"></ion-spinner>
+            <div class="spinner spinner--sm"></div>
           } @else {
             {{ 'setup_sync.pin.submit' | translate }}
           }
-        </ion-button>
-      </ion-card-content>
-    </ion-card>
+        </button>
+      </div>
+    </div>
   }
 
   @if (step === 'key') {
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>{{ 'setup_sync.key.title' | translate }}</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        <p>{{ 'setup_sync.key.desc' | translate }}</p>
+    <div class="pin-page">
+      <div class="pin-page__hero">
+        <ion-icon name="key-outline" class="pin-page__icon"></ion-icon>
+        <h1 class="pin-page__title">{{ 'setup_sync.key.title' | translate }}</h1>
+        <p class="pin-page__subtitle">{{ 'setup_sync.key.desc' | translate }}</p>
+      </div>
 
-        <div style="
-          font-family: monospace;
-          font-size: 15px;
-          letter-spacing: 1px;
-          word-break: break-all;
-          background: var(--ion-color-light);
-          border-radius: 8px;
-          padding: 16px;
-          margin: 16px 0;
-          text-align: center;
-          line-height: 2;
-        ">
+      <div class="pin-page__form">
+        <div class="recovery-key-block">
           @for (chunk of recoveryChunks; track $index) {
             <span>{{ chunk }}</span>
             @if ($index < recoveryChunks.length - 1) {
@@ -80,30 +77,23 @@
           }
         </div>
 
-        <ion-button expand="block" fill="outline" (click)="copyKey()">
+        <button type="button" class="secondary-btn" (click)="copyKey()">
           {{ 'setup_sync.key.copy' | translate }}
-        </ion-button>
-      </ion-card-content>
-    </ion-card>
+        </button>
 
-    <ion-card>
-      <ion-card-content>
-        <ion-item lines="none">
-          <ion-checkbox [(ngModel)]="acknowledged" slot="start"></ion-checkbox>
-          <ion-label class="ion-text-wrap" style="margin-left: 12px;">
-            {{ 'setup_sync.key.saved' | translate }}
-          </ion-label>
-        </ion-item>
+        <label class="ack-row">
+          <ion-checkbox [(ngModel)]="acknowledged"></ion-checkbox>
+          <span class="ack-row__text">{{ 'setup_sync.key.saved' | translate }}</span>
+        </label>
 
-        <ion-button
-          expand="block"
-          style="margin-top: 16px;"
+        <button
+          type="button"
+          class="primary-btn"
           [disabled]="!acknowledged"
           (click)="onContinue()">
           {{ 'setup_sync.key.submit' | translate }}
-        </ion-button>
-      </ion-card-content>
-    </ion-card>
+        </button>
+      </div>
+    </div>
   }
-
 </ion-content>

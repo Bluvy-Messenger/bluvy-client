@@ -1,7 +1,7 @@
 import type { EncryptedCacheRecord, IMessageStore } from './message-cache.types';
 
 const DB_NAME    = 'skychat-message-cache';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const KEY_STORE  = 'keys';
 const MSG_STORE  = 'messages';
 
@@ -92,6 +92,21 @@ export class WebMessageStore implements IMessageStore {
       request.onsuccess = () => resolve();
       request.onerror   = () =>
         reject(request.error ?? new Error('Could not clear message cache'));
+    });
+  }
+
+  async clearConversation(conversationId: string): Promise<void> {
+    const db = await this.openDb();
+    const ids = await this.queryAllIds(conversationId);
+    return new Promise<void>((resolve, reject) => {
+      if (ids.length === 0) return resolve();
+      const tx = db.transaction(MSG_STORE, 'readwrite');
+      const store = tx.objectStore(MSG_STORE);
+      for (const id of ids) {
+        store.delete(id);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('Could not clear conversation messages'));
     });
   }
 

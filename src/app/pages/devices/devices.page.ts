@@ -27,6 +27,8 @@ export class DevicesPage implements OnInit {
   error            = '';
   revokingId       = '';
   confirmRevokeId  = '';
+  revokingAll      = false;
+  confirmRevokeAll = false;
 
   async ngOnInit(): Promise<void> {
     this.currentDeviceId = this.authSvc.currentDevice()?.id ?? '';
@@ -69,6 +71,28 @@ export class DevicesPage implements OnInit {
       this.error = this.i18n.t('devices.error.revoke');
     } finally {
       this.revokingId = '';
+    }
+  }
+
+  askConfirmAll(): void {
+    this.confirmRevokeAll = true;
+  }
+
+  cancelConfirmAll(): void {
+    this.confirmRevokeAll = false;
+  }
+
+  async revokeAll(): Promise<void> {
+    this.confirmRevokeAll = false;
+    this.revokingAll      = true;
+    this.error            = '';
+    try {
+      await this.deviceRepo.revokeAllDevices();
+      this.devices = this.devices.filter(d => d.id === this.currentDeviceId);
+    } catch {
+      this.error = this.i18n.t('devices.error.revoke_all');
+    } finally {
+      this.revokingAll = false;
     }
   }
 

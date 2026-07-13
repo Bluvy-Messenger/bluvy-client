@@ -1,11 +1,7 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
-import {
-  IonHeader, IonToolbar, IonTitle, IonContent,
-  IonCard, IonCardHeader, IonCardTitle, IonCardContent,
-  IonButton, IonInput, IonSpinner, IonText,
-} from '@ionic/angular/standalone';
+import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
 import { SyncService } from '../../core/sync/sync.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
@@ -16,12 +12,7 @@ import { ROUTES } from '../../core/routes';
 @Component({
   selector: 'app-pin-unlock',
   standalone: true,
-  imports: [
-    IonHeader, IonToolbar, IonTitle, IonContent,
-    IonCard, IonCardHeader, IonCardTitle, IonCardContent,
-    IonButton, IonInput, IonSpinner, IonText,
-    TranslatePipe,
-  ],
+  imports: [IonContent, IonIcon, TranslatePipe],
   templateUrl: './pin-unlock.page.html',
   styleUrls: ['./pin-unlock.page.scss'],
 })
@@ -49,11 +40,6 @@ export class PinUnlockPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subs.unsubscribe();
-  }
-
-  onPinInput(event: Event): void {
-    const detail = (event as CustomEvent<{ value?: string | null }>).detail;
-    this.pin = detail?.value ?? '';
   }
 
   async onUnlock(): Promise<void> {

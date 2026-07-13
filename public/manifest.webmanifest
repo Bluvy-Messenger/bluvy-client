@@ -17,20 +17,5 @@
     { "src": "assets/icons/icon-512.webp", "sizes": "512x512", "type": "image/webp", "purpose": "any" },
     { "src": "assets/icons/icon-192.webp", "sizes": "192x192", "type": "image/webp", "purpose": "maskable" },
     { "src": "assets/icons/icon-512.webp", "sizes": "512x512", "type": "image/webp", "purpose": "maskable" }
-  ],
-  "screenshots": [
-    {
-      "src": "screenshots/desktop.webp",
-      "sizes": "1280x720",
-      "type": "image/webp",
-      "form_factor": "wide",
-      "label": "Bluvy Messenger — Vue bureau"
-    },
-    {
-      "src": "screenshots/mobile.webp",
-      "sizes": "390x844",
-      "type": "image/webp",
-      "label": "Bluvy Messenger — Vue mobile"
-    }
   ]
 }

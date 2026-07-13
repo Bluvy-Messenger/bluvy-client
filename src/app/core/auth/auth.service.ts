@@ -46,6 +46,22 @@ export class AuthService {
   private _syncListenersBound = false;
   private _refreshing         = false;
 
+  // Retries a critical MLS bootstrap step with backoff before giving up.
+  // Used so login/session-restore only proceed once the MLS connection is
+  // actually confirmed, instead of silently continuing on a swallowed error.
+  private async retryMlsBootstrap<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    const delays = [500, 1500, 3000]; // ms between attempts — 4 tries total
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (attempt >= delays.length) throw err;
+        if (!environment.production) console.error(`[AuthService] ${label} failed (attempt ${attempt + 1}), retrying`, err);
+        await new Promise(r => setTimeout(r, delays[attempt]));
+      }
+    }
+  }
+
   private startSocket(): void {
     if (!this._socketErrorBound) {
       this._socketErrorBound = true;
@@ -119,12 +135,21 @@ export class AuthService {
     this.currentDevice.set(sessionDevice);
     this.isAuthenticated.set(true);
 
+    try {
+      await this.retryMlsBootstrap('login: initializeForSession', () =>
+        this.coordinator.initializeForSession(response.user, sessionDevice));
+      await this.retryMlsBootstrap('login: ensureKeyPackagePool', () =>
+        this.kpSvc.ensureKeyPackagePool(response.user.did, sessionDevice.id));
+    } catch (err) {
+      this.currentUser.set(null);
+      this.currentDevice.set(null);
+      this.isAuthenticated.set(false);
+      throw err;
+    }
+
     this.startSocket();
     this.bindSyncListeners();
 
-    await this.coordinator.initializeForSession(response.user, sessionDevice);
-    await this.kpSvc.ensureKeyPackagePool(response.user.did, sessionDevice.id)
-      .catch(err => { if (!environment.production) console.error('[AuthService] login: ensureKeyPackagePool failed', err); });
     await this.syncSvc.initialize(response.user.did, response.device.id)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: sync initialize failed', err); });
 
@@ -182,13 +207,32 @@ export class AuthService {
     this.currentDevice.set(sessionDevice);
     this.isAuthenticated.set(true);
 
+    // Backend JWT session is confirmed above, but the raw AT-proto OAuth
+    // session (needed for direct-to-PDS writes like publishDeclaration) is
+    // separate and isn't restored by the APP_INITIALIZER on a plain reload —
+    // restore it here so ensureKeyPackagePool()'s syncDeclaration() doesn't
+    // fail with "No active ATProto session".
+    if (!this.oauthSvc.session) {
+      await this.oauthSvc.tryRestore()
+        .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: tryRestore failed', err); });
+    }
+
+    try {
+      await this.retryMlsBootstrap('restoreSession: initializeForSession', () =>
+        this.coordinator.initializeForSession(session.user, sessionDevice));
+      await this.retryMlsBootstrap('restoreSession: ensureKeyPackagePool', () =>
+        this.kpSvc.ensureKeyPackagePool(session.user.did, sessionDevice.id));
+    } catch (err) {
+      if (!environment.production) console.error('[AuthService] restoreSession: MLS bootstrap failed after retries', err);
+      this.currentUser.set(null);
+      this.currentDevice.set(null);
+      this.isAuthenticated.set(false);
+      return false;
+    }
+
     this.startSocket();
     this.bindSyncListeners();
 
-    await this.coordinator.initializeForSession(session.user, sessionDevice)
-      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: initializeForSession failed', err); });
-    await this.kpSvc.ensureKeyPackagePool(session.user.did, sessionDevice.id)
-      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: ensureKeyPackagePool failed', err); });
     await this.syncSvc.initialize(session.user.did, session.device.id)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: sync initialize failed', err); });
 
@@ -205,7 +249,6 @@ export class AuthService {
 
     if (userDid) {
       await this.secureStorage.clearMbk(userDid).catch(() => {});
-      await this.deviceSvc.clear(userDid).catch(() => {});
     }
     await this.msgCache.clearAll().catch(() => {});
     await this.mlsStateStorage.clearAll().catch(() => {});

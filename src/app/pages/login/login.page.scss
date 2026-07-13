@@ -72,22 +72,28 @@
 
   &__input {
     width: 100%;
-    padding: 13px var(--space-4);
-    border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-bg);
+    padding: 11px var(--space-4);
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--color-search-bg);
     color: var(--color-text-primary);
     font-family: var(--font-sans);
     font-size: var(--text-base);
     outline: none;
     box-sizing: border-box;
-    transition: border-color var(--duration-fast);
+    transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
 
     &::placeholder { color: var(--color-text-secondary); }
 
-    &:focus {
+    &:hover {
+      border-color: var(--color-border);
+    }
+
+    &:focus-visible {
+      outline: none;
+      background: var(--color-interactive-focus-bg);
       border-color: var(--color-primary);
-      background: var(--color-surface);
+      box-shadow: var(--focus-ring);
     }
   }
 
@@ -139,11 +145,12 @@
   align-items: center;
   justify-content: center;
   min-height: 50px;
-  transition: opacity var(--duration-fast);
+  transition: background var(--duration-fast) ease, transform var(--duration-fast) ease;
   letter-spacing: 0.01em;
 
   &:disabled { opacity: 0.5; cursor: default; }
-  &:not(:disabled):active { opacity: 0.85; }
+  &:not(:disabled):hover { background: var(--color-primary-hover); }
+  &:not(:disabled):active { background: var(--color-primary-active); transform: scale(0.99); }
 }
 
 .forgot-link {
@@ -193,12 +200,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color var(--duration-fast), background var(--duration-fast);
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease, transform var(--duration-fast) ease;
 
-  &:active {
-    background: var(--color-bg);
-    border-color: var(--color-primary);
-  }
+  &:not(:disabled):hover { background: var(--color-interactive-hover); }
+  &:not(:disabled):active { background: var(--color-interactive-active); transform: scale(0.99); }
 }
 
 .login-page__footer {
@@ -231,10 +236,19 @@
   font-family: var(--font-sans);
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  padding: 0;
   cursor: pointer;
   text-decoration: none;
   opacity: 0.7;
   &:hover { opacity: 1; color: var(--color-primary); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: 4px;
+  }
 }
 
 .login-legal-sep {

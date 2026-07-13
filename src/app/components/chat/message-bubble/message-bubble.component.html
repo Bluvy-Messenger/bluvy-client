@@ -2,8 +2,34 @@
   <div class="bubble"
        [class.bubble--mine]="isMine"
        [class.bubble--theirs]="!isMine"
-       [class.bubble--pending]="pending">
-    <p class="bubble__text">{{ text }}</p>
+       [class.bubble--pending]="pending"
+       [class.bubble--first]="position === 'first'"
+       [class.bubble--middle]="position === 'middle'"
+       [class.bubble--last]="position === 'last'">
+    @if (displayText()) {
+      <p class="bubble__text">{{ displayText() }}</p>
+    }
+    @if (preview(); as p) {
+      <a class="bubble__preview" [href]="p.url" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+        <div class="bubble__preview-thumb">
+          @if (previewImageSrc(); as img) {
+            <img [src]="img" alt="" />
+          } @else {
+            <ion-icon name="link-outline"></ion-icon>
+          }
+        </div>
+        <div class="bubble__preview-body">
+          <span class="bubble__preview-title">{{ p.title }}</span>
+          @if (p.description) {
+            <span class="bubble__preview-desc">{{ p.description }}</span>
+          }
+          <span class="bubble__preview-site">
+            <ion-icon name="globe-outline"></ion-icon>
+            {{ p.siteName || hostnameOf(p.url) }}
+          </span>
+        </div>
+      </a>
+    }
     <div class="bubble__footer">
       <span class="bubble__time">{{ timestamp | date:'HH:mm' }}</span>
       @if (isMine && !pending) {

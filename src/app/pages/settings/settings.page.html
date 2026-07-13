@@ -12,7 +12,7 @@
       <div class="ss-section-title">{{ 'settings.section.appearance' | translate }}</div>
       <div class="ss-block">
         <button class="settings-row" (click)="openAppearance()">
-          <ion-icon name="moon-outline" class="settings-row__icon"></ion-icon>
+          <ion-icon name="color-palette-outline" class="settings-row__icon"></ion-icon>
           <span class="settings-row__label">{{ 'settings.dark_mode' | translate }}</span>
           <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
         </button>
@@ -24,30 +24,26 @@
       </div>
     </div>
 
-    <div class="ss-section">
-      <div class="ss-section-title">{{ 'settings.section.account' | translate }}</div>
-      <div class="ss-block">
-        <button class="settings-row" (click)="openDevices()">
-          <ion-icon name="phone-portrait-outline" class="settings-row__icon"></ion-icon>
-          <span class="settings-row__label">{{ 'settings.devices' | translate }}</span>
-          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
-        </button>
-        @if (!confirmingDelete) {
-          <button class="settings-row settings-row--danger" (click)="confirmDeleteAccount()">
-            <ion-icon name="trash-outline" class="settings-row__icon"></ion-icon>
-            <span class="settings-row__label">{{ 'settings.delete_account' | translate }}</span>
-          </button>
-        } @else {
-          <div class="delete-confirm">
-            <p class="delete-confirm__text">{{ 'settings.delete_confirm' | translate }}</p>
-            <div class="delete-confirm__actions">
-              <button class="btn-ghost-sm" (click)="cancelDeleteAccount()">{{ 'common.cancel' | translate }}</button>
-              <a class="btn-danger-sm" href="mailto:contact@thomasfds.fr?subject=Suppression%20de%20compte%20Bluvy">{{ 'settings.delete_support' | translate }}</a>
+    @if (environment.features.deleteAccount) {
+      <div class="ss-section">
+        <div class="ss-block">
+          @if (!confirmingDelete) {
+            <button class="settings-row settings-row--danger" (click)="confirmDeleteAccount()">
+              <ion-icon name="trash-outline" class="settings-row__icon"></ion-icon>
+              <span class="settings-row__label">{{ 'settings.delete_account' | translate }}</span>
+            </button>
+          } @else {
+            <div class="delete-confirm">
+              <p class="delete-confirm__text">{{ 'settings.delete_confirm' | translate }}</p>
+              <div class="delete-confirm__actions">
+                <button class="btn-ghost-sm" (click)="cancelDeleteAccount()">{{ 'common.cancel' | translate }}</button>
+                <a class="btn-danger-sm" href="mailto:contact@thomasfds.fr?subject=Suppression%20de%20compte%20Bluvy">{{ 'settings.delete_support' | translate }}</a>
+              </div>
             </div>
-          </div>
-        }
+          }
+        </div>
       </div>
-    </div>
+    }
 
   </div>
 </ion-content>

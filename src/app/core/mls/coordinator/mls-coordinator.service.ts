@@ -42,7 +42,6 @@ type BackupEnqueuerLike = {
 const TRANSIENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/mls group not ready/i,   'GroupNotReady'],
   [/mls not initialized/i,   'GroupNotReady'],
-  [/desired gen/i,           'EpochMismatch'],
 ] as const;
 
 const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -54,6 +53,7 @@ const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/invalid mac/i,                   'InvalidSignature'],
   [/invalid signature/i,             'InvalidSignature'],
   [/epoch too old/i,                 'EpochTooOld'],
+  [/desired gen/i,                   'EpochMismatch'],
 ] as const;
 
 @Injectable({ providedIn: 'root' })

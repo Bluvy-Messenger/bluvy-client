@@ -12,16 +12,6 @@ ion-content {
   --background: var(--color-bg);
 }
 
-.profile-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  padding: var(--space-6) var(--space-4);
-  box-sizing: border-box;
-}
-
 .ss-header {
   display: flex;
   align-items: center;
@@ -45,9 +35,12 @@ ion-content {
   border: none;
   cursor: pointer;
   padding: var(--space-1);
+  min-width: 44px;
+  min-height: 44px;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
+  justify-content: center;
   border-radius: var(--radius-full);
   flex-shrink: 0;
 
@@ -62,39 +55,98 @@ ion-content {
   }
 }
 
-.profile-card {
-  max-width: 480px;
+// ── Profile Container (Responsive Layout) ──────────────────────────────────
+
+.profile-container {
   width: 100%;
   margin: 0 auto;
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space-8) var(--space-6);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
 
-  @media (max-width: 768px) {
-    margin: 0;
+@media (min-width: 768px) {
+  .profile-container {
+    max-width: 520px;
+    margin: var(--space-6) auto var(--space-12);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.04);
+  }
+}
+
+// ── Profile Banner ────────────────────────────────────────────────────────
+
+.profile-banner {
+  height: 120px;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-interactive-active));
+  position: relative;
+  width: 100%;
+
+  @media (min-width: 768px) {
+    border-top-left-radius: var(--radius-xl);
+    border-top-right-radius: var(--radius-xl);
   }
 
-  &__avatar {
-    margin-bottom: var(--space-4);
+  &__gradient {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.25));
+  }
+}
+
+// ── Profile Header ────────────────────────────────────────────────────────
+
+.profile-header {
+  padding: 0 var(--space-4) var(--space-4);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+
+  &__top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: -45px; // overlap avatar on banner
+    margin-bottom: var(--space-3);
+    width: 100%;
   }
 
-  &__info {
+  &__avatar-container {
+    background: var(--color-bg);
+    border: 4px solid var(--color-bg);
+    border-radius: var(--radius-full);
+    display: flex;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  &__primary-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  &__details {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    margin-bottom: var(--space-6);
+    width: 100%;
   }
 
   &__name {
     font-family: var(--font-sans);
-    font-size: var(--text-xl);
+    font-size: var(--text-2xl);
     font-weight: var(--weight-bold);
     color: var(--color-text-primary);
+    margin: 0 0 2px 0;
+    letter-spacing: -0.5px;
   }
 
   &__handle {
@@ -102,36 +154,92 @@ ion-content {
     font-size: var(--text-sm);
     color: var(--color-text-secondary);
   }
+}
 
-  &__actions {
-    width: 100%;
+// ── Biography / Section ───────────────────────────────────────────────────
+
+.profile-section {
+  padding: 0 var(--space-4) var(--space-4);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.profile-bio {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// ── Profile Body & Grouped Cards ──────────────────────────────────────────
+
+.profile-body {
+  padding: 0 var(--space-4) var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.profile-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.profile-section-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 var(--space-1);
+}
+
+.profile-card-box {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+
+  &--actions {
     display: flex;
     flex-direction: column;
-    align-items: center;
   }
 }
 
-.action-btn {
+// ── Primaries & Action buttons ────────────────────────────────────────────
+
+.btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  width: 100%;
-  max-width: 240px;
   background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: var(--radius-full);
-  padding: 12px var(--space-6);
+  padding: var(--space-2) var(--space-5);
   font-family: var(--font-sans);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   cursor: pointer;
-  transition: opacity var(--duration-fast);
+  height: 38px;
+  box-sizing: border-box;
+  transition: background-color var(--duration-fast), transform var(--duration-fast);
 
-  &:hover { opacity: 0.9; }
-  &:active { opacity: 0.8; }
-  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  ion-icon { font-size: 16px; }
+
+  &:hover { background: var(--color-interactive-active); }
+  &:active { transform: scale(0.96); }
 
   &--invite {
     background: var(--color-bg);
@@ -141,6 +249,196 @@ ion-content {
     &:hover { background: var(--color-interactive-hover); }
   }
 }
+
+// ── Rows (Info & Actions) ─────────────────────────────────────────────────
+
+.info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.info-icon {
+  font-size: 20px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  margin-top: 1px;
+
+  &--active { color: var(--color-success); }
+}
+
+.info-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  h4 {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-primary);
+    margin: 0 0 2px 0;
+  }
+
+  p {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    margin: 0;
+  }
+}
+
+.safety-code {
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  background: var(--color-search-bg);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+.info-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0 var(--space-4);
+}
+
+.profile-actions-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.profile-action-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-2);
+  cursor: pointer;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  transition: background var(--duration-fast), transform var(--duration-fast);
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &:hover {
+    background: var(--color-interactive-hover);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  &__icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-full);
+    background: var(--color-search-bg);
+    color: var(--color-text-secondary);
+    font-size: 20px;
+    transition: background var(--duration-fast);
+  }
+
+  &__label {
+    font-size: 11px;
+    font-weight: var(--weight-semibold);
+    text-align: center;
+    color: var(--color-text-primary);
+  }
+
+  &--danger {
+    .profile-action-btn__icon-wrapper {
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.08);
+    }
+    
+    .profile-action-btn__label {
+      color: #ef4444;
+    }
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.04);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+  }
+}
+
+// ── Shared links list ─────────────────────────────────────────────────────
+
+.links-list-wrapper {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.links-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-border);
+  transition: background var(--duration-fast);
+
+  &:last-child { border-bottom: none; }
+  &:hover { background: var(--color-interactive-hover); }
+
+  .link-icon {
+    font-size: 16px;
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  .link-url {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+.links-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-text-secondary);
+
+  &__icon {
+    font-size: 26px;
+    opacity: 0.4;
+  }
+
+  p {
+    font-size: var(--text-xs);
+    margin: 0;
+  }
+}
+
+// ── Infrastructure (Spinner & Empty state) ────────────────────────────────
 
 .loading-center {
   display: flex;
@@ -161,6 +459,13 @@ ion-content {
     width: 16px;
     height: 16px;
     border-width: 2px;
+  }
+
+  &--light {
+    border-top-color: #fff;
+    border-right-color: rgba(255,255,255,0.25);
+    border-bottom-color: rgba(255,255,255,0.25);
+    border-left-color: rgba(255,255,255,0.25);
   }
 }
 
@@ -188,6 +493,8 @@ ion-content {
     font-family: var(--font-sans);
   }
 }
+
+// ── Invite Modal ──────────────────────────────────────────────────────────
 
 .invite-modal-content {
   display: flex;
@@ -217,6 +524,8 @@ ion-content {
     background: transparent;
     border: none;
     font-size: 24px;
+    min-width: 44px;
+    min-height: 44px;
     color: var(--color-text-secondary);
     cursor: pointer;
     display: flex;

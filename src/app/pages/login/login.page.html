@@ -15,8 +15,9 @@
 
       <div class="login-page__form">
         <div class="form-field">
-          <label class="form-field__label">{{ 'login.handle.label' | translate }}</label>
+          <label class="form-field__label" for="login-handle">{{ 'login.handle.label' | translate }}</label>
           <input
+            id="login-handle"
             class="form-field__input"
             type="text"
             [placeholder]="'login.handle.placeholder' | translate"
@@ -27,11 +28,13 @@
             maxlength="256"
             [value]="handle"
             (input)="handle = $any($event.target).value"
+            [attr.aria-invalid]="error ? 'true' : null"
+            [attr.aria-describedby]="error ? 'login-handle-error' : null"
           />
         </div>
 
         @if (error) {
-          <p class="form-error">{{ error }}</p>
+          <p class="form-error" id="login-handle-error" role="alert">{{ error }}</p>
         }
 
         <button
@@ -59,11 +62,11 @@
       </div>
 
       <nav class="login-page__legal">
-        <a class="login-legal-link" (click)="openLegal('/privacy')">{{ 'login.footer.privacy' | translate }}</a>
+        <button type="button" class="login-legal-link" (click)="openLegal('/privacy')">{{ 'login.footer.privacy' | translate }}</button>
         <span class="login-legal-sep">·</span>
-        <a class="login-legal-link" (click)="openLegal('/terms')">{{ 'login.footer.terms' | translate }}</a>
+        <button type="button" class="login-legal-link" (click)="openLegal('/terms')">{{ 'login.footer.terms' | translate }}</button>
         <span class="login-legal-sep">·</span>
-        <a class="login-legal-link" (click)="openLegal('/mentions')">{{ 'login.footer.mentions' | translate }}</a>
+        <button type="button" class="login-legal-link" (click)="openLegal('/mentions')">{{ 'login.footer.mentions' | translate }}</button>
       </nav>
     </div>
   }

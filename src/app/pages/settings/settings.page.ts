@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { ROUTES } from '../../core/routes';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-settings',
@@ -13,6 +14,7 @@ import { ROUTES } from '../../core/routes';
 })
 export class SettingsPage {
   private router = inject(Router);
+  protected readonly environment = environment;
 
   goBack(): void {
     void this.router.navigate([ROUTES.menu]);
@@ -24,10 +26,6 @@ export class SettingsPage {
 
   openLanguage(): void {
     void this.router.navigate([ROUTES.settingsLanguage]);
-  }
-
-  openDevices(): void {
-    void this.router.navigate([ROUTES.devices]);
   }
 
   confirmingDelete = false;

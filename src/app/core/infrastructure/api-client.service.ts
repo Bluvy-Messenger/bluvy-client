@@ -43,6 +43,17 @@ export class ApiClientService {
     return this.request<T>('DELETE', path, undefined, options);
   }
 
+  // Fetches a binary response (e.g. a proxied image) as a Blob, with the same
+  // auth-header handling as the JSON methods. A plain <img src> can't attach
+  // a Bearer token, so binary resources behind authenticate must go through here.
+  async getBlob(path: string, options?: ApiHttpOptions): Promise<Blob> {
+    const url     = this.buildUrl(path);
+    const headers = await this.buildHeaders(options);
+    return Capacitor.isNativePlatform()
+      ? this.sendNativeBlob(url, headers, options?.params)
+      : this.sendWebBlob(url, headers, options?.params);
+  }
+
   private async request<T>(
     method:   string,
     path:     string,
@@ -140,6 +151,48 @@ export class ApiClientService {
       throw new HttpErrorResponse({ url, status: response.status, error: response.data });
     }
     return response.data as T;
+  }
+
+  private sendWebBlob(
+    url:     string,
+    headers: Record<string, string>,
+    params?: Record<string, string>,
+  ): Promise<Blob> {
+    const httpHeaders = new HttpHeaders(headers);
+    let httpParams = new HttpParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => { httpParams = httpParams.set(k, v); });
+    }
+    return firstValueFrom(
+      this.http
+        .get(url, { headers: httpHeaders, params: httpParams, responseType: 'blob' })
+        .pipe(timeout(15_000)),
+    );
+  }
+
+  private async sendNativeBlob(
+    url:     string,
+    headers: Record<string, string>,
+    params?: Record<string, string>,
+  ): Promise<Blob> {
+    const response = await CapacitorHttp.request({
+      method:         'GET',
+      url,
+      headers,
+      params,
+      responseType:   'blob',
+      connectTimeout: 15_000,
+      readTimeout:    15_000,
+    });
+    if (response.status < 200 || response.status >= 300) {
+      throw new HttpErrorResponse({ url, status: response.status, error: response.data });
+    }
+    // Native layer base64-encodes binary responses over the JSON bridge.
+    const contentType = response.headers['Content-Type'] ?? response.headers['content-type'] ?? 'application/octet-stream';
+    const binary = atob(response.data as string);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: contentType });
   }
 
   private is401(err: unknown): boolean {

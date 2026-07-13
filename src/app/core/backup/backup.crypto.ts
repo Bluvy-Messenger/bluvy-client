@@ -103,7 +103,7 @@ export async function encryptForBackup(
   );
   return {
     encryptionVersion: 1,
-    cacheVersion:      2,
+    cacheVersion:      3,
     iv:                b64Encode(iv),
     data:              b64Encode(new Uint8Array(cipherBuffer)),
   };

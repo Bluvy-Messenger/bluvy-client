@@ -2,6 +2,7 @@ import { Component, ViewChild, inject } from '@angular/core';
 import {
   IonHeader, IonToolbar, IonTitle, IonContent,
   IonRefresher, IonRefresherContent,
+  IonButtons, IonButton, IonIcon,
 } from '@ionic/angular/standalone';
 import { SidebarListComponent } from '../../components/chat/sidebar-list/sidebar-list.component';
 import { WelcomeComponent } from '../../components/ui/welcome/welcome.component';
@@ -19,6 +20,7 @@ import { KeyPackageService } from '../../core/mls/key-package/key-package.servic
   imports: [
     IonHeader, IonToolbar, IonTitle, IonContent,
     IonRefresher, IonRefresherContent,
+    IonButtons, IonButton, IonIcon,
     SidebarListComponent,
     WelcomeComponent,
     TranslatePipe,

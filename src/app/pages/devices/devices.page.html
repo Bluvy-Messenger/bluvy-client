@@ -70,6 +70,28 @@
         <ion-icon name="information-circle-outline"></ion-icon>
         {{ 'devices.revoke_hint' | translate }}
       </p>
+
+      @if (devices.length > 1) {
+        <div class="devices-revoke-all">
+          @if (confirmRevokeAll) {
+            <div class="device-card__confirm">
+              <span class="device-card__confirm-text">{{ 'devices.revoke_all_confirm' | translate }}</span>
+              <button class="btn-danger-sm" [disabled]="revokingAll" (click)="revokeAll()">
+                @if (revokingAll) {
+                  <div class="spinner spinner--xs"></div>
+                } @else {
+                  {{ 'devices.revoke.yes' | translate }}
+                }
+              </button>
+              <button class="btn-ghost-sm" (click)="cancelConfirmAll()">{{ 'devices.revoke.cancel' | translate }}</button>
+            </div>
+          } @else {
+            <button class="btn-revoke" (click)="askConfirmAll()">
+              {{ 'devices.revoke_all' | translate }}
+            </button>
+          }
+        </div>
+      }
     }
 
   </div>

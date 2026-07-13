@@ -6,4 +6,10 @@ export const environment = {
   oauthClientId: 'https://bluvy.app/client-metadata.json',
   // aud for com.atproto.server.getServiceAuth — must match backend's ATPROTO_SERVICE_DID.
   oauthServiceDid: 'did:web:bluvy.app',
+  features: {
+    deleteAccount:      false,
+    muteConversation:   false,
+    deleteConversation: false,
+    blockUser:          false,
+  },
 };

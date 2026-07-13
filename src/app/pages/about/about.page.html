@@ -18,6 +18,22 @@
     </div>
 
     <div class="ss-section">
+      <div class="ss-section-title">{{ 'about.section.feedback' | translate }}</div>
+      <div class="ss-block">
+        <a class="settings-row" href="https://userinput.app/#/s/did:plc:yz47u7jw457mzifjdk7ojanh/3mposmgdddq2g" target="_blank" rel="noopener noreferrer">
+          <ion-icon name="chatbubble-ellipses-outline" class="settings-row__icon"></ion-icon>
+          <span class="settings-row__label">{{ 'about.feedback' | translate }}</span>
+          <ion-icon name="open-outline" class="settings-row__chevron"></ion-icon>
+        </a>
+        <button class="settings-row" (click)="openLog()">
+          <ion-icon name="reorder-three-outline" class="settings-row__icon"></ion-icon>
+          <span class="settings-row__label">{{ 'journal.title' | translate }}</span>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
+      </div>
+    </div>
+
+    <div class="ss-section">
       <div class="ss-section-title">{{ 'about.section.legal' | translate }}</div>
       <div class="ss-block">
         <button class="settings-row" (click)="navigate('/privacy')">

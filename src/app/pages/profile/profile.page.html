@@ -2,31 +2,139 @@
   <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
     <ion-icon name="chevron-back-outline"></ion-icon>
   </button>
-  <h1>{{ 'menu.profile' | translate }}</h1>
+  <h1>{{ authSvc.currentUser()?.displayName || authSvc.currentUser()?.handle || ('menu.profile' | translate) }}</h1>
 </div>
 
 <ion-content>
-  <div class="profile-card">
-    <div class="profile-card__avatar">
-      <app-avatar
-        [src]="authSvc.currentUser()?.avatarUrl ?? null"
-        [handle]="authSvc.currentUser()?.handle || ''"
-        size="xl"
-      ></app-avatar>
+  <div class="profile-container">
+    <!-- Banner Area -->
+    <div class="profile-banner">
+      <div class="profile-banner__gradient"></div>
     </div>
 
-    <div class="profile-card__info">
-      <span class="profile-card__name">
-        {{ authSvc.currentUser()?.displayName || authSvc.currentUser()?.handle }}
-      </span>
-      <span class="profile-card__handle">&#64;{{ authSvc.currentUser()?.handle }}</span>
-    </div>
-
-    <div class="profile-details">
-      <div class="detail-row">
-        <span class="detail-label">DID</span>
-        <span class="detail-value">{{ authSvc.currentUser()?.did }}</span>
+    <!-- Avatar & Core Info -->
+    <div class="profile-header">
+      <div class="profile-header__top-row">
+        <div class="profile-header__avatar-container">
+          <app-avatar
+            [src]="authSvc.currentUser()?.avatarUrl || null"
+            [handle]="authSvc.currentUser()?.handle || ''"
+            size="xl"
+          ></app-avatar>
+        </div>
+        
+        <div class="profile-header__primary-actions">
+          <button class="btn-primary" (click)="openInvite()">
+            <ion-icon name="share-social-outline"></ion-icon>
+            <span>Partager</span>
+          </button>
+        </div>
       </div>
+
+      <div class="profile-header__details">
+        <h2 class="profile-header__name">
+          {{ authSvc.currentUser()?.displayName || authSvc.currentUser()?.handle }}
+        </h2>
+        <span class="profile-header__handle">&#64;{{ authSvc.currentUser()?.handle }}</span>
+      </div>
+    </div>
+
+    <!-- Biography / Description -->
+    @if (bio) {
+      <div class="profile-section">
+        <p class="profile-bio">{{ bio }}</p>
+      </div>
+    }
+
+    <!-- Profile Body (Single Column Blocks) -->
+    <div class="profile-body">
+      
+      <!-- Security / Session Info -->
+      <div class="profile-card-section">
+        <h3 class="profile-section-title">Sécurité & Session</h3>
+        <div class="profile-card-box">
+          <div class="info-row">
+            <ion-icon name="shield-checkmark-outline" class="info-icon info-icon--active"></ion-icon>
+            <div class="info-text">
+              <h4>Chiffrement de bout en bout</h4>
+              <p>Activé (Messagerie chiffrée MLS)</p>
+            </div>
+          </div>
+          <div class="info-divider"></div>
+          <div class="info-row select-text" (click)="copyDid()">
+            <ion-icon name="finger-print-outline" class="info-icon"></ion-icon>
+            <div class="info-text">
+              <h4>Votre identifiant unique (DID)</h4>
+              <p class="safety-code">{{ authSvc.currentUser()?.did }}</p>
+            </div>
+            <ion-icon name="copy-outline" class="info-copy-icon"></ion-icon>
+          </div>
+          <div class="info-divider"></div>
+          <div class="info-row button-row" (click)="openDevices()">
+            <ion-icon name="phone-portrait-outline" class="info-icon"></ion-icon>
+            <div class="info-text">
+              <h4>Appareils & Clés</h4>
+              <p>Gérer les appareils autorisés dans votre session</p>
+            </div>
+            <ion-icon name="chevron-forward-outline" class="info-chevron-icon"></ion-icon>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="profile-card-section">
+        <h3 class="profile-section-title">Actions</h3>
+        <div class="profile-actions-grid">
+          <button class="profile-action-btn" (click)="editOnBluesky()">
+            <div class="profile-action-btn__icon-wrapper">
+              <ion-icon name="open-outline"></ion-icon>
+            </div>
+            <span class="profile-action-btn__label">Modifier sur Bluesky</span>
+          </button>
+        </div>
+      </div>
+      
     </div>
   </div>
 </ion-content>
+
+<ion-modal
+  [isOpen]="isInviteModalOpen"
+  (didDismiss)="isInviteModalOpen = false"
+  initialBreakpoint="0.75"
+  [breakpoints]="[0, 0.75, 0.95]"
+  aria-labelledby="invite-modal-title"
+>
+  <ng-template>
+    <div class="invite-modal-content">
+      <div class="invite-modal-header">
+        <h2 id="invite-modal-title">Mon Code d'invitation</h2>
+        <button class="close-btn" (click)="isInviteModalOpen = false" [attr.aria-label]="'common.close' | translate">
+          <ion-icon name="close"></ion-icon>
+        </button>
+      </div>
+
+      <div class="invite-options">
+        <button class="invite-option-btn" (click)="copyDirectLink()">
+          <ion-icon name="link-outline" class="invite-option-icon"></ion-icon>
+          <div class="invite-option-text">
+            <h3>Copier le lien d'invitation</h3>
+            <p>Copie votre lien direct Bluvy contenant votre DID</p>
+          </div>
+        </button>
+
+        <div class="qr-section">
+          <h3>Scanner le QR Code</h3>
+          <p class="qr-desc">Faites scanner ce code par un contact pour ouvrir une discussion sécurisée</p>
+          <div class="qr-code-wrapper">
+            <img [src]="qrCodeUrl" alt="QR Code" class="qr-code-img" />
+          </div>
+          <button class="share-qr-btn" (click)="shareQrCode()">
+            <ion-icon name="share-social-outline"></ion-icon>
+            <span>Partager le QR Code</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </ng-template>
+</ion-modal>

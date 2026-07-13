@@ -3,6 +3,7 @@
     class="composer__input"
     type="text"
     [placeholder]="'composer.placeholder' | translate"
+    [attr.aria-label]="'composer.placeholder' | translate"
     [value]="inputText"
     [disabled]="disabled"
     (input)="onInputChange($event)"
@@ -13,7 +14,7 @@
     type="button"
     [disabled]="disabled || !inputText.trim()"
     (click)="onSend()"
-    aria-label="Send"
+    [attr.aria-label]="'composer.send' | translate"
   >
     <ion-icon name="send"></ion-icon>
   </button>

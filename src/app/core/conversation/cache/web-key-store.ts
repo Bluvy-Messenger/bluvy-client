@@ -1,7 +1,7 @@
 import type { IKeyStore } from './message-cache.types';
 
 const DB_NAME    = 'skychat-message-cache';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const KEY_STORE  = 'keys';
 const MSG_STORE  = 'messages';
 

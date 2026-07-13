@@ -1,6 +1,6 @@
 import {
   Component, OnInit, OnDestroy, OnChanges, SimpleChanges,
-  Input, ViewChild, ElementRef, ChangeDetectorRef, inject,
+  Input, ViewChild, ElementRef, ChangeDetectorRef, ChangeDetectionStrategy, inject,
 } from '@angular/core';
 import { AsyncPipe } from '@angular/common';
 import { firstValueFrom, Observable, Subscription } from 'rxjs';
@@ -27,6 +27,7 @@ import { environment } from '../../../../environments/environment';
   templateUrl: './conversation-panel.component.html',
   styleUrls:   ['./conversation-panel.component.scss'],
   standalone:  true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AsyncPipe,
     AvatarComponent,

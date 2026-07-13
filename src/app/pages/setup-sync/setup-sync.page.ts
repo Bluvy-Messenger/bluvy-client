@@ -1,12 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import {
-  IonHeader, IonToolbar, IonTitle, IonContent,
-  IonCard, IonCardHeader, IonCardTitle, IonCardContent,
-  IonButton, IonInput, IonCheckbox, IonLabel, IonItem,
-  IonSpinner, IonText,
-} from '@ionic/angular/standalone';
+import { IonContent, IonIcon, IonCheckbox } from '@ionic/angular/standalone';
 import { SyncService } from '../../core/sync/sync.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
@@ -15,14 +10,7 @@ import { ROUTES } from '../../core/routes';
 @Component({
   selector: 'app-setup-sync',
   standalone: true,
-  imports: [
-    FormsModule,
-    IonHeader, IonToolbar, IonTitle, IonContent,
-    IonCard, IonCardHeader, IonCardTitle, IonCardContent,
-    IonButton, IonInput, IonCheckbox, IonLabel, IonItem,
-    IonSpinner, IonText,
-    TranslatePipe,
-  ],
+  imports: [FormsModule, IonContent, IonIcon, IonCheckbox, TranslatePipe],
   templateUrl: './setup-sync.page.html',
   styleUrls: ['./setup-sync.page.scss'],
 })
@@ -39,16 +27,6 @@ export class SetupSyncPage {
   recoveryKey    = '';
   recoveryChunks = [] as string[];
   acknowledged   = false;
-
-  onPinInput(event: Event): void {
-    const detail = (event as CustomEvent<{ value?: string | null }>).detail;
-    this.pin = detail?.value ?? '';
-  }
-
-  onPinConfirmInput(event: Event): void {
-    const detail = (event as CustomEvent<{ value?: string | null }>).detail;
-    this.pinConfirm = detail?.value ?? '';
-  }
 
   async onSetupPin(): Promise<void> {
     this.error = '';

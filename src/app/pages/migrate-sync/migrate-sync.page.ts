@@ -88,10 +88,10 @@ export class MigrateSyncPage {
       // 1. Get key versions from backup backend
       const { data: versions } = await this.backupRepo.getKeyVersions();
       const current = versions.find(v => v.supersededAt === null);
-      if (!current) throw new Error('No backup found on server.');
+      if (!current) throw new Error(this.i18n.t('migrate_sync.error.no_backup'));
 
       if (!isArgon2idHkdfParams(current.kdfParams)) {
-        throw new Error('Unsupported backup format. Please contact support.');
+        throw new Error(this.i18n.t('migrate_sync.error.unsupported_format'));
       }
 
       // 2. Decode and derive backup key
@@ -99,7 +99,7 @@ export class MigrateSyncPage {
       try {
         recoveryKeyBytes = base58Decode(key);
       } catch {
-        throw new Error('Invalid recovery key format.');
+        throw new Error(this.i18n.t('migrate_sync.error.invalid_key'));
       }
 
       const { backupKey } = await deriveBackupKey(

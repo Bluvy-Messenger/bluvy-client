@@ -1,14 +1,15 @@
 import {
-  Component, OnInit, OnDestroy, ViewChild, ChangeDetectorRef, inject,
+  Component, OnDestroy, ViewChild, ChangeDetectorRef, inject,
 } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import { firstValueFrom, Observable, Subscription } from 'rxjs';
 import {
   IonHeader, IonToolbar, IonTitle, IonContent,
   IonFooter,
   IonText,
-  IonButtons, IonBackButton,
+  IonButtons, IonBackButton, IonButton,
+  IonPopover, IonIcon,
 } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
 import { MessageBubbleComponent } from '../../components/chat/message-bubble/message-bubble.component';
@@ -29,6 +30,7 @@ import { ReceiptsService } from '../../core/receipts/receipts.service';
 import { environment } from '../../../environments/environment';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector:    'app-conversation',
@@ -40,16 +42,21 @@ import { TranslationService } from '../../core/i18n/translation.service';
     IonHeader, IonToolbar, IonTitle, IonContent,
     IonFooter,
     IonText,
-    IonButtons, IonBackButton,
+    IonButtons, IonBackButton, IonButton,
+    IonPopover, IonIcon,
     AvatarComponent,
     MessageBubbleComponent, MessageComposerComponent, TypingIndicatorComponent,
     TranslatePipe,
   ],
 })
-export class ConversationPage implements OnInit, OnDestroy {
+export class ConversationPage implements OnDestroy {
   @ViewChild(IonContent) private ionContent!: IonContent;
+  @ViewChild('optionsPopover') optionsPopover!: IonPopover;
+
+  protected readonly environment = environment;
 
   private route           = inject(ActivatedRoute);
+  private router          = inject(Router);
   private authSvc         = inject(AuthService);
   private convSvc         = inject(ConversationsService);
   private coordinator     = inject(MlsCoordinatorBase);
@@ -96,7 +103,13 @@ export class ConversationPage implements OnInit, OnDestroy {
   private knownIds          = new Set<string>();
   private ensureGroupAbort: AbortController | null = null;
 
-  async ngOnInit(): Promise<void> {
+  // Ionic keeps this page instance alive in its navigation stack instead of
+  // destroying it on "back" (see stack-controller in @ionic/angular) — so
+  // ngOnInit/ngOnDestroy only fire once, on the very first visit. Socket
+  // subscriptions are therefore opened in ionViewWillEnter and closed in
+  // ionViewWillLeave, so they don't leak (and don't double-fire) across
+  // repeated visits to a cached conversation instance.
+  async ionViewWillEnter(): Promise<void> {
     this.conversationId = this.route.snapshot.paramMap.get('id') ?? '';
     if (!this.conversationId) {
       this.error = 'Invalid conversation.';
@@ -104,6 +117,7 @@ export class ConversationPage implements OnInit, OnDestroy {
     }
     this.typingUsers$ = this.typingSvc.typingUsers$(this.conversationId);
 
+    this.subs = new Subscription();
     this.subscribeToSocket();
 
     this.loading = true;
@@ -140,9 +154,16 @@ export class ConversationPage implements OnInit, OnDestroy {
     }
   }
 
-  ngOnDestroy(): void {
+  ionViewWillLeave(): void {
     this.typingSvc.stopTyping(this.conversationId);
     this.markReadIfVisible();
+    this.subs.unsubscribe();
+  }
+
+  // Defensive: only reached if the page is truly destroyed (e.g. Ionic evicts
+  // it from the stack). ionViewWillLeave already unsubscribes on every visit,
+  // so this is a no-op in the common case.
+  ngOnDestroy(): void {
     this.ensureGroupAbort?.abort();
     this.ensureGroupAbort = null;
     this.subs.unsubscribe();
@@ -330,7 +351,15 @@ export class ConversationPage implements OnInit, OnDestroy {
     }
 
     // [5] Missing = on server but not in cache and not already being handled by socket.
-    const missing = page.data.filter(m => !allCachedIds.has(m.id) && !this.knownIds.has(m.id));
+    // Messages at/before the last local-history-clear watermark are excluded: they were
+    // already decrypted once before being cleared, so their MLS ratchet generation is
+    // already consumed and re-decrypting them would fail with EpochMismatch.
+    const clearedAt = this.messageCacheSvc.getHistoryClearedAt(this.conversationId);
+    const missing = page.data.filter(m =>
+      !allCachedIds.has(m.id) &&
+      !this.knownIds.has(m.id) &&
+      (clearedAt === null || m.createdAt > clearedAt),
+    );
 
     // [6] Mark all server IDs as known after computing missing so socket won't reprocess them.
     for (const msg of page.data) {
@@ -421,6 +450,91 @@ export class ConversationPage implements OnInit, OnDestroy {
       if (m.isMine && !m.pending) return m.id;
     }
     return null;
+  }
+
+  getMessagePosition(index: number): 'first' | 'middle' | 'last' | 'single' {
+    const current = this.displayMessages[index];
+    if (!current) return 'single';
+
+    const prev = this.displayMessages[index - 1];
+    const next = this.displayMessages[index + 1];
+
+    const isPrevSame = prev && prev.isMine === current.isMine;
+    const isNextSame = next && next.isMine === current.isMine;
+
+    if (isPrevSame && isNextSame) return 'middle';
+    if (isPrevSame) return 'last';
+    if (isNextSame) return 'first';
+    return 'single';
+  }
+
+  openPopover(event: Event): void {
+    if (this.optionsPopover) {
+      this.optionsPopover.event = event;
+      void this.optionsPopover.present();
+    }
+  }
+
+  viewProfile(): void {
+    const partnerDid = this.conversation?.participant.did;
+    if (partnerDid) {
+      void this.router.navigate([ROUTES.contact(partnerDid)]);
+    }
+  }
+
+  isMuted(): boolean {
+    return localStorage.getItem('muted_conv_' + this.conversationId) === 'true';
+  }
+
+  toggleMute(): void {
+    if (this.isMuted()) {
+      localStorage.removeItem('muted_conv_' + this.conversationId);
+    } else {
+      localStorage.setItem('muted_conv_' + this.conversationId, 'true');
+    }
+  }
+
+  async clearLocalHistoryPrompt(): Promise<void> {
+    const confirmClear = confirm(this.i18n.t('conversation.confirm_clear_history'));
+    if (!confirmClear) return;
+
+    const user = this.authSvc.currentUser();
+    const device = this.authSvc.currentDevice();
+    if (!user || !device) return;
+
+    await this.messageCacheSvc.clearConversation(this.conversationId);
+    this.displayMessages = [];
+    this.cdr.markForCheck();
+  }
+
+  async deleteConversationPrompt(): Promise<void> {
+    const confirmDelete = confirm(this.i18n.t('conversation.confirm_delete'));
+    if (!confirmDelete) return;
+
+    try {
+      await this.messageCacheSvc.clearConversation(this.conversationId);
+      await firstValueFrom(this.convSvc.deleteConversation(this.conversationId));
+      void this.router.navigate([ROUTES.conversations]);
+    } catch (e) {
+      console.error('Failed to delete conversation:', e);
+      alert('Could not delete conversation from server. Please try again.');
+    }
+  }
+
+  async toggleArchive(): Promise<void> {
+    if (!this.conversation) return;
+    const nextState = !this.conversation.archived;
+    try {
+      await firstValueFrom(this.convSvc.archiveConversation(this.conversationId, nextState));
+      this.conversation.archived = nextState;
+      this.cdr.markForCheck();
+      if (nextState) {
+        void this.router.navigate([ROUTES.conversations]);
+      }
+    } catch (e) {
+      console.error('Failed to toggle archive state:', e);
+      alert('Could not update archive state on server. Please try again.');
+    }
   }
 
   private markReadIfVisible(): void {

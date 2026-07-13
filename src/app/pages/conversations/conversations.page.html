@@ -3,7 +3,25 @@
 } @else {
   <ion-header>
     <ion-toolbar>
-      <ion-title>{{ 'conversations.title' | translate }}</ion-title>
+      @if (sidebarList?.viewingArchived) {
+        <ion-buttons slot="start">
+          <ion-button (click)="sidebarList?.closeArchives()">
+            <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
+          </ion-button>
+        </ion-buttons>
+      }
+
+      <ion-title>
+        {{ (sidebarList?.viewingArchived ? 'conversations.archives' : 'conversations.title') | translate }}
+      </ion-title>
+
+      @if (!sidebarList?.viewingArchived) {
+        <ion-buttons slot="end">
+          <ion-button (click)="sidebarList?.openArchives()" [attr.aria-label]="'conversations.archives' | translate">
+            <ion-icon slot="icon-only" name="archive-outline"></ion-icon>
+          </ion-button>
+        </ion-buttons>
+      }
     </ion-toolbar>
   </ion-header>
 
@@ -12,6 +30,6 @@
       <ion-refresher-content></ion-refresher-content>
     </ion-refresher>
 
-    <app-sidebar-list></app-sidebar-list>
+    <app-sidebar-list #sidebarList></app-sidebar-list>
   </ion-content>
 }

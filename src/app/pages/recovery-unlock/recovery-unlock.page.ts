@@ -1,10 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import {
-  IonHeader, IonToolbar, IonTitle, IonContent,
-  IonCard, IonCardHeader, IonCardTitle, IonCardContent,
-  IonButton, IonInput, IonSpinner, IonText,
-} from '@ionic/angular/standalone';
+import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
 import { SyncService } from '../../core/sync/sync.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
@@ -16,12 +12,7 @@ import { ROUTES } from '../../core/routes';
 @Component({
   selector: 'app-recovery-unlock',
   standalone: true,
-  imports: [
-    IonHeader, IonToolbar, IonTitle, IonContent,
-    IonCard, IonCardHeader, IonCardTitle, IonCardContent,
-    IonButton, IonInput, IonSpinner, IonText,
-    TranslatePipe,
-  ],
+  imports: [IonContent, IonIcon, TranslatePipe],
   templateUrl: './recovery-unlock.page.html',
   styleUrls: ['./recovery-unlock.page.scss'],
 })
@@ -38,21 +29,6 @@ export class RecoveryUnlockPage {
   pinConfirm      = '';
   working         = false;
   error           = '';
-
-  onRecoveryInput(event: Event): void {
-    const detail = (event as CustomEvent<{ value?: string | null }>).detail;
-    this.recoveryInput = detail?.value ?? '';
-  }
-
-  onPinInput(event: Event): void {
-    const detail = (event as CustomEvent<{ value?: string | null }>).detail;
-    this.pin = detail?.value ?? '';
-  }
-
-  onPinConfirmInput(event: Event): void {
-    const detail = (event as CustomEvent<{ value?: string | null }>).detail;
-    this.pinConfirm = detail?.value ?? '';
-  }
 
   async onUnlockWithRecovery(): Promise<void> {
     const key = this.recoveryInput.trim();
