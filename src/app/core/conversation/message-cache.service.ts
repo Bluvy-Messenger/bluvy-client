@@ -24,24 +24,44 @@ export class MessageCacheService {
   // Scope changes (different user or device) trigger full re-initialization.
   private initializedScope: string | null = null;
 
+  // In-flight initialization, shared across concurrent callers. Without this,
+  // two near-simultaneous calls (e.g. SyncService's background backfill and a
+  // conversation page opening) can both pass the initializedScope check before
+  // either sets it, each build their own NativeMessageStore/SQLiteConnection,
+  // and race to createConnection() on the same native 'skychat-cache' DB — the
+  // loser throws "Connection skychat-cache already exists".
+  private initPromise: Promise<void> | null = null;
 
   async initialize(userDid: string, deviceId: string): Promise<void> {
     const scope = `cache:${userDid}:${deviceId}`;
     if (this.initializedScope === scope) return;
 
-    if (Capacitor.isNativePlatform()) {
-      this.keyStore = new NativeKeyStore(); // Android Keystore / iOS Keychain
-      this.msgStore = new NativeMessageStore();
-    } else {
-      this.keyStore = new WebKeyStore();    // WebCrypto + IndexedDB
-      this.msgStore = new WebMessageStore();
+    if (this.initPromise) {
+      await this.initPromise.catch(() => {});
+      return this.initialize(userDid, deviceId);
     }
 
-    // Sequential: WebMessageStore.initialize() creates the IDB schema first
-    // so WebKeyStore.initialize() finds the DB already set up.
-    await this.msgStore.initialize();
-    await this.keyStore.initialize(scope);
-    this.initializedScope = scope;
+    this.initPromise = (async () => {
+      if (Capacitor.isNativePlatform()) {
+        this.keyStore = new NativeKeyStore(); // Android Keystore / iOS Keychain
+        this.msgStore = new NativeMessageStore();
+      } else {
+        this.keyStore = new WebKeyStore();    // WebCrypto + IndexedDB
+        this.msgStore = new WebMessageStore();
+      }
+
+      // Sequential: WebMessageStore.initialize() creates the IDB schema first
+      // so WebKeyStore.initialize() finds the DB already set up.
+      await this.msgStore.initialize();
+      await this.keyStore.initialize(scope);
+      this.initializedScope = scope;
+    })();
+
+    try {
+      await this.initPromise;
+    } finally {
+      this.initPromise = null;
+    }
   }
 
   isInitialized(): boolean {
@@ -66,11 +86,22 @@ export class MessageCacheService {
     return this.msgStore.has(messageId);
   }
 
-  // Updates senderDid and isMine on an existing cached record without re-encrypting the blob.
+  // Updates senderDid and isMine on an existing cached record. senderDid/isMine
+  // live only inside the encrypted blob (see EncryptedCacheRecord), so this
+  // decrypts, patches, and re-encrypts rather than touching a plaintext field.
   // Called by loadHistory() to fix records cached before migration 0004.
   // Returns true if the record was found and the value actually changed.
   async updateSenderDid(messageId: string, senderDid: string, isMine: boolean): Promise<boolean> {
-    return this.msgStore.updateSenderDid(messageId, senderDid, isMine);
+    const key    = await this.keyStore.getOrCreateKey();
+    const record = await this.msgStore.get(messageId);
+    if (!record) return false;
+
+    const current = await this.decryptRecord(record, key);
+    if (current.senderDid === senderDid && current.isMine === isMine) return false;
+
+    const updated = await this.encryptMessage({ ...current, senderDid, isMine }, key);
+    await this.msgStore.put({ ...updated, id: messageId });
+    return true;
   }
 
   async getMessages(
@@ -181,13 +212,10 @@ export class MessageCacheService {
     return {
       id:                message.id,
       conversationId:    message.conversationId,
-      senderDeviceId:    message.senderDeviceId,
-      senderDid:         message.senderDid,
       encryptedBlob:     this.bytesToBase64(new Uint8Array(ciphertext)),
       iv:                this.bytesToBase64(iv),
       cacheVersion:      message.cacheVersion,
       encryptionVersion: message.encryptionVersion,
-      isMine:            message.isMine,
       undecryptable:     message.undecryptable,
       deletedAt:         message.deletedAt,
       createdAt:         message.createdAt,
@@ -202,15 +230,7 @@ export class MessageCacheService {
     const iv         = this.base64ToBytes(record.iv);
     const ciphertext = this.base64ToBytes(record.encryptedBlob);
     const plaintext  = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
-    const msg        = JSON.parse(new TextDecoder().decode(plaintext)) as CachedMessage;
-
-    // Plain fields may have been updated by updateSenderDid() after the blob was written.
-    // The plain field always takes precedence for isMine and senderDid.
-    return {
-      ...msg,
-      isMine:    record.isMine,
-      senderDid: record.senderDid ?? msg.senderDid,
-    };
+    return JSON.parse(new TextDecoder().decode(plaintext)) as CachedMessage;
   }
 
   private bytesToBase64(bytes: Uint8Array): string {

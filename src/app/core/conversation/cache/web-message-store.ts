@@ -1,7 +1,12 @@
 import type { EncryptedCacheRecord, IMessageStore } from './message-cache.types';
 
 const DB_NAME    = 'skychat-message-cache';
-const DB_VERSION = 3;
+// IMPORTANT: web-key-store.ts opens this same physical DB and MUST declare
+// the identical DB_VERSION. If the two ever disagree, the lower-version
+// connection (opened first, e.g. by PendingDecryptRepository.initialize() at
+// login) never closes and the higher-version open request blocks forever —
+// this silently wedged all message loading last time this was attempted.
+const DB_VERSION = 4;
 const KEY_STORE  = 'keys';
 const MSG_STORE  = 'messages';
 
@@ -62,15 +67,6 @@ export class WebMessageStore implements IMessageStore {
     const record = await this.getRecord(db, id);
     if (!record) return;
     await this.putRecord(db, { ...record, deletedAt });
-  }
-
-  async updateSenderDid(id: string, senderDid: string, isMine: boolean): Promise<boolean> {
-    const db     = await this.openDb();
-    const record = await this.getRecord(db, id);
-    if (!record) return false;
-    if (record.senderDid === senderDid) return false;
-    await this.putRecord(db, { ...record, senderDid, isMine });
-    return true;
   }
 
   async delete(id: string): Promise<void> {
@@ -134,6 +130,27 @@ export class WebMessageStore implements IMessageStore {
           store.createIndex('by-deleted',              'deletedAt',                     { unique: false });
           store.createIndex('by-cache-version',        'cacheVersion',                  { unique: false });
           store.createIndex('by-encryption-version',   'encryptionVersion',             { unique: false });
+        }
+        // v3 -> v4: senderDeviceId/senderDid/isMine used to be duplicated in
+        // plaintext on the record — they're already inside the encrypted blob,
+        // so strip the plaintext copies from every existing row.
+        if (event.oldVersion > 0 && event.oldVersion < 4 && db.objectStoreNames.contains(MSG_STORE)) {
+          const store  = request.transaction!.objectStore(MSG_STORE);
+          const cursor = store.openCursor();
+          cursor.onsuccess = () => {
+            const cur = cursor.result;
+            if (!cur) return;
+            const record = cur.value as EncryptedCacheRecord & {
+              senderDeviceId?: string; senderDid?: string; isMine?: boolean;
+            };
+            if ('senderDeviceId' in record || 'senderDid' in record || 'isMine' in record) {
+              delete record.senderDeviceId;
+              delete record.senderDid;
+              delete record.isMine;
+              cur.update(record);
+            }
+            cur.continue();
+          };
         }
       };
 

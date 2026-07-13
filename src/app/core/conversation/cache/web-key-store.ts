@@ -1,7 +1,11 @@
 import type { IKeyStore } from './message-cache.types';
 
 const DB_NAME    = 'skychat-message-cache';
-const DB_VERSION = 3;
+// Must match web-message-store.ts's DB_VERSION exactly — both files open this
+// same physical IndexedDB database. If they disagree, whichever connection
+// opens first (at whatever version) never closes, and the other's open
+// request blocks forever instead of resolving or rejecting.
+const DB_VERSION = 4;
 const KEY_STORE  = 'keys';
 const MSG_STORE  = 'messages';
 

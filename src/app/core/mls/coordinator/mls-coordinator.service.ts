@@ -104,6 +104,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     assertMls(!!user?.did,    'initializeForSession: user.did required', { user });
     assertMls(!!device?.id,   'initializeForSession: device.id required', { device });
     await this.mlsSvc.initializeForSession(user, device);
+    await this.pendingRepo.initialize(user.did, device.id);
     void this.pendingRepo.pruneStale();
   }
 

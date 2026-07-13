@@ -2,7 +2,7 @@ import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacito
 import type { EncryptedCacheRecord, IMessageStore } from './message-cache.types';
 
 const DB_NAME    = 'skychat-cache';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 const SCHEMA_V1: string[] = [
   `CREATE TABLE IF NOT EXISTS message_cache (
@@ -29,12 +29,30 @@ const SCHEMA_V2: string[] = [
   `ALTER TABLE message_cache ADD COLUMN sender_did TEXT`,
 ];
 
+// v2 -> v3 had no real schema change historically, but the native plugin
+// throws "onUpgrade statement not given" for any toVersion step whose
+// statements array is empty (UtilsUpgrade.java) — even for devices that
+// never actually need this step (curVersion >= 3 skips it entirely; only
+// devices still below version 3 hit it). Re-running an existing IF NOT
+// EXISTS index is a genuine no-op that satisfies the plugin's requirement.
+const SCHEMA_V3: string[] = [
+  `CREATE INDEX IF NOT EXISTS mc_conv_created ON message_cache(conversation_id, created_at)`,
+];
+
+// sender_device_id/sender_did/is_mine used to be duplicated in plaintext —
+// they're already inside encrypted_blob, so drop the plaintext columns.
+const SCHEMA_V4: string[] = [
+  `ALTER TABLE message_cache DROP COLUMN sender_device_id`,
+  `ALTER TABLE message_cache DROP COLUMN sender_did`,
+  `ALTER TABLE message_cache DROP COLUMN is_mine`,
+];
+
 const INSERT_SQL = `
   INSERT OR REPLACE INTO message_cache
-    (id, conversation_id, sender_device_id, sender_did, encrypted_blob, iv,
-     cache_version, encryption_version, is_mine, undecryptable,
+    (id, conversation_id, encrypted_blob, iv,
+     cache_version, encryption_version, undecryptable,
      deleted_at, created_at, cached_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 export class NativeMessageStore implements IMessageStore {
@@ -49,22 +67,41 @@ export class NativeMessageStore implements IMessageStore {
     await this.sqlite.addUpgradeStatement(DB_NAME, [
       { toVersion: 1, statements: SCHEMA_V1 },
       { toVersion: 2, statements: SCHEMA_V2 },
-      { toVersion: 3, statements: [] },
+      { toVersion: 3, statements: SCHEMA_V3 },
+      { toVersion: 4, statements: SCHEMA_V4 },
     ]);
-    
+
+    // Reconcile this (possibly freshly-constructed) SQLiteConnection's local
+    // tracking against what's actually open natively. A fresh instance's
+    // internal dict starts empty even if a connection from a previous JS
+    // context survived (WebView renderer reset, background Activity
+    // reclamation, etc. — none of which necessarily kill the native process
+    // holding the real SQLite connection). Without this, isConnection() below
+    // wrongly reports false and createConnection() collides with the stale
+    // native connection ("Connection skychat-cache already exists").
+    await this.sqlite.checkConnectionsConsistency().catch(() => {});
+
     const isConn = await this.sqlite.isConnection(DB_NAME, false);
     if (isConn.result) {
       this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
     } else {
-      this.db = await this.sqlite.createConnection(
-        DB_NAME,
-        false,
-        'no-encryption',
-        DB_VERSION,
-        false,
-      );
+      try {
+        this.db = await this.sqlite.createConnection(
+          DB_NAME,
+          false,
+          'no-encryption',
+          DB_VERSION,
+          false,
+        );
+      } catch (err) {
+        // Residual case checkConnectionsConsistency() didn't catch: the
+        // native connection genuinely exists, so reuse it instead of failing.
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.toLowerCase().includes('already exist')) throw err;
+        this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
+      }
     }
-    
+
     const isOpen = await this.db.isDBOpen();
     if (!isOpen.result) {
       await this.db.open();
@@ -156,17 +193,6 @@ export class NativeMessageStore implements IMessageStore {
     );
   }
 
-  async updateSenderDid(id: string, senderDid: string, isMine: boolean): Promise<boolean> {
-    const current = await this.get(id);
-    if (!current) return false;
-    if (current.senderDid === senderDid) return false;
-    await this.db!.run(
-      'UPDATE message_cache SET sender_did = ?, is_mine = ? WHERE id = ?',
-      [senderDid, isMine ? 1 : 0, id],
-    );
-    return true;
-  }
-
   async delete(id: string): Promise<void> {
     await this.db!.run(
       'DELETE FROM message_cache WHERE id = ?',
@@ -189,11 +215,10 @@ export class NativeMessageStore implements IMessageStore {
 
   private toValues(r: EncryptedCacheRecord): unknown[] {
     return [
-      r.id, r.conversationId, r.senderDeviceId,
-      r.senderDid ?? null,
+      r.id, r.conversationId,
       r.encryptedBlob, r.iv,
       r.cacheVersion, r.encryptionVersion,
-      r.isMine ? 1 : 0, r.undecryptable ? 1 : 0,
+      r.undecryptable ? 1 : 0,
       r.deletedAt,
       r.createdAt, r.cachedAt,
     ];
@@ -203,13 +228,10 @@ export class NativeMessageStore implements IMessageStore {
     return {
       id:                row['id'] as string,
       conversationId:    row['conversation_id'] as string,
-      senderDeviceId:    row['sender_device_id'] as string,
-      senderDid:         (row['sender_did'] as string | null | undefined) ?? undefined,
       encryptedBlob:     row['encrypted_blob'] as string,
       iv:                row['iv'] as string,
       cacheVersion:      row['cache_version'] as number,
       encryptionVersion: row['encryption_version'] as number,
-      isMine:            row['is_mine'] === 1,
       undecryptable:     row['undecryptable'] === 1,
       deletedAt:         (row['deleted_at'] as number | null | undefined) ?? null,
       createdAt:         row['created_at'] as number,
