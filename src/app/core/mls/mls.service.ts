@@ -144,7 +144,21 @@ export class MlsService {
     // Quick pre-check (read-only, no lock).
     const preState = await this.storage.load<StoredMlsState>(scope);
     if (!preState) throw new Error('MLS not initialized');
-    if (preState.groupStates[conversationId]) return;
+
+    if (preState.groupStates[conversationId]) {
+      // In case we missed the Socket.IO welcome event while offline or disconnected,
+      // check if there is a pending Welcome for us on the server. If there is, it means
+      // the group was reset by another device, so our local state is obsolete.
+      try {
+        const joined = await this.fetchAndProcessPendingWelcome(conversationId, user, device);
+        if (joined && !environment.production) {
+          console.log('[MLS] ensureGroupReady: successfully healed group from welcome on page load', conversationId);
+        }
+      } catch (err) {
+        console.warn('[MLS] ensureGroupReady: background welcome check failed', err);
+      }
+      return;
+    }
 
     // The backend is the single authority on who creates the MLS group.
     const { role } = await this.mlsRepo.ensureGroup(conversationId);
@@ -680,6 +694,13 @@ export class MlsService {
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
+    // Wait for any in-progress incoming commit to finish applying first, so we
+    // never start building a proposal against an epoch that's about to be
+    // superseded (mirrors encryptMessage/decryptMessage below) — narrows the
+    // window for a wasted round trip + lost-race rollback.
+    const pendingIncoming = this.pendingCommits.get(conversationId);
+    if (pendingIncoming) await pendingIncoming;
+
     const scope = this.makeScope(user.did, device.id);
 
     // Pre-check: abort early if there is nothing to provision (read-only, no lock).
@@ -1107,6 +1128,13 @@ export class MlsService {
     if (!state || !state.groupStates) return;
 
     for (const convId of Object.keys(state.groupStates)) {
+      // Wait for any in-progress incoming commit for THIS conversation to
+      // finish applying first (mirrors provisionDevice() / encryptMessage() /
+      // decryptMessage()) — narrows the window for a wasted round trip +
+      // lost-race rollback below.
+      const pendingIncoming = this.pendingCommits.get(convId);
+      if (pendingIncoming) await pendingIncoming;
+
       // Acquire the reusable commit lock before doing any work for this
       // conversation — same rationale as provisionDevice(): if another device
       // (e.g. another member notified by the same device:revoked event)

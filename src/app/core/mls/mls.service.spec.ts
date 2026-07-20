@@ -180,6 +180,38 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
   });
 
   describe('provisionDevice', () => {
+    it('waits for an in-progress incoming commit to finish applying before starting', async () => {
+      const { stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
+
+      // Simulate a processIncomingCommit() already in flight for this
+      // conversation by seeding the private pendingCommits map directly —
+      // there's no public seam for "an incoming commit is being applied".
+      let resolveIncoming!: () => void;
+      const blocking = new Promise<void>(resolve => { resolveIncoming = resolve; });
+      (service as unknown as { pendingCommits: Map<string, Promise<void>> })
+        .pendingCommits.set(CONV_ID, blocking);
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
+
+      let settled = false;
+      const provisionPromise = service.provisionDevice('device-new', CONV_ID, USER, DEVICE)
+        .then(() => { settled = true; });
+
+      // Flush pending microtasks — provisionDevice must still be blocked on
+      // the incoming commit, so it must not have reached the lock check yet.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockRepo.acquireCommitLock).not.toHaveBeenCalled();
+      expect(settled).toBe(false);
+
+      resolveIncoming();
+      await provisionPromise;
+
+      expect(mockRepo.acquireCommitLock).toHaveBeenCalledWith(CONV_ID);
+      expect(settled).toBe(true);
+    });
+
     it('skips cleanly without building a commit when the lock is held by another device', async () => {
       const { stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
       fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
@@ -250,6 +282,33 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
   });
 
   describe('removeRevokedDeviceFromAllGroups', () => {
+    it('waits for an in-progress incoming commit on that conversation before starting', async () => {
+      const { stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
+
+      let resolveIncoming!: () => void;
+      const blocking = new Promise<void>(resolve => { resolveIncoming = resolve; });
+      (service as unknown as { pendingCommits: Map<string, Promise<void>> })
+        .pendingCommits.set(CONV_ID, blocking);
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
+
+      let settled = false;
+      const removePromise = service.removeRevokedDeviceFromAllGroups('device-revoked', USER, DEVICE)
+        .then(() => { settled = true; });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockRepo.acquireCommitLock).not.toHaveBeenCalled();
+      expect(settled).toBe(false);
+
+      resolveIncoming();
+      await removePromise;
+
+      expect(mockRepo.acquireCommitLock).toHaveBeenCalledWith(CONV_ID);
+      expect(settled).toBe(true);
+    });
+
     it('skips a conversation whose commit lock is held by another device', async () => {
       const { stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
       fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
