@@ -53,6 +53,9 @@ const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/expected application message/i,  'WireformatMismatch'],
   [/invalid mac/i,                   'InvalidSignature'],
   [/invalid signature/i,             'InvalidSignature'],
+  [/verification/i,                  'InvalidSignature'],
+  [/could not verify/i,              'InvalidSignature'],
+  [/crypto/i,                        'InvalidSignature'],
   [/epoch too old/i,                 'EpochTooOld'],
   [/desired gen/i,                   'EpochMismatch'],
 ] as const;
@@ -454,10 +457,17 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       if (!wasReady) throw err;
       const failures = (this.commitFailureCounts.get(convId) ?? 0) + 1;
       this.commitFailureCounts.set(convId, failures);
-      if (failures >= MlsCoordinatorService.MAX_COMMIT_FAILURES) {
+
+      const classified = this.classifyError(err, convId);
+      const isPermanentCommitFail =
+        classified instanceof PermanentMlsError &&
+        classified.kind !== 'EpochMismatch' &&
+        classified.kind !== 'EpochTooOld';
+
+      if (failures >= MlsCoordinatorService.MAX_COMMIT_FAILURES || isPermanentCommitFail) {
         console.error(
           '[MLS:coordinator]', failures, 'consecutive commit failures for', convId,
-          '— likely a permanent fork (see provisionDevice commit race). Marking FAILED.',
+          '— likely a permanent fork. Marking FAILED.',
         );
         this.transitionState(convId, ConversationMlsState.Failed);
         this._conversationFailed$$.next({ conversationId: convId });

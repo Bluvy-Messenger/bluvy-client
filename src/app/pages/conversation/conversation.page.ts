@@ -150,6 +150,8 @@ export class ConversationPage implements OnDestroy {
         }
       }
 
+      this.mlsGroupReady = this.coordinator.isConversationReady(this.conversationId);
+
       await this.loadHistory();
       this.markReadIfVisible();
     } catch {

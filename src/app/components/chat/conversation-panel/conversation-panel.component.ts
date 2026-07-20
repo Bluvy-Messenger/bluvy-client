@@ -244,6 +244,8 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
         } catch (err) { if (!environment.production) console.warn('[MLS] catchUpMissedCommits failed:', err); }
       }
 
+      this.mlsGroupReady = this.coordinator.isConversationReady(this.conversationId);
+
       await this.loadHistory();
       this.markReadIfVisible();
     } catch {

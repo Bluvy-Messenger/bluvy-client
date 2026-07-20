@@ -192,20 +192,8 @@ export class MlsService {
         }
 
         round++;
-        if (round >= 2) {
-          // Deadlock escape: we are stuck waiting for a Welcome.
-          // Force a group reset on the backend by ACKing all pending welcomes,
-          // clearing local group state, and retrying ensureGroup.
-          if (!environment.production) console.warn('[MLS] ensureGroupReady: stuck waiting for Welcome, forcing group reset for', conversationId);
-          try {
-            const welcomes = await this.mlsRepo.getPendingWelcomes(conversationId);
-            for (const item of welcomes.data) {
-              await this.mlsRepo.ackWelcome(item.id).catch(() => {});
-            }
-            await this.clearConversationGroup(conversationId, user, device);
-          } catch (err) {
-            console.error('[MLS] ensureGroupReady: failed during deadlock escape', err);
-          }
+        if (round >= 5) {
+          throw new Error('Timed out waiting for MLS group invitation');
         }
 
         const refreshed = await this.mlsRepo.ensureGroup(conversationId);
