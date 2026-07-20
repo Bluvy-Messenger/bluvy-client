@@ -315,13 +315,22 @@ export class ConversationPage implements OnDestroy {
       this.scrollToBottom();
     }
 
-    // [4.5] Attempt to recover orphaned own-device placeholders.
-    // These are isMine messages cached without plaintext because the socket handler
-    // previously did not attempt MLS decryption for messages from other own devices.
-    // Now that MLS is established, attempt decryption. Failures are silently ignored —
-    // the ratchet has advanced past these messages and the placeholder stays unchanged.
+    // [4.5] Attempt to recover orphaned own-device placeholders AND messages
+    // already marked undecryptable. Own-device orphans are cached without
+    // plaintext because the socket handler previously did not attempt MLS
+    // decryption for messages from other own devices. Messages already marked
+    // undecryptable were classified as a "permanent" MLS error (e.g.
+    // EpochTooOld) at the time — but that classification only means "not
+    // retryable right now", not "provably impossible forever": if the group
+    // has since healed (a pending Welcome was processed after this message's
+    // first attempt), a fresh decrypt can succeed. Neither category was ever
+    // consumed successfully, so retrying doesn't touch an already-used ratchet
+    // generation the way re-decrypting a *successful* past message would.
     const orphans = cacheResult.messages.filter(
-      m => m.isMine && m.plaintext === '' && !m.undecryptable && m.deletedAt === null,
+      m => m.deletedAt === null && (
+        (m.isMine && m.plaintext === '' && !m.undecryptable) ||
+        m.undecryptable
+      ),
     );
     if (orphans.length > 0) {
       const serverMsgById = new Map(page.data.map(m => [m.id, m]));
@@ -334,14 +343,14 @@ export class ConversationPage implements OnDestroy {
           orphan.id,
           orphan.senderDid ?? user.did,
           orphan.senderDeviceId,
-          true,
+          orphan.isMine,
           orphan.createdAt,
           serverMsg.ciphertext,
           user,
           device,
         );
         if (result.state === 'plaintext') {
-          await this.messageCacheSvc.store({ ...orphan, plaintext: result.plaintext });
+          await this.messageCacheSvc.store({ ...orphan, plaintext: result.plaintext, undecryptable: false });
           this.syncSvc.enqueue({
             messageId:      orphan.id,
             conversationId: this.conversationId,
@@ -351,7 +360,7 @@ export class ConversationPage implements OnDestroy {
           });
           anyFixed = true;
         }
-        // pending_decrypt or undecryptable: placeholder stays unchanged.
+        // pending_decrypt or still undecryptable: placeholder stays unchanged.
       }
       if (anyFixed) {
         const refreshed = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
