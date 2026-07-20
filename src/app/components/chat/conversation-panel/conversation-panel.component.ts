@@ -278,6 +278,38 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       this.scrollToBottom();
     }
 
+    // Retry messages already marked undecryptable (classified as a "permanent"
+    // MLS error at the time, e.g. EpochTooOld) — the group may have healed
+    // since (a pending Welcome processed after the first attempt), in which
+    // case a fresh decrypt can now succeed. Never previously succeeded, so
+    // this doesn't touch an already-consumed ratchet generation.
+    const undecryptableCached = cacheResult.messages.filter(m => m.undecryptable && m.deletedAt === null);
+    if (undecryptableCached.length > 0) {
+      const serverMsgById = new Map(page.data.map(m => [m.id, m]));
+      let anyHealed = false;
+      for (const stale of undecryptableCached) {
+        const serverMsg = serverMsgById.get(stale.id);
+        if (!serverMsg) continue;
+        const result = await this.coordinator.decryptMessage(
+          this.conversationId, stale.id, stale.senderDid ?? user.did, stale.senderDeviceId,
+          stale.isMine, stale.createdAt, serverMsg.ciphertext, user, device,
+        );
+        if (result.state === 'plaintext') {
+          const healed = { ...stale, plaintext: result.plaintext, undecryptable: false };
+          await this.messageCacheSvc.store(healed);
+          this.upsertDisplay(healed);
+          if (!stale.isMine) {
+            this.syncSvc.enqueue({
+              messageId: stale.id, conversationId: this.conversationId, plaintext: result.plaintext,
+              createdAt: stale.createdAt, senderDid: stale.senderDid ?? user.did,
+            });
+          }
+          anyHealed = true;
+        }
+      }
+      if (anyHealed) this.scrollToBottom();
+    }
+
     const missing = page.data.filter(m => !allCachedIds.has(m.id) && !this.knownIds.has(m.id));
     for (const msg of page.data) this.knownIds.add(msg.id);
     if (missing.length === 0) return;
