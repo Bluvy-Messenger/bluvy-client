@@ -4,6 +4,8 @@ import { isObject } from '../infrastructure/validation.util';
 
 export type EnsureGroupResponse = { role: 'initiator' | 'joiner' | 'already_initialized' };
 
+export type AcquireCommitLockResponse = { acquired: boolean };
+
 export type PendingWelcomesResponse = {
   data: Array<{ id: string; conversationId: string | null; welcome: string; createdAt: number }>;
 };
@@ -25,6 +27,12 @@ function isEnsureGroupRole(value: unknown): value is 'initiator' | 'joiner' | 'a
 export function validateEnsureGroupResponse(data: EnsureGroupResponse): EnsureGroupResponse {
   if (!isObject(data)) throw new Error('EnsureGroupResponse: expected object');
   if (!isEnsureGroupRole(data['role'])) throw new Error('EnsureGroupResponse.role: expected known role');
+  return data;
+}
+
+export function validateAcquireCommitLockResponse(data: AcquireCommitLockResponse): AcquireCommitLockResponse {
+  if (!isObject(data)) throw new Error('AcquireCommitLockResponse: expected object');
+  if (typeof data['acquired'] !== 'boolean') throw new Error('AcquireCommitLockResponse.acquired: expected boolean');
   return data;
 }
 

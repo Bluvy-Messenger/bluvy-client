@@ -1,4 +1,4 @@
-import type { ConversationNewPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload } from './socket.types';
+import type { ConversationNewPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload } from './socket.types';
 import { isObject } from './validation.util';
 
 export function validateMessageNewPayload(data: MessageNewPayload): MessageNewPayload {
@@ -100,5 +100,17 @@ export function validateConversationNewPayload(data: ConversationNewPayload): Co
   const p = data['participant'];
   if (typeof p['did'] !== 'string') throw new Error('ConversationNewPayload.participant.did: expected string');
   if (typeof p['handle'] !== 'string') throw new Error('ConversationNewPayload.participant.handle: expected string');
+  return data;
+}
+
+export function validateMlsRefillKeyPackagesPayload(data: MlsRefillKeyPackagesPayload): MlsRefillKeyPackagesPayload {
+  if (!isObject(data)) throw new Error('MlsRefillKeyPackagesPayload: expected object');
+  if (typeof data['count'] !== 'number') throw new Error('MlsRefillKeyPackagesPayload.count: expected number');
+  return data;
+}
+
+export function validateDeviceRevokedPayload(data: DeviceRevokedPayload): DeviceRevokedPayload {
+  if (!isObject(data)) throw new Error('DeviceRevokedPayload: expected object');
+  if (typeof data['deviceId'] !== 'string') throw new Error('DeviceRevokedPayload.deviceId: expected string');
   return data;
 }

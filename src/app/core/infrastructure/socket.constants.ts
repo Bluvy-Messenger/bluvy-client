@@ -15,4 +15,6 @@ export const SOCKET_EVENTS = {
   CONVERSATION_NEW:     'conversation:new',
   CONNECT:              'connect',
   CONNECT_ERROR:        'connect_error',
+  MLS_REFILL_KEY_PACKAGES: 'mls:refill_key_packages',
+  DEVICE_REVOKED:       'device:revoked',
 } as const;

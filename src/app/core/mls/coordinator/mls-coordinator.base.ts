@@ -113,6 +113,12 @@ export abstract class MlsCoordinatorBase {
     device:      DeviceInfo,
   ): Promise<void>;
 
+  abstract removeRevokedDeviceFromAllGroups(
+    revokedDeviceId: string,
+    user:            UserProfile,
+    device:          DeviceInfo,
+  ): Promise<void>;
+
   // ── Restore ───────────────────────────────────────────────────────────────
   abstract injectRestoredGroupStates(
     groupStates: Record<string, string>,

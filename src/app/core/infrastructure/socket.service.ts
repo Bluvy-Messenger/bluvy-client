@@ -7,7 +7,7 @@ import type {
   MessageNewPayload, WelcomeNewPayload, DeviceNewPayload, MlsCommitPayload,
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
-  ConversationNewPayload,
+  ConversationNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
   SendAck,
 } from './socket.types';
 import { SOCKET_EVENTS } from './socket.constants';
@@ -23,13 +23,15 @@ import {
   validateReceiptUpdatePayload,
   validateReceiptDeliveredPayload,
   validateConversationNewPayload,
+  validateMlsRefillKeyPackagesPayload,
+  validateDeviceRevokedPayload,
 } from './socket.validator';
 
 export type {
   MessageNewPayload, WelcomeNewPayload, DeviceNewPayload, MlsCommitPayload,
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
-  ConversationNewPayload,
+  ConversationNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
 } from './socket.types';
 
 @Injectable({ providedIn: 'root' })
@@ -53,6 +55,8 @@ export class SocketService {
   private readonly _conversationNew     = new Subject<ConversationNewPayload>();
   private readonly _reconnect           = new Subject<void>();
   private readonly _connectError        = new Subject<Error>();
+  private readonly _mlsRefillKeyPackages = new Subject<MlsRefillKeyPackagesPayload>();
+  private readonly _deviceRevoked       = new Subject<DeviceRevokedPayload>();
 
   readonly messageNew$: Observable<MessageNewPayload> = this._messageNew.asObservable().pipe(
     throttleTime(100, asyncScheduler, { leading: true, trailing: true }),
@@ -69,6 +73,8 @@ export class SocketService {
   readonly conversationNew$:     Observable<ConversationNewPayload>     = this._conversationNew.asObservable();
   readonly reconnect$:           Observable<void>                       = this._reconnect.asObservable();
   readonly connectError$:        Observable<Error>                      = this._connectError.asObservable();
+  readonly mlsRefillKeyPackages$: Observable<MlsRefillKeyPackagesPayload> = this._mlsRefillKeyPackages.asObservable();
+  readonly deviceRevoked$:       Observable<DeviceRevokedPayload>       = this._deviceRevoked.asObservable();
 
   connect(): void {
     if (this.socket) return;
@@ -160,6 +166,18 @@ export class SocketService {
       let data: ConversationNewPayload;
       try { data = validateConversationNewPayload(raw); } catch { return; }
       this.zone.run(() => this._conversationNew.next(data));
+    });
+
+    this.socket.on(SOCKET_EVENTS.MLS_REFILL_KEY_PACKAGES, (raw: MlsRefillKeyPackagesPayload) => {
+      let data: MlsRefillKeyPackagesPayload;
+      try { data = validateMlsRefillKeyPackagesPayload(raw); } catch { return; }
+      this.zone.run(() => this._mlsRefillKeyPackages.next(data));
+    });
+
+    this.socket.on(SOCKET_EVENTS.DEVICE_REVOKED, (raw: DeviceRevokedPayload) => {
+      let data: DeviceRevokedPayload;
+      try { data = validateDeviceRevokedPayload(raw); } catch { return; }
+      this.zone.run(() => this._deviceRevoked.next(data));
     });
   }
 

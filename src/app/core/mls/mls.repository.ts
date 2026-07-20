@@ -3,6 +3,7 @@ import { ApiClientService } from '../infrastructure/api-client.service';
 import type { UploadedKeyPackage, ConsumedKeyPackageResponse } from './mls.types';
 import type { Paginated } from '../infrastructure/pagination.types';
 import {
+  validateAcquireCommitLockResponse,
   validateConsumedKeyPackageResponse,
   validateEnsureGroupResponse,
   validateKeyPackagesForParticipantResponse,
@@ -12,6 +13,7 @@ import {
   validatePostCommitResponse,
 } from './mls.validator';
 import type {
+  AcquireCommitLockResponse,
   EnsureGroupResponse,
   MissedCommitsResponse,
   MlsCommitItem,
@@ -29,6 +31,17 @@ export class MlsRepository {
       {},
     );
     return validateEnsureGroupResponse(raw);
+  }
+
+  // Reusable lock acquired before building a commit that adds/removes a member,
+  // so concurrent devices of the same account don't race to post competing
+  // commits for the same epoch. See acquire-commit-lock route for lifecycle.
+  async acquireCommitLock(conversationId: string): Promise<AcquireCommitLockResponse> {
+    const raw = await this.apiClient.post<AcquireCommitLockResponse>(
+      `/v1/conversations/${encodeURIComponent(conversationId)}/acquire-commit-lock`,
+      {},
+    );
+    return validateAcquireCommitLockResponse(raw);
   }
 
   async consumeKeyPackage(participantDid: string): Promise<ConsumedKeyPackageResponse> {

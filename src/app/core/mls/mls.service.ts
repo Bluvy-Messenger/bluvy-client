@@ -690,6 +690,23 @@ export class MlsService {
       return;
     }
 
+    // Acquire the reusable server-side commit lock before doing any work. If
+    // another device already holds it (e.g. another of our devices reacting to
+    // the same device:new event), skip cleanly instead of racing: whichever
+    // device holds the lock accomplishes the same conversation-wide goal, and
+    // we'll pick up its commit through the normal catch-up path. A network
+    // failure asking for the lock is not treated as "denied" — proceed as
+    // before, relying on the after-the-fact race detection below as a fallback.
+    try {
+      const { acquired } = await this.mlsRepo.acquireCommitLock(conversationId);
+      if (!acquired) {
+        if (!environment.production) console.log('[MLS] provisionDevice: commit lock held by another device for conv', conversationId, '— skipping');
+        return;
+      }
+    } catch (err) {
+      console.warn('[MLS] provisionDevice: failed to acquire commit lock for conv', conversationId, '— proceeding without it', err);
+    }
+
     // Network: consume key package (before the storage lock).
     // The membership guard runs inside the lock (below) to prevent the TOCTOU race
     // where two concurrent provisionDevice calls both pass this pre-check and then
@@ -1078,5 +1095,95 @@ export class MlsService {
     const copy = new Uint8Array(data);
     const buf  = await crypto.subtle.digest('SHA-256', copy);
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async removeRevokedDeviceFromAllGroups(
+    revokedDeviceId: string,
+    user:            UserProfile,
+    device:          SessionDevice,
+  ): Promise<void> {
+    const scope = this.getStorageScope(user.did, device.id);
+    const state = await this.storage.load<StoredMlsState>(scope);
+    if (!state || !state.groupStates) return;
+
+    for (const convId of Object.keys(state.groupStates)) {
+      // Acquire the reusable commit lock before doing any work for this
+      // conversation — same rationale as provisionDevice(): if another device
+      // (e.g. another member notified by the same device:revoked event)
+      // already holds it, skip cleanly instead of racing to remove the same
+      // leaf twice. A network failure asking for the lock is not treated as
+      // "denied" — proceed, relying on the after-the-fact race detection below.
+      try {
+        const { acquired } = await this.mlsRepo.acquireCommitLock(convId);
+        if (!acquired) {
+          if (!environment.production) console.log('[MLS] removeRevokedDevice: commit lock held by another device for conv', convId, '— skipping');
+          continue;
+        }
+      } catch (err) {
+        console.warn('[MLS] removeRevokedDevice: failed to acquire commit lock for conv', convId, '— proceeding without it', err);
+      }
+
+      await this.storage.update<StoredMlsState>(scope, async (current) => {
+        if (!current || !current.groupStates || !current.groupStates[convId]) return null;
+
+        const encoded = current.groupStates[convId];
+        const clientState = this.restoreClientState(encoded);
+        const members = getGroupMembers(clientState);
+        const dec = new TextDecoder();
+
+        // getGroupMembers() returns leaves in tree order with no attached index —
+        // the array position IS the leaf index (see provisionDevice's identical
+        // "already member" lookup above, which relies on the same ordering).
+        const leafIndex = members.findIndex((m) =>
+          m.credential.credentialType === 'basic' &&
+          dec.decode(m.credential.identity).endsWith(`#${revokedDeviceId}`)
+        );
+
+        if (leafIndex === -1) return null;
+
+        if (!environment.production) console.warn('[MLS] removeRevokedDevice: found device to remove in conv', convId, revokedDeviceId, 'at leaf', leafIndex);
+
+        const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
+        const removeProposal = {
+          proposalType: 'remove' as const,
+          remove: { removed: leafIndex },
+        };
+
+        const { newState, commit } = await createCommit(
+          { state: clientState, cipherSuite: cs },
+          { extraProposals: [removeProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
+        );
+
+        const serializedCommit = this.bytesToBase64(encodeMlsMessage(commit));
+
+        let stored;
+        try {
+          stored = await this.mlsRepo.postCommit(convId, serializedCommit, Number(newState.groupContext.epoch));
+        } catch (err) {
+          console.error('[MLS] removeRevokedDevice: failed to post Remove commit for conv', convId, err);
+          return null;
+        }
+
+        // Another device may have posted a commit for the same epoch first (e.g.
+        // another recipient of the same device:revoked event racing to remove the
+        // same device). Detect it the same way provisionDevice() does: if the
+        // stored commit isn't ours, don't write our optimistic state — resync onto
+        // the winning commit instead, so we don't fork.
+        if (stored.senderDeviceId !== device.id) {
+          console.warn(
+            '[MLS] removeRevokedDevice: lost commit race for conv', convId,
+            '— resyncing on winning commit from', stored.senderDeviceId,
+          );
+          void this.processIncomingCommit(convId, stored.commit, stored.epoch, user, device)
+            .catch(err => console.warn('[MLS] removeRevokedDevice: resync after lost race failed for conv', convId, err));
+          return null;
+        }
+
+        const serializedState = this.bytesToBase64(encodeGroupState(newState));
+        current.groupStates[convId] = serializedState;
+        current.updatedAt = Date.now();
+        return current;
+      });
+    }
   }
 }

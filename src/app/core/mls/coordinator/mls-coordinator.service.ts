@@ -84,6 +84,15 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly commitFailureCounts = new Map<string, number>();
   private static readonly MAX_COMMIT_FAILURES = 3;
 
+  // Consecutive decryption failures (permanent errors) per conversation.
+  // Triggers self-healing reset if we receive multiple undecryptable messages.
+  // Kept > 1 so a single out-of-order message (legitimately unable to decrypt
+  // once the group has since moved on, without indicating a real fork) gets a
+  // chance at the softer fetchAndProcessPendingWelcome self-heal below before
+  // escalating to a full FAILED reset.
+  private readonly decryptionFailures = new Map<string, number>();
+  private static readonly MAX_DECRYPTION_FAILURES = 2;
+
   // ── Private Subjects ───────────────────────────────────────────────────────
   private readonly _conversationReady$$    = new Subject<ConversationReadyEvent>();
   private readonly _welcomeProcessed$$     = new Subject<WelcomeProcessedEvent>();
@@ -322,6 +331,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       try {
         const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
         this.states.set(convId, ConversationMlsState.Ready);
+        this.decryptionFailures.set(convId, 0);
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
         const classified = this.classifyError(err, convId);
@@ -346,18 +356,27 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
           return { messageId, conversationId: convId, state: 'pending_decrypt' as const, plaintext: '', errorKind: classified.kind, operationId };
         }
 
-        // Trigger background welcome check in case the group was reset or we missed a Welcome.
-        void this.fetchAndProcessPendingWelcome(convId, user, device)
-          .then((ok) => {
-            if (ok) {
-              if (!environment.production) console.log('[MLS:coordinator] decryptMessage: successfully healed group from pending welcome after decryption failure', convId);
-              this.transitionState(convId, ConversationMlsState.Ready);
-              void this.replayPendingDecrypts(convId, user, device);
-            }
-          })
-          .catch((e) => {
-            console.warn('[MLS:coordinator] decryptMessage background welcome check failed', e);
-          });
+        const failures = (this.decryptionFailures.get(convId) ?? 0) + 1;
+        this.decryptionFailures.set(convId, failures);
+
+        if (failures >= MlsCoordinatorService.MAX_DECRYPTION_FAILURES) {
+          console.warn('[MLS:coordinator]', failures, 'consecutive decryption failures for', convId, '— triggering self-healing recovery');
+          this.transitionState(convId, ConversationMlsState.Failed);
+          this.scheduleFailedRecovery(convId, user, device);
+        } else {
+          // Trigger background welcome check in case the group was reset or we missed a Welcome.
+          void this.fetchAndProcessPendingWelcome(convId, user, device)
+            .then((ok) => {
+              if (ok) {
+                if (!environment.production) console.log('[MLS:coordinator] decryptMessage: successfully healed group from pending welcome after decryption failure', convId);
+                this.transitionState(convId, ConversationMlsState.Ready);
+                void this.replayPendingDecrypts(convId, user, device);
+              }
+            })
+            .catch((e) => {
+              console.warn('[MLS:coordinator] decryptMessage background welcome check failed', e);
+            });
+        }
 
         return { messageId, conversationId: convId, state: 'undecryptable' as const, plaintext: '', errorKind: classified.kind, operationId };
       }
@@ -459,6 +478,15 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   ): Promise<void> {
     assertMls(!!newDeviceId, 'provisionDevice: newDeviceId required', { convId });
     return this.mlsSvc.provisionDevice(newDeviceId, convId, user, device);
+  }
+
+  override async removeRevokedDeviceFromAllGroups(
+    revokedDeviceId: string,
+    user:            UserProfile,
+    device:          DeviceInfo,
+  ): Promise<void> {
+    assertMls(!!revokedDeviceId, 'removeRevokedDeviceFromAllGroups: revokedDeviceId required');
+    return this.mlsSvc.removeRevokedDeviceFromAllGroups(revokedDeviceId, user, device);
   }
 
   // ── Restore ────────────────────────────────────────────────────────────────

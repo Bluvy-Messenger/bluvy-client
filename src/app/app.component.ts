@@ -116,6 +116,28 @@ export class AppComponent implements OnInit, OnDestroy {
       }),
     );
 
+    this.subs.add(
+      this.socketSvc.mlsRefillKeyPackages$.subscribe(() => {
+        const user   = this.authSvc.currentUser();
+        const device = this.authSvc.currentDevice();
+        if (!user || !device) return;
+        if (!environment.production) console.warn('[AppComponent] mls:refill_key_packages received — ensuring key package pool');
+        void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
+          .catch(err => { if (!environment.production) console.error('[AppComponent] refill: ensureKeyPackagePool failed', err); });
+      }),
+    );
+
+    this.subs.add(
+      this.socketSvc.deviceRevoked$.subscribe(payload => {
+        const user   = this.authSvc.currentUser();
+        const device = this.authSvc.currentDevice();
+        if (!user || !device) return;
+        if (!environment.production) console.warn('[AppComponent] device:revoked received for device:', payload.deviceId);
+        void this.coordinator.removeRevokedDeviceFromAllGroups(payload.deviceId, user, device)
+          .catch(err => { if (!environment.production) console.error('[AppComponent] deviceRevoked: remove failed', err); });
+      }),
+    );
+
     void App.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) return;
       const user   = this.authSvc.currentUser();

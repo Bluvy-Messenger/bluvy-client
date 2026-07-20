@@ -21,7 +21,7 @@ const ALLOWED = new Map<ConversationMlsState, ReadonlySet<ConversationMlsState>>
   ],
   [
     ConversationMlsState.Ready,
-    new Set([ConversationMlsState.ApplyingCommit, ConversationMlsState.Joining, ConversationMlsState.Empty]),
+    new Set([ConversationMlsState.ApplyingCommit, ConversationMlsState.Joining, ConversationMlsState.Empty, ConversationMlsState.Failed]),
   ],
   [
     ConversationMlsState.ApplyingCommit,

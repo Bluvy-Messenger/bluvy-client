@@ -71,3 +71,11 @@ export interface ReceiptDeliveredPayload {
   messageId:      string;
   deliveredTo:    string;
 }
+
+export interface MlsRefillKeyPackagesPayload {
+  count: number;
+}
+
+export interface DeviceRevokedPayload {
+  deviceId: string;
+}

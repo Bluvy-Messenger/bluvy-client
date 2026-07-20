@@ -6,6 +6,7 @@ import { ApiClientService } from '../infrastructure/api-client.service';
 import { TokenRepository } from '../infrastructure/token.repository';
 import { AuthService } from '../auth/auth.service';
 import { ROUTES } from '../routes';
+import { KeyPackageService } from '../mls/key-package/key-package.service';
 
 @Injectable({ providedIn: 'root' })
 export class PushNotificationService {
@@ -13,6 +14,7 @@ export class PushNotificationService {
   private readonly tokenRepo = inject(TokenRepository);
   private readonly authSvc   = inject(AuthService);
   private readonly router    = inject(Router);
+  private readonly kpSvc     = inject(KeyPackageService);
 
   initialize(): void {
     if (!Capacitor.isNativePlatform()) {
@@ -42,6 +44,14 @@ export class PushNotificationService {
 
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
       console.log('[PushNotificationService] Foreground notification received:', notification);
+      const data = notification.data;
+      if (data && data['type'] === 'refill_key_packages') {
+        const user = this.authSvc.currentUser();
+        const device = this.authSvc.currentDevice();
+        if (user && device) {
+          void this.kpSvc.ensureKeyPackagePool(user.did, device.id);
+        }
+      }
     });
 
     PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
