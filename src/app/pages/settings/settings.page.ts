@@ -28,6 +28,10 @@ export class SettingsPage {
     void this.router.navigate([ROUTES.settingsLanguage]);
   }
 
+  openNotifications(): void {
+    void this.router.navigate([ROUTES.settingsNotifications]);
+  }
+
   confirmingDelete = false;
 
   confirmDeleteAccount(): void {

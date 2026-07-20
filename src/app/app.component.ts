@@ -1,14 +1,14 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonToast, IonIcon } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
 import { addIcons } from 'ionicons';
 import {
   chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
-  personOutline, chevronForwardOutline, phonePortraitOutline,
+  personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,
   shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
   logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
   sunny, contrastOutline, contrast, checkmarkCircleOutline, checkmarkCircle,
@@ -24,7 +24,7 @@ import {
   globe, globeOutline, flaskOutline,
   colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
   ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
-  archiveOutline, folderOpenOutline,
+  archiveOutline, folderOpenOutline, notificationsOutline, close,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -34,12 +34,15 @@ import { MlsCoordinatorBase } from './core/mls/coordinator/mls-coordinator.base'
 import { ThemeService } from './core/theme/theme.service';
 import { NavigationRedirectService } from './core/auth/navigation-redirect.service';
 import { JournalService } from './core/journal/journal.service';
+import { NotificationService } from './core/notification/notification.service';
+import { PushNotificationService } from './core/notification/push-notification.service';
+import { AccountBadgeService } from './core/notification/account-badge.service';
 
 @Component({
   selector: 'app-root',
   templateUrl: 'app.component.html',
   styleUrl: 'app.component.scss',
-  imports: [IonApp, IonRouterOutlet, TranslatePipe],
+  imports: [IonApp, IonRouterOutlet, IonToast, IonIcon, TranslatePipe],
 })
 export class AppComponent implements OnInit, OnDestroy {
   private authSvc      = inject(AuthService);
@@ -47,6 +50,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private provisionSvc = inject(DeviceProvisioningService);
   private kpSvc        = inject(KeyPackageService);
   private coordinator  = inject(MlsCoordinatorBase);
+  protected readonly notificationSvc = inject(NotificationService);
+  private pushNotificationSvc = inject(PushNotificationService);
+  private badgeSvc = inject(AccountBadgeService);
   readonly connectivitySvc = inject(ConnectivityService);
 
   constructor() {
@@ -55,7 +61,7 @@ export class AppComponent implements OnInit, OnDestroy {
     inject(JournalService); // Start console interception at boot
     addIcons({
       chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
-      personOutline, chevronForwardOutline, phonePortraitOutline,
+      personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,
       shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
       logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
       sunny, contrastOutline, contrast, checkmarkCircleOutline, checkmarkCircle,
@@ -68,13 +74,17 @@ export class AppComponent implements OnInit, OnDestroy {
       colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
       chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
       ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
-      archiveOutline, folderOpenOutline,
+      archiveOutline, folderOpenOutline, notificationsOutline, close,
     });
   }
 
   private subs = new Subscription();
 
   ngOnInit(): void {
+    this.notificationSvc.initialize();
+    this.pushNotificationSvc.initialize();
+    this.badgeSvc.initListeners();
+
     this.subs.add(
       this.socketSvc.deviceNew$.subscribe(payload => {
         const user   = this.authSvc.currentUser();

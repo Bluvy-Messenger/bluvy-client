@@ -11,6 +11,7 @@ import { AvatarComponent } from '../components/ui/avatar/avatar.component';
 import { BreakpointService } from '../core/layout/breakpoint.service';
 import { AuthService } from '../core/auth/auth.service';
 import { SidebarListComponent } from '../components/chat/sidebar-list/sidebar-list.component';
+import { AccountBadgeService } from '../core/notification/account-badge.service';
 import { ROUTES } from '../core/routes';
 
 @Component({
@@ -32,6 +33,7 @@ export class TabsPage {
   readonly receiptsSvc = inject(ReceiptsService);
   readonly bpSvc       = inject(BreakpointService);
   readonly auth        = inject(AuthService);
+  readonly badgeSvc   = inject(AccountBadgeService);
   private readonly router = inject(Router);
 
   private readonly currentUrl = toSignal(
@@ -48,6 +50,11 @@ export class TabsPage {
 
   readonly showTabBar = computed(() =>
     !this.bpSvc.isTablet() && !this.isConvRoute());
+
+  /** True if any inactive account has unread messages */
+  readonly hasMenuBadge = computed(() =>
+    Object.values(this.badgeSvc.badges()).some(v => v === true)
+  );
 
   isActive(prefix: string): boolean {
     const url = this.currentUrl() ?? '';

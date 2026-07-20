@@ -1,19 +1,31 @@
+import { Preferences } from '@capacitor/preferences';
 import type { EncryptedCacheRecord, IMessageStore } from './message-cache.types';
 
-const DB_NAME    = 'skychat-message-cache';
-// IMPORTANT: web-key-store.ts opens this same physical DB and MUST declare
-// the identical DB_VERSION. If the two ever disagree, the lower-version
-// connection (opened first, e.g. by PendingDecryptRepository.initialize() at
-// login) never closes and the higher-version open request blocks forever —
-// this silently wedged all message loading last time this was attempted.
 const DB_VERSION = 4;
 const KEY_STORE  = 'keys';
 const MSG_STORE  = 'messages';
 
 export class WebMessageStore implements IMessageStore {
   private db: IDBDatabase | null = null;
+  private dbName = 'skychat-message-cache';
+  private sanitizedDid = '';
+
+  constructor(sanitizedDid: string) {
+    this.sanitizedDid = sanitizedDid;
+    this.dbName = `skychat-message-cache-${sanitizedDid}`;
+  }
 
   async initialize(): Promise<void> {
+    const migrationKey = `migration.cache.${this.sanitizedDid}`;
+    const { value: migrated } = await Preferences.get({ key: migrationKey });
+    if (!migrated) {
+      try {
+        await this.migrateLegacyDb();
+      } catch (err) {
+        console.error('[WebMessageStore] Migration failed:', err);
+      }
+      await Preferences.set({ key: migrationKey, value: 'true' });
+    }
     this.db = await this.openDb();
   }
 
@@ -112,7 +124,7 @@ export class WebMessageStore implements IMessageStore {
     if (this.db) return Promise.resolve(this.db);
 
     return new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(this.dbName, DB_VERSION);
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = request.result;
@@ -316,5 +328,98 @@ export class WebMessageStore implements IMessageStore {
       request.onerror = () =>
         reject(request.error ?? new Error('Could not query newest ID'));
     });
+  }
+
+  private async migrateLegacyDb(): Promise<void> {
+    const legacyDbName = 'skychat-message-cache';
+    
+    const legacyDb = await new Promise<IDBDatabase | null>((resolve) => {
+      const req = indexedDB.open(legacyDbName, DB_VERSION);
+      req.onupgradeneeded = () => {
+        (req as any).isNew = true;
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        if ((req as any).isNew || !db.objectStoreNames.contains(MSG_STORE)) {
+          db.close();
+          indexedDB.deleteDatabase(legacyDbName);
+          resolve(null);
+        } else {
+          resolve(db);
+        }
+      };
+      req.onerror = () => resolve(null);
+    });
+
+    if (!legacyDb) return;
+
+    console.log('[WebMessageStore] Migrating legacy message cache IndexedDB database to:', this.dbName);
+
+    const newDb = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(this.dbName, DB_VERSION);
+      req.onupgradeneeded = (event) => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(KEY_STORE)) {
+          db.createObjectStore(KEY_STORE, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(MSG_STORE)) {
+          const store = db.createObjectStore(MSG_STORE, { keyPath: 'id' });
+          store.createIndex('by-conversation-created', ['conversationId', 'createdAt'], { unique: false });
+          store.createIndex('by-conversation-id',      ['conversationId', 'id'],        { unique: false });
+          store.createIndex('by-deleted',              'deletedAt',                     { unique: false });
+          store.createIndex('by-cache-version',        'cacheVersion',                  { unique: false });
+          store.createIndex('by-encryption-version',   'encryptionVersion',             { unique: false });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error ?? new Error('Could not open new database during migration'));
+    });
+
+    // Copy keys
+    const keys = await new Promise<any[]>((resolve) => {
+      const tx = legacyDb.transaction(KEY_STORE, 'readonly');
+      const req = tx.objectStore(KEY_STORE).getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve([]);
+    });
+
+    if (keys.length > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const tx = newDb.transaction(KEY_STORE, 'readwrite');
+        const store = tx.objectStore(KEY_STORE);
+        keys.forEach(k => store.put(k));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    // Copy messages
+    const messages = await new Promise<any[]>((resolve) => {
+      const tx = legacyDb.transaction(MSG_STORE, 'readonly');
+      const req = tx.objectStore(MSG_STORE).getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve([]);
+    });
+
+    if (messages.length > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const tx = newDb.transaction(MSG_STORE, 'readwrite');
+        const store = tx.objectStore(MSG_STORE);
+        messages.forEach(m => store.put(m));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    legacyDb.close();
+    newDb.close();
+
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(legacyDbName);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    });
+
+    console.log('[WebMessageStore] IndexedDB migration complete.');
   }
 }

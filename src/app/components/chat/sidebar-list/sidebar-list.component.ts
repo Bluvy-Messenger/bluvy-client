@@ -109,6 +109,22 @@ export class SidebarListComponent implements OnInit, OnDestroy {
         this.activeTab = 'conversations';
       }
     });
+
+    // Reactively reload conversations and contacts when the active user changes
+    effect(() => {
+      const user = this.authSvc.currentUser();
+      if (user) {
+        this.conversations = [];
+        this.bluvyContacts = [];
+        this.blueskyContacts = [];
+        this.previews.clear();
+
+        setTimeout(() => {
+          void this.load();
+          void this.loadContacts();
+        });
+      }
+    });
   }
 
   async ngOnInit(): Promise<void> {
@@ -128,7 +144,6 @@ export class SidebarListComponent implements OnInit, OnDestroy {
       })
     );
     this.periodicTimer = setInterval(() => void this.load(), SYNC_INTERVAL_MS);
-    await this.load();
   }
 
   ngOnDestroy(): void {

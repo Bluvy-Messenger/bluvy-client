@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "827960537842",
+    "project_id": "bluvy-messenger",
+    "storage_bucket": "bluvy-messenger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:827960537842:android:7afab3e20598cfb9c5966b",
+        "android_client_info": {
+          "package_name": "bluvy.application.official"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCItygG91KcupAholb10tBN4SL7Gh1uDos"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

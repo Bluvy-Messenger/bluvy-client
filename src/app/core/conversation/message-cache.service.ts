@@ -7,6 +7,7 @@ import { WebMessageStore }    from './cache/web-message-store';
 import { NativeKeyStore }     from './cache/native-key-store';
 import { NativeMessageStore } from './cache/native-message-store';
 
+import { CapacitorSQLite, SQLiteConnection } from '@capacitor-community/sqlite';
 import type { CachedMessage, MessageCacheReadResult } from './conversation.types';
 
 export type { CachedMessage, MessageCacheReadResult } from './conversation.types';
@@ -42,12 +43,13 @@ export class MessageCacheService {
     }
 
     this.initPromise = (async () => {
+      const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
       if (Capacitor.isNativePlatform()) {
         this.keyStore = new NativeKeyStore(); // Android Keystore / iOS Keychain
-        this.msgStore = new NativeMessageStore();
+        this.msgStore = new NativeMessageStore(sanitizedDid);
       } else {
-        this.keyStore = new WebKeyStore();    // WebCrypto + IndexedDB
-        this.msgStore = new WebMessageStore();
+        this.keyStore = new WebKeyStore(sanitizedDid);    // WebCrypto + IndexedDB
+        this.msgStore = new WebMessageStore(sanitizedDid);
       }
 
       // Sequential: WebMessageStore.initialize() creates the IDB schema first
@@ -61,6 +63,39 @@ export class MessageCacheService {
       await this.initPromise;
     } finally {
       this.initPromise = null;
+    }
+  }
+
+  async clearAllForUser(userDid: string): Promise<void> {
+    const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const sqlite = new SQLiteConnection(CapacitorSQLite);
+        await sqlite.checkConnectionsConsistency().catch(() => {});
+        const dbName = `skychat-cache-${sanitizedDid}`;
+        const isConn = await sqlite.isConnection(dbName, false);
+        if (isConn.result) {
+          const conn = await sqlite.retrieveConnection(dbName, false);
+          await conn.delete().catch(() => {});
+        } else {
+          const conn = await sqlite.createConnection(dbName, false, 'no-encryption', 4, false);
+          await conn.delete().catch(() => {});
+        }
+      } catch (err) {
+        console.error('[MessageCacheService] clearAllForUser SQLite error:', err);
+      }
+    } else {
+      const dbName = `skychat-message-cache-${sanitizedDid}`;
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+      });
+    }
+
+    if (this.initializedScope && this.initializedScope.includes(userDid)) {
+      this.initializedScope = null;
     }
   }
 

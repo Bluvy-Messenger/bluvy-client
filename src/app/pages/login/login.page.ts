@@ -43,21 +43,29 @@ export class LoginPage implements OnInit {
       } catch {}
     }
 
-    if (this.auth.isAuthenticated()) {
+    const isAddingAccount = sessionStorage.getItem('add_account_mode') === 'true';
+
+    if (this.auth.isAuthenticated() && !isAddingAccount) {
       await this.router.navigate([ROUTES.conversations]);
       return;
     }
 
     // APP_INITIALIZER may have stored a pending OAuth session (callback or restore).
     // Consume it before falling back to the backend session restore.
-    const oauthSession = this.oauthSvc.session ?? await this.oauthSvc.tryRestore();
+    const oauthSession = this.oauthSvc.session ?? (isAddingAccount ? null : await this.oauthSvc.tryRestore());
     if (oauthSession) {
       try {
         await this.auth.loginWithOAuthSession(oauthSession);
+        sessionStorage.removeItem('add_account_mode');
         return;
       } catch {
         // Session invalid; fall through to backend session restore.
       }
+    }
+
+    if (isAddingAccount) {
+      this.checking = false;
+      return;
     }
 
     try {
@@ -89,6 +97,7 @@ export class LoginPage implements OnInit {
       if (session) {
         console.log('[LoginPage] calling loginWithOAuthSession');
         await this.auth.loginWithOAuthSession(session);
+        sessionStorage.removeItem('add_account_mode');
         console.log('[LoginPage] loginWithOAuthSession completed');
       } else {
         console.log('[LoginPage] session is null');

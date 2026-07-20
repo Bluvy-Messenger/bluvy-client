@@ -9,6 +9,9 @@ const config: CapacitorConfig = {
       statusBarColor:     '#FFFFFF',
       navigationBarColor: '#FFFFFF',
     },
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
   },
 };
 

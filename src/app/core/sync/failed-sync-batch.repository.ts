@@ -7,7 +7,6 @@ interface FailedBatchEntry {
   savedAt: number;
 }
 
-const DB_NAME    = 'skychat-sync-failed';
 const DB_VERSION = 1;
 const STORE_NAME = 'failed_batches';
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,6 +14,13 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 @Injectable({ providedIn: 'root' })
 export class FailedSyncBatchRepository {
   private db: IDBDatabase | null = null;
+  private dbName = 'skychat-sync-failed';
+
+  async initialize(userDid: string): Promise<void> {
+    const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
+    this.dbName = `skychat-sync-failed-${sanitizedDid}`;
+    this.db = null; // reset open connection
+  }
 
   async saveBatch(items: SyncDataInput[]): Promise<void> {
     const db    = await this.openDb();
@@ -81,7 +87,7 @@ export class FailedSyncBatchRepository {
   private openDb(): Promise<IDBDatabase> {
     if (this.db) return Promise.resolve(this.db);
     return new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(this.dbName, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {

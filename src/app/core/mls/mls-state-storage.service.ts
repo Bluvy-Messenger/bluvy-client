@@ -26,6 +26,18 @@ export class MlsStateStorageService {
     this.locks.clear();
   }
 
+  async clearForScope(scope: string): Promise<void> {
+    const db = await this.openDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([this.keyStoreName, this.stateStoreName], 'readwrite');
+      tx.objectStore(this.keyStoreName).delete(scope);
+      tx.objectStore(this.stateStoreName).delete(scope);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error(`Could not clear scope ${scope}`));
+    });
+    this.locks.delete(scope);
+  }
+
   // Read-only access. Safe to call without the lock; callers that need a
   // consistent read-then-write must use update() instead.
   async load<T>(scope: string): Promise<T | null> {

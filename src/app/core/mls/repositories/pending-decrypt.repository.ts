@@ -41,7 +41,6 @@ interface EncryptedMeta {
   createdAt:      number;
 }
 
-const DB_NAME       = 'skychat-pending-decrypts';
 const DB_VERSION    = 3;
 const STORE_NAME    = 'pending_decrypts';
 const STALE_TTL_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -50,14 +49,18 @@ const STALE_TTL_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
 export class PendingDecryptRepository {
   private db: IDBDatabase | null = null;
   private keyStore: IKeyStore | null = null;
+  private dbName = 'skychat-pending-decrypts';
 
   // Uses the same `cache:{userDid}:{deviceId}` scope as MessageCacheService's
   // key store, so both resolve to the same underlying key without introducing
   // a second key hierarchy.
   async initialize(userDid: string, deviceId: string): Promise<void> {
     const scope = `cache:${userDid}:${deviceId}`;
-    this.keyStore = Capacitor.isNativePlatform() ? new NativeKeyStore() : new WebKeyStore();
+    const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
+    this.dbName = `skychat-pending-decrypts-${sanitizedDid}`;
+    this.keyStore = Capacitor.isNativePlatform() ? new NativeKeyStore() : new WebKeyStore(sanitizedDid);
     await this.keyStore.initialize(scope);
+    this.db = null; // Reset database connection
   }
 
   async enqueue(entry: PendingDecryptEntry): Promise<void> {
@@ -261,7 +264,7 @@ export class PendingDecryptRepository {
     if (this.db) return Promise.resolve(this.db);
 
     return new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(this.dbName, DB_VERSION);
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = request.result;
@@ -300,6 +303,22 @@ export class PendingDecryptRepository {
       request.onsuccess = () => resolve();
       request.onerror   = () =>
         reject(request.error ?? new Error('Could not write pending decrypt entry'));
+    });
+  }
+
+  async clearAllForUser(userDid: string): Promise<void> {
+    const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
+    const dbName = `skychat-pending-decrypts-${sanitizedDid}`;
+    
+    if (this.db && this.dbName === dbName) {
+      this.db.close();
+      this.db = null;
+    }
+    
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(dbName);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
     });
   }
 }

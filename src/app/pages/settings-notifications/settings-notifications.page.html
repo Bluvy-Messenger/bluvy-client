@@ -1,0 +1,45 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'notifications.settings.title' | translate }}</h1>
+</div>
+
+<ion-content class="ion-padding">
+  <div class="ss-content">
+    <p class="settings-desc">{{ 'notifications.settings.desc' | translate }}</p>
+
+    <div class="ss-section">
+      <div class="ss-section-title">{{ 'notifications.settings.section.in_app' | translate }}</div>
+      <div class="ss-block">
+        <div class="settings-row-static">
+          <ion-icon name="volume-high-outline" class="settings-row__icon"></ion-icon>
+          <div class="settings-row__body">
+            <span class="settings-row__label">{{ 'notifications.settings.in_app.label' | translate }}</span>
+            <span class="settings-row__sub">{{ 'notifications.settings.in_app.sub' | translate }}</span>
+          </div>
+          <ion-toggle [checked]="inAppEnabled()" (ionChange)="toggleInApp($event)"></ion-toggle>
+        </div>
+      </div>
+    </div>
+
+    <div class="ss-section">
+      <div class="ss-section-title">{{ 'notifications.settings.section.push' | translate }}</div>
+      <div class="ss-block">
+        <div class="settings-row-static" [class.settings-row-static--disabled]="!isNative">
+          <ion-icon name="notifications-outline" class="settings-row__icon"></ion-icon>
+          <div class="settings-row__body">
+            <span class="settings-row__label">{{ 'notifications.settings.push.label' | translate }}</span>
+            <span class="settings-row__sub">{{ 'notifications.settings.push.sub' | translate }}</span>
+          </div>
+          @if (isNative) {
+            <ion-toggle [checked]="pushEnabled()" (ionChange)="togglePush($event)"></ion-toggle>
+          } @else {
+            <span class="badge-web">Mobile only</span>
+          }
+        </div>
+      </div>
+    </div>
+
+  </div>
+</ion-content>

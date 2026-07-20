@@ -5,4 +5,25 @@
     </div>
   }
   <ion-router-outlet></ion-router-outlet>
+
+  <!-- Custom In-App Notification Toast (Overlay bypasses Shadow DOM limitations) -->
+  @if (notificationSvc.isToastOpen()) {
+    <div class="custom-toast-overlay"
+         [class.is-closing]="notificationSvc.isToastClosing()"
+         (click)="notificationSvc.openToastConversation()">
+      <div class="notification-toast">
+        <img class="notification-toast__avatar" [src]="notificationSvc.toastAvatar()" (error)="notificationSvc.setFallbackAvatar()" />
+        <div class="notification-toast__content">
+          <div class="notification-toast__title">{{ notificationSvc.toastTitle() }}</div>
+          <div class="notification-toast__text">{{ notificationSvc.toastText() }}</div>
+        </div>
+        <button class="notification-toast__btn" (click)="$event.stopPropagation(); notificationSvc.openToastConversation()">
+          {{ 'notifications.open' | translate }}
+        </button>
+        <button class="notification-toast__close" (click)="$event.stopPropagation(); notificationSvc.closeToast()">
+          <ion-icon name="close"></ion-icon>
+        </button>
+      </div>
+    </div>
+  }
 </ion-app>

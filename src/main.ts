@@ -26,6 +26,7 @@ import { MlsCoordinatorBase } from './app/core/mls/coordinator/mls-coordinator.b
 import { MlsCoordinatorService } from './app/core/mls/coordinator/mls-coordinator.service';
 import { provideServiceWorker } from '@angular/service-worker';
 import { OAuthService } from './app/core/auth/oauth.service';
+import { Capacitor } from '@capacitor/core';
 
 @Injectable()
 class GlobalErrorHandler implements ErrorHandler {
@@ -42,25 +43,60 @@ class GlobalErrorHandler implements ErrorHandler {
   }
 }
 
-bootstrapApplication(AppComponent, {
-  providers: [
-    { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
-    { provide: ErrorHandler, useClass: GlobalErrorHandler },
-    provideIonicAngular(),
-    provideRouter(routes, withPreloading(PreloadAllModules)),
-    provideHttpClient(),
-    { provide: MlsCoordinatorBase, useExisting: MlsCoordinatorService },
-    // Detect OAuth callback (hash or query) before routing so the code is not
-    // lost when Angular navigation clears window.location.hash.
-    {
-      provide: APP_INITIALIZER,
-      useFactory: (oauthSvc: OAuthService) => () => oauthSvc.tryHandleInit(),
-      deps: [OAuthService],
-      multi: true,
-    },
-    provideServiceWorker('ngsw-worker.js', {
-            enabled: !isDevMode(),
-            registrationStrategy: 'registerWhenStable:30000'
-          }),
-  ],
+async function checkAndClearCache(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+
+  const currentVersion = environment.version;
+  const cachedVersion  = localStorage.getItem('bluvy_app_version');
+
+  if (cachedVersion && cachedVersion !== currentVersion) {
+    console.log(`[Version Update] App version changed from ${cachedVersion} to ${currentVersion}. Clearing cache storage and service workers...`);
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(key => caches.delete(key)));
+      }
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(reg => reg.unregister()));
+      }
+      sessionStorage.clear();
+
+      localStorage.setItem('bluvy_app_version', currentVersion);
+      window.location.reload();
+      return true; // Reloading, skip bootstrap
+    } catch (err) {
+      console.error('[Version Update] Error clearing cache:', err);
+    }
+  }
+
+  if (!cachedVersion) {
+    localStorage.setItem('bluvy_app_version', currentVersion);
+  }
+  return false;
+}
+
+void checkAndClearCache().then((reloading) => {
+  if (reloading) return;
+
+  bootstrapApplication(AppComponent, {
+    providers: [
+      { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
+      { provide: ErrorHandler, useClass: GlobalErrorHandler },
+      provideIonicAngular(),
+      provideRouter(routes, withPreloading(PreloadAllModules)),
+      provideHttpClient(),
+      { provide: MlsCoordinatorBase, useExisting: MlsCoordinatorService },
+      {
+        provide: APP_INITIALIZER,
+        useFactory: (oauthSvc: OAuthService) => () => oauthSvc.tryHandleInit(),
+        deps: [OAuthService],
+        multi: true,
+      },
+      provideServiceWorker('ngsw-worker.js', {
+        enabled: !isDevMode() && !Capacitor.isNativePlatform(),
+        registrationStrategy: 'registerWhenStable:30000'
+      }),
+    ],
+  });
 });

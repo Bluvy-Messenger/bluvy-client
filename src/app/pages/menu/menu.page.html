@@ -1,17 +1,61 @@
 <ion-content>
   <h1 class="sr-only">{{ 'tabs.menu' | translate }}</h1>
-  <div class="profile">
-    <app-avatar
-      [src]="auth.currentUser()?.avatarUrl ?? null"
-      [handle]="auth.currentUser()?.handle || ''"
-      size="xl"
-    ></app-avatar>
-    <div class="profile__info">
-      <span class="profile__name">
-        {{ auth.currentUser()?.displayName || auth.currentUser()?.handle }}
-      </span>
-      <span class="profile__handle">@{{ auth.currentUser()?.handle }}</span>
+  <div class="accounts-section">
+    <!-- Profile Actif -->
+    <div class="profile">
+      <app-avatar
+        [src]="auth.currentUser()?.avatarUrl ?? null"
+        [handle]="auth.currentUser()?.handle || ''"
+        size="xl"
+      ></app-avatar>
+      <div class="profile__info">
+        <span class="profile__name">
+          {{ auth.currentUser()?.displayName || auth.currentUser()?.handle }}
+        </span>
+        <span class="profile__handle">@{{ auth.currentUser()?.handle }}</span>
+      </div>
+      @if (switching) {
+        <div class="profile__loading">
+          <ion-icon name="sync-outline" class="spin-animation"></ion-icon>
+        </div>
+      }
     </div>
+
+    <!-- Autres Comptes Connectés -->
+    @if (accounts.length > 1) {
+      <div class="other-accounts">
+        @for (acc of accounts; track acc.did) {
+          @if (acc.did !== auth.currentUser()?.did) {
+            <button class="account-item" (click)="switchAccount(acc.did)" [disabled]="switching">
+              <div class="account-item__avatar-wrap">
+                <app-avatar
+                  [src]="acc.avatarUrl ?? null"
+                  [handle]="acc.handle"
+                  size="md"
+                ></app-avatar>
+                @if (badgeSvc.hasBadge(acc.did)) {
+                  <span class="account-item__badge" aria-label="Unread messages"></span>
+                }
+              </div>
+              <div class="account-item__info">
+                <span class="account-item__name">{{ acc.displayName || acc.handle }}</span>
+                <span class="account-item__handle">@{{ acc.handle }}</span>
+              </div>
+              @if (badgeSvc.hasBadge(acc.did)) {
+                <span class="account-item__unread-label">{{ 'menu.unread' | translate }}</span>
+              }
+              <ion-icon name="swap-horizontal-outline" class="account-item__icon"></ion-icon>
+            </button>
+          }
+        }
+      </div>
+    }
+
+    <!-- Ajouter un Compte -->
+    <button class="add-account-btn" (click)="addAccount()" [disabled]="switching">
+      <ion-icon name="person-add-outline" class="add-account-btn__icon"></ion-icon>
+      <span class="add-account-btn__label">{{ 'menu.add_account' | translate }}</span>
+    </button>
   </div>
 
   <div class="menu-list">

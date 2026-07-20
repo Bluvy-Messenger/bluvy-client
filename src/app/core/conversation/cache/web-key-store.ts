@@ -1,10 +1,5 @@
 import type { IKeyStore } from './message-cache.types';
 
-const DB_NAME    = 'skychat-message-cache';
-// Must match web-message-store.ts's DB_VERSION exactly — both files open this
-// same physical IndexedDB database. If they disagree, whichever connection
-// opens first (at whatever version) never closes, and the other's open
-// request blocks forever instead of resolving or rejecting.
 const DB_VERSION = 4;
 const KEY_STORE  = 'keys';
 const MSG_STORE  = 'messages';
@@ -12,6 +7,11 @@ const MSG_STORE  = 'messages';
 export class WebKeyStore implements IKeyStore {
   private scope = '';
   private db: IDBDatabase | null = null;
+  private dbName = 'skychat-message-cache';
+
+  constructor(sanitizedDid: string) {
+    this.dbName = `skychat-message-cache-${sanitizedDid}`;
+  }
 
   async initialize(scope: string): Promise<void> {
     this.scope = scope;
@@ -51,7 +51,7 @@ export class WebKeyStore implements IKeyStore {
     if (this.db) return Promise.resolve(this.db);
 
     return new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(this.dbName, DB_VERSION);
 
       request.onupgradeneeded = () => {
         const db = request.result;

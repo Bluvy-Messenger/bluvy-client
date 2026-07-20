@@ -122,7 +122,12 @@
         </ion-tab-button>
 
         <ion-tab-button tab="menu" [href]="routes.menu">
-          <ion-icon [name]="isActive(routes.menu) ? 'menu' : 'menu-outline'"></ion-icon>
+          <div class="tab-icon-wrap">
+            <ion-icon [name]="isActive(routes.menu) ? 'menu' : 'menu-outline'"></ion-icon>
+            @if (hasMenuBadge()) {
+              <span class="tab-menu-badge"></span>
+            }
+          </div>
           <span class="tab-label">{{ 'tabs.menu' | translate }}</span>
         </ion-tab-button>
       </ion-tab-bar>

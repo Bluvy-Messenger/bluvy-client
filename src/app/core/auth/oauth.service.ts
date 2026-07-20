@@ -103,9 +103,16 @@ export class OAuthService {
    * Tries to restore an existing OAuth session from local storage only.
    * Does NOT process callback params — use tryHandleInit() for that.
    */
-  async tryRestore(): Promise<OAuthSession | null> {
+  async tryRestore(did?: string): Promise<OAuthSession | null> {
     try {
       const client = await this.getClient();
+      if (did) {
+        const session = await client.restore(did).catch(() => null);
+        if (session) {
+          this._session = session;
+          return session;
+        }
+      }
       const result = await client.initRestore();
       if (result) {
         this._session = result.session;

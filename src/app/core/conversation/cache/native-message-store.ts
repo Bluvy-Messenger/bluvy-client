@@ -1,7 +1,7 @@
+import { Preferences } from '@capacitor/preferences';
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
 import type { EncryptedCacheRecord, IMessageStore } from './message-cache.types';
 
-const DB_NAME    = 'skychat-cache';
 const DB_VERSION = 4;
 
 const SCHEMA_V1: string[] = [
@@ -58,13 +58,28 @@ const INSERT_SQL = `
 export class NativeMessageStore implements IMessageStore {
   private sqlite: SQLiteConnection;
   private db: SQLiteDBConnection | null = null;
+  private dbName = 'skychat-cache';
+  private sanitizedDid = '';
 
-  constructor() {
+  constructor(sanitizedDid: string) {
+    this.sanitizedDid = sanitizedDid;
+    this.dbName = `skychat-cache-${sanitizedDid}`;
     this.sqlite = new SQLiteConnection(CapacitorSQLite);
   }
 
   async initialize(): Promise<void> {
-    await this.sqlite.addUpgradeStatement(DB_NAME, [
+    const migrationKey = `migration.cache.${this.sanitizedDid}`;
+    const { value: migrated } = await Preferences.get({ key: migrationKey });
+    if (!migrated) {
+      try {
+        await this.migrateLegacyDb();
+      } catch (err) {
+        console.error('[NativeMessageStore] Migration failed:', err);
+      }
+      await Preferences.set({ key: migrationKey, value: 'true' });
+    }
+
+    await this.sqlite.addUpgradeStatement(this.dbName, [
       { toVersion: 1, statements: SCHEMA_V1 },
       { toVersion: 2, statements: SCHEMA_V2 },
       { toVersion: 3, statements: SCHEMA_V3 },
@@ -81,13 +96,13 @@ export class NativeMessageStore implements IMessageStore {
     // native connection ("Connection skychat-cache already exists").
     await this.sqlite.checkConnectionsConsistency().catch(() => {});
 
-    const isConn = await this.sqlite.isConnection(DB_NAME, false);
+    const isConn = await this.sqlite.isConnection(this.dbName, false);
     if (isConn.result) {
-      this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
+      this.db = await this.sqlite.retrieveConnection(this.dbName, false);
     } else {
       try {
         this.db = await this.sqlite.createConnection(
-          DB_NAME,
+          this.dbName,
           false,
           'no-encryption',
           DB_VERSION,
@@ -98,7 +113,7 @@ export class NativeMessageStore implements IMessageStore {
         // native connection genuinely exists, so reuse it instead of failing.
         const message = err instanceof Error ? err.message : String(err);
         if (!message.toLowerCase().includes('already exist')) throw err;
-        this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
+        this.db = await this.sqlite.retrieveConnection(this.dbName, false);
       }
     }
 
@@ -237,5 +252,63 @@ export class NativeMessageStore implements IMessageStore {
       createdAt:         row['created_at'] as number,
       cachedAt:          row['cached_at'] as number,
     };
+  }
+
+  private async migrateLegacyDb(): Promise<void> {
+    const legacyDbName = 'skychat-cache';
+    let legacyDb: SQLiteDBConnection | null = null;
+    try {
+      await this.sqlite.checkConnectionsConsistency().catch(() => {});
+      const isConn = await this.sqlite.isConnection(legacyDbName, false);
+      if (isConn.result) {
+        legacyDb = await this.sqlite.retrieveConnection(legacyDbName, false);
+      } else {
+        legacyDb = await this.sqlite.createConnection(legacyDbName, false, 'no-encryption', DB_VERSION, false);
+      }
+      await legacyDb.open();
+    } catch {
+      return;
+    }
+
+    try {
+      const res = await legacyDb.query('SELECT * FROM message_cache');
+      const rows = res.values || [];
+      if (rows.length > 0) {
+        console.log('[NativeMessageStore] Migrating legacy message cache SQLite database to:', this.dbName);
+        await this.sqlite.addUpgradeStatement(this.dbName, [
+          { toVersion: 1, statements: SCHEMA_V1 },
+          { toVersion: 2, statements: SCHEMA_V2 },
+          { toVersion: 3, statements: SCHEMA_V3 },
+          { toVersion: 4, statements: SCHEMA_V4 },
+        ]);
+        const newDb = await this.sqlite.createConnection(this.dbName, false, 'no-encryption', DB_VERSION, false);
+        await newDb.open();
+
+        for (const row of rows) {
+          await newDb.run(
+            `INSERT OR REPLACE INTO message_cache 
+             (id, conversation_id, encrypted_blob, iv, cache_version, encryption_version, undecryptable, deleted_at, created_at, cached_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              row['id'], row['conversation_id'], row['encrypted_blob'], row['iv'],
+              row['cache_version'] ?? 1, row['encryption_version'] ?? 1,
+              row['undecryptable'] ?? 0, row['deleted_at'] ?? null,
+              row['created_at'], row['cached_at']
+            ]
+          );
+        }
+        await newDb.close();
+      }
+    } catch (err) {
+      console.error('[NativeMessageStore] migrateLegacyDb failed during data copy:', err);
+    } finally {
+      try {
+        if (legacyDb) {
+          await legacyDb.delete().catch(() => {});
+        }
+      } catch {
+        // Ignored
+      }
+    }
   }
 }

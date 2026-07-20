@@ -1,5 +1,6 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, Injector } from '@angular/core';
 import { Router } from '@angular/router';
+import { Preferences } from '@capacitor/preferences';
 import { environment } from '../../../environments/environment';
 import { OAuthSession } from '@atproto/oauth-client-browser';
 import { OAuthService } from './oauth.service';
@@ -17,9 +18,19 @@ import type { UserProfile, AuthSessionResponse } from './auth.types';
 import { TokenRepository } from '../infrastructure/token.repository';
 import { SecureLocalStorageService } from '../secure-local-storage/secure-local-storage.service';
 import { MessageCacheService } from '../conversation/message-cache.service';
+import { NotificationService } from '../notification/notification.service';
+import { PushNotificationService } from '../notification/push-notification.service';
+import { AccountBadgeService } from '../notification/account-badge.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
+
+export interface StoredAccount {
+  did: string;
+  handle: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -37,6 +48,11 @@ export class AuthService {
   private tokenRepo       = inject(TokenRepository);
   private secureStorage   = inject(SecureLocalStorageService);
   private msgCache        = inject(MessageCacheService);
+  private injector        = inject(Injector);
+  // Lazy-resolved to break circular dependency (NotificationService -> AuthService -> NotificationService)
+  private get notifSvc(): NotificationService     { return this.injector.get(NotificationService); }
+  private get pushSvc():  PushNotificationService { return this.injector.get(PushNotificationService); }
+  private get badgeSvc(): AccountBadgeService     { return this.injector.get(AccountBadgeService); }
 
   readonly currentUser     = signal<UserProfile | null>(null);
   readonly currentDevice   = signal<DeviceInfo | null>(null);
@@ -102,6 +118,91 @@ export class AuthService {
     });
   }
 
+  // ── Multi-Account Management ───────────────────────────────────────────────
+
+  async getStoredAccounts(): Promise<StoredAccount[]> {
+    const { value } = await Preferences.get({ key: 'auth.accounts' });
+    if (!value) return [];
+    try {
+      return JSON.parse(value) as StoredAccount[];
+    } catch {
+      return [];
+    }
+  }
+
+  async saveStoredAccounts(accounts: StoredAccount[]): Promise<void> {
+    await Preferences.set({ key: 'auth.accounts', value: JSON.stringify(accounts) });
+  }
+
+  async addOrUpdateAccount(account: StoredAccount): Promise<void> {
+    const accounts = await this.getStoredAccounts();
+    const index = accounts.findIndex(a => a.did === account.did);
+    if (index >= 0) {
+      accounts[index] = account;
+    } else {
+      accounts.push(account);
+    }
+    await this.saveStoredAccounts(accounts);
+  }
+
+  async removeAccount(did: string): Promise<void> {
+    let accounts = await this.getStoredAccounts();
+    accounts = accounts.filter(a => a.did !== did);
+    await this.saveStoredAccounts(accounts);
+  }
+
+  async switchAccount(did: string): Promise<boolean> {
+    console.log('[AuthService] switchAccount starting for DID:', did);
+    
+    // 1. Disconnect current socket
+    this.socketSvc.disconnect();
+    
+    // 2. Clear in-memory active states + close any visible notification toast
+    this.syncSvc.reset();
+    this.contactsSvc.reset();
+    this.notifSvc.onAccountSwitch();
+    this.badgeSvc.clearBadge(did); // Clear the unread badge for the account we're switching TO
+    await this.pushSvc.onAccountSwitch();
+    
+    // 3. Set the active DID
+    await this.tokenRepo.setActiveDid(did);
+    
+    // 4. Try to restore session for the new active DID
+    const success = await this.restoreSession();
+    
+    if (success) {
+      await this.router.navigate([ROUTES.conversations]);
+      return true;
+    } else {
+      console.error('[AuthService] switchAccount: restoreSession failed for DID:', did);
+      await this.removeAccount(did);
+      
+      const accounts = await this.getStoredAccounts();
+      if (accounts.length > 0) {
+        return this.switchAccount(accounts[0].did);
+      } else {
+        await this.tokenRepo.setActiveDid(null);
+        this.currentUser.set(null);
+        this.currentDevice.set(null);
+        this.isAuthenticated.set(false);
+        await this.router.navigate([ROUTES.login]);
+        return false;
+      }
+    }
+  }
+
+  async prepareForAddAccount(): Promise<void> {
+    sessionStorage.setItem('add_account_mode', 'true');
+    this.currentUser.set(null);
+    this.currentDevice.set(null);
+    this.isAuthenticated.set(false);
+    this.socketSvc.disconnect();
+    this.oauthSvc.clearSession();
+    await this.router.navigate([ROUTES.login]);
+  }
+
+  // ── Session Lifecycle ──────────────────────────────────────────────────────
+
   async loginWithOAuthSession(session: OAuthSession): Promise<void> {
     console.log('[AuthService] loginWithOAuthSession start');
     const did = session.did;
@@ -122,8 +223,18 @@ export class AuthService {
       device.platform,
     );
 
-    await this.tokenRepo.setAccessToken(response.accessToken);
-    await this.tokenRepo.setRefreshToken(response.refreshToken);
+    // Save tokens scoped by DID and set active DID
+    await this.tokenRepo.setActiveDid(response.user.did);
+    await this.tokenRepo.setAccessToken(response.accessToken, response.user.did);
+    await this.tokenRepo.setRefreshToken(response.refreshToken, response.user.did);
+
+    // Save/update account in the list
+    await this.addOrUpdateAccount({
+      did: response.user.did,
+      handle: response.user.handle,
+      displayName: response.user.displayName,
+      avatarUrl: response.user.avatarUrl,
+    });
 
     const sessionDevice: DeviceInfo = {
       id:       response.device.id,
@@ -134,6 +245,12 @@ export class AuthService {
     this.currentUser.set(response.user);
     this.currentDevice.set(sessionDevice);
     this.isAuthenticated.set(true);
+    sessionStorage.removeItem('add_account_mode');
+
+    // Re-trigger push token registration so this newly added/logged-in account
+    // gets its own push-token row immediately, instead of waiting for the next
+    // cold start or a manual switch away and back.
+    void this.pushSvc.onAccountSwitch();
 
     try {
       await this.retryMlsBootstrap('login: initializeForSession', () =>
@@ -177,17 +294,41 @@ export class AuthService {
 
     if (did) {
       await this.oauthSvc.logout(did).catch(() => {});
+      await this.removeAccount(did);
+      await this.tokenRepo.clearTokens(did);
+      await this.clearSessionForDid(did);
     } else {
       this.oauthSvc.clearSession();
+      await this.tokenRepo.clearTokens();
     }
 
     this.socketSvc.disconnect();
-    await this.clearSession();
-    await this.router.navigate([ROUTES.login]);
+
+    // Check if there are other logged-in accounts
+    const accounts = await this.getStoredAccounts();
+    if (accounts.length > 0) {
+      await this.switchAccount(accounts[0].did);
+    } else {
+      await this.tokenRepo.setActiveDid(null);
+      this.currentUser.set(null);
+      this.currentDevice.set(null);
+      this.isAuthenticated.set(false);
+      await this.router.navigate([ROUTES.login]);
+    }
   }
 
   async restoreSession(): Promise<boolean> {
-    const token = await this.tokenRepo.getAccessToken();
+    if (sessionStorage.getItem('add_account_mode') === 'true') {
+      return false;
+    }
+    let activeDid = await this.tokenRepo.getActiveDid();
+    
+    // Check if we have legacy tokens
+    const legacyAccessVal = await Preferences.get({ key: 'auth.accessToken' });
+    const legacyRefreshVal = await Preferences.get({ key: 'auth.refreshToken' });
+    const hasLegacyTokens = !!(legacyAccessVal.value || legacyRefreshVal.value);
+    
+    const token = await this.tokenRepo.getAccessToken(activeDid || undefined);
     if (!token) return false;
 
     let session: AuthSessionResponse;
@@ -207,13 +348,30 @@ export class AuthService {
     this.currentDevice.set(sessionDevice);
     this.isAuthenticated.set(true);
 
-    // Backend JWT session is confirmed above, but the raw AT-proto OAuth
-    // session (needed for direct-to-PDS writes like publishDeclaration) is
-    // separate and isn't restored by the APP_INITIALIZER on a plain reload —
-    // restore it here so ensureKeyPackagePool()'s syncDeclaration() doesn't
-    // fail with "No active ATProto session".
+    // Migrate legacy single account if needed
+    if (!activeDid && hasLegacyTokens) {
+      activeDid = session.user.did;
+      await this.tokenRepo.setActiveDid(activeDid);
+      if (legacyAccessVal.value) {
+        await this.tokenRepo.setAccessToken(legacyAccessVal.value, activeDid);
+        await Preferences.remove({ key: 'auth.accessToken' });
+      }
+      if (legacyRefreshVal.value) {
+        await this.tokenRepo.setRefreshToken(legacyRefreshVal.value, activeDid);
+        await Preferences.remove({ key: 'auth.refreshToken' });
+      }
+    }
+
+    // Save/update account in the list
+    await this.addOrUpdateAccount({
+      did: session.user.did,
+      handle: session.user.handle,
+      displayName: session.user.displayName,
+      avatarUrl: session.user.avatarUrl,
+    });
+
     if (!this.oauthSvc.session) {
-      await this.oauthSvc.tryRestore()
+      await this.oauthSvc.tryRestore(activeDid || undefined)
         .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: tryRestore failed', err); });
     }
 
@@ -248,21 +406,41 @@ export class AuthService {
     this.isAuthenticated.set(false);
 
     if (userDid) {
-      await this.secureStorage.clearMbk(userDid).catch(() => {});
+      await this.clearSessionForDid(userDid);
+    } else {
+      await this.msgCache.clearAll().catch(() => {});
+      await this.mlsStateStorage.clearAll().catch(() => {});
+      await this.pendingDecrypt.clearAll().catch(() => {});
     }
-    await this.msgCache.clearAll().catch(() => {});
-    await this.mlsStateStorage.clearAll().catch(() => {});
-    await this.pendingDecrypt.clearAll().catch(() => {});
+  }
+
+  async clearSessionForDid(did: string): Promise<void> {
+    await this.secureStorage.clearMbk(did).catch(() => {});
+    
+    // Clear user-specific databases
+    await this.msgCache.clearAllForUser(did).catch(() => {});
+    await this.pendingDecrypt.clearAllForUser(did).catch(() => {});
+
+    // Clear MLS states for all devices of this user
+    try {
+      const device = await this.deviceSvc.get(did);
+      if (device) {
+        await this.mlsStateStorage.clearForScope(`mls:${did}:${device.id}`).catch(() => {});
+      }
+    } catch {
+      // Ignored
+    }
   }
 
   async refreshTokens(): Promise<boolean> {
-    const refreshToken = await this.tokenRepo.getRefreshToken();
+    const activeDid = await this.tokenRepo.getActiveDid();
+    const refreshToken = await this.tokenRepo.getRefreshToken(activeDid || undefined);
     if (!refreshToken) return false;
 
     try {
       const tokens = await this.authRepo.refresh(refreshToken);
-      await this.tokenRepo.setAccessToken(tokens.accessToken);
-      await this.tokenRepo.setRefreshToken(tokens.refreshToken);
+      await this.tokenRepo.setAccessToken(tokens.accessToken, activeDid || undefined);
+      await this.tokenRepo.setRefreshToken(tokens.refreshToken, activeDid || undefined);
       return true;
     } catch (err) {
       const status = (err as Error & { status?: number }).status;
@@ -273,3 +451,4 @@ export class AuthService {
     }
   }
 }
+

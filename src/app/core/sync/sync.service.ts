@@ -99,6 +99,8 @@ export class SyncService {
       this.userDid  = userDid;
       this.deviceId = deviceId;
 
+      await this.failedBatchRepo.initialize(userDid);
+
       // Fast path: MBK already protected locally — no PIN needed
       const hasMbkLocal = await this.secureStorage.hasMbk(userDid);
       if (hasMbkLocal) {
