@@ -91,7 +91,12 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   // chance at the softer fetchAndProcessPendingWelcome self-heal below before
   // escalating to a full FAILED reset.
   private readonly decryptionFailures = new Map<string, number>();
-  private static readonly MAX_DECRYPTION_FAILURES = 2;
+  private static readonly MAX_DECRYPTION_FAILURES = 1;
+
+  // Tracks the timestamp when a conversation state became READY on this device.
+  // Used to distinguish historical messages (which a new device naturally cannot decrypt)
+  // from new real-time messages (which should decrypt).
+  private readonly readyTimestamps = new Map<string, number>();
 
   // ── Private Subjects ───────────────────────────────────────────────────────
   private readonly _conversationReady$$    = new Subject<ConversationReadyEvent>();
@@ -356,26 +361,33 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
           return { messageId, conversationId: convId, state: 'pending_decrypt' as const, plaintext: '', errorKind: classified.kind, operationId };
         }
 
-        const failures = (this.decryptionFailures.get(convId) ?? 0) + 1;
-        this.decryptionFailures.set(convId, failures);
+        const readyTime = this.readyTimestamps.get(convId);
+        const isHistorical = readyTime !== undefined && createdAt < readyTime - 5000;
 
-        if (failures >= MlsCoordinatorService.MAX_DECRYPTION_FAILURES) {
-          console.warn('[MLS:coordinator]', failures, 'consecutive decryption failures for', convId, '— triggering self-healing recovery');
-          this.transitionState(convId, ConversationMlsState.Failed);
-          this.scheduleFailedRecovery(convId, user, device);
+        if (isHistorical) {
+          if (!environment.production) console.log('[MLS:coordinator] decryptMessage: ignoring permanent decryption failure for historical message', messageId, 'createdAt =', createdAt, 'readyTime =', readyTime);
         } else {
-          // Trigger background welcome check in case the group was reset or we missed a Welcome.
-          void this.fetchAndProcessPendingWelcome(convId, user, device)
-            .then((ok) => {
-              if (ok) {
-                if (!environment.production) console.log('[MLS:coordinator] decryptMessage: successfully healed group from pending welcome after decryption failure', convId);
-                this.transitionState(convId, ConversationMlsState.Ready);
-                void this.replayPendingDecrypts(convId, user, device);
-              }
-            })
-            .catch((e) => {
-              console.warn('[MLS:coordinator] decryptMessage background welcome check failed', e);
-            });
+          const failures = (this.decryptionFailures.get(convId) ?? 0) + 1;
+          this.decryptionFailures.set(convId, failures);
+
+          if (failures >= MlsCoordinatorService.MAX_DECRYPTION_FAILURES) {
+            console.warn('[MLS:coordinator]', failures, 'consecutive decryption failures for', convId, '— triggering self-healing recovery');
+            this.transitionState(convId, ConversationMlsState.Failed);
+            this.scheduleFailedRecovery(convId, user, device);
+          } else {
+            // Trigger background welcome check in case the group was reset or we missed a Welcome.
+            void this.fetchAndProcessPendingWelcome(convId, user, device)
+              .then((ok) => {
+                if (ok) {
+                  if (!environment.production) console.log('[MLS:coordinator] decryptMessage: successfully healed group from pending welcome after decryption failure', convId);
+                  this.transitionState(convId, ConversationMlsState.Ready);
+                  void this.replayPendingDecrypts(convId, user, device);
+                }
+              })
+              .catch((e) => {
+                console.warn('[MLS:coordinator] decryptMessage background welcome check failed', e);
+              });
+          }
         }
 
         return { messageId, conversationId: convId, state: 'undecryptable' as const, plaintext: '', errorKind: classified.kind, operationId };
@@ -506,6 +518,9 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     for (const convId of Object.keys(groupStates)) {
       const from = this.states.get(convId) ?? ConversationMlsState.Empty;
       this.states.set(convId, ConversationMlsState.Ready);
+      if (!this.readyTimestamps.has(convId)) {
+        this.readyTimestamps.set(convId, Date.now());
+      }
       this.watchdog.watch(convId, ConversationMlsState.Ready);
       this._conversationReady$$.next({ conversationId: convId, from, operationId });
     }
@@ -653,6 +668,16 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     if (from === to) return;
     MlsStateTransitionGuard.validate(from, to, convId, reason);
     this.states.set(convId, to);
+    
+    if (to === ConversationMlsState.Ready) {
+      if (!this.readyTimestamps.has(convId)) {
+        this.readyTimestamps.set(convId, Date.now());
+      }
+    } else {
+      this.readyTimestamps.delete(convId);
+      this.decryptionFailures.set(convId, 0);
+    }
+    
     this.watchdog.watch(convId, to);
 
     if (to === ConversationMlsState.Ready) {
@@ -681,6 +706,9 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       .then(has => {
         const state = has ? ConversationMlsState.Ready : ConversationMlsState.Empty;
         this.states.set(convId, state);
+        if (state === ConversationMlsState.Ready && !this.readyTimestamps.has(convId)) {
+          this.readyTimestamps.set(convId, Date.now());
+        }
         this.pendingDerivations.delete(convId);
         return state;
       });
