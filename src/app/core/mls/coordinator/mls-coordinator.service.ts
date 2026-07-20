@@ -461,7 +461,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       const classified = this.classifyError(err, convId);
       const isPermanentCommitFail =
         classified instanceof PermanentMlsError &&
-        classified.kind !== 'EpochMismatch' &&
         classified.kind !== 'EpochTooOld';
 
       if (failures >= MlsCoordinatorService.MAX_COMMIT_FAILURES || isPermanentCommitFail) {
