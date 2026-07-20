@@ -168,7 +168,12 @@ export class MlsService {
           if (!s) throw new Error('MLS not initialized');
           if (s.groupStates[conversationId]) return;
 
-          const joined = await this.fetchAndProcessPendingWelcome(conversationId, user, device);
+          let joined = false;
+          try {
+            joined = await this.fetchAndProcessPendingWelcome(conversationId, user, device);
+          } catch (err) {
+            console.warn('[MLS] ensureGroupReady: fetchAndProcessPendingWelcome failed', err);
+          }
           if (joined) return;
         }
 
