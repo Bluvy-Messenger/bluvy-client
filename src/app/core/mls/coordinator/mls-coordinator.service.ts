@@ -346,6 +346,19 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
           return { messageId, conversationId: convId, state: 'pending_decrypt' as const, plaintext: '', errorKind: classified.kind, operationId };
         }
 
+        // Trigger background welcome check in case the group was reset or we missed a Welcome.
+        void this.fetchAndProcessPendingWelcome(convId, user, device)
+          .then((ok) => {
+            if (ok) {
+              if (!environment.production) console.log('[MLS:coordinator] decryptMessage: successfully healed group from pending welcome after decryption failure', convId);
+              this.transitionState(convId, ConversationMlsState.Ready);
+              void this.replayPendingDecrypts(convId, user, device);
+            }
+          })
+          .catch((e) => {
+            console.warn('[MLS:coordinator] decryptMessage background welcome check failed', e);
+          });
+
         return { messageId, conversationId: convId, state: 'undecryptable' as const, plaintext: '', errorKind: classified.kind, operationId };
       }
     })();
