@@ -1,10 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, Subject }   from 'rxjs';
 import { environment } from '../../../../environments/environment';
-import type { UserProfile }      from '../../auth/auth.types';
-import type { DeviceInfo }       from '../../device/device.types';
 import { MlsService }            from '../mls.service';
-import { AuthService }           from '../../auth/auth.service';
+import { UserProfile }      from '../../auth/auth.types';
+import { DeviceInfo }       from '../../device/device.types';
 import { MessageCacheService } from '../../conversation/message-cache.service';
 import type { CachedMessage } from '../../conversation/conversation.types';
 import { InitializationBarrier }    from '../state-machine/initialization-barrier';
@@ -67,7 +66,9 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly messageCacheSvc = inject(MessageCacheService);
   private readonly pendingRepo     = inject(PendingDecryptRepository);
   private readonly watchdog        = inject(MlsWatchdogService);
-  private readonly authSvc         = inject(AuthService);
+
+  private currentUserProfile: UserProfile | null = null;
+  private currentSessionDevice: DeviceInfo | null = null;
 
   private readonly barrier = new InitializationBarrier();
 
@@ -132,8 +133,8 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       console.error('[MLS:coordinator] Epoch conflict (409) event received for', event.conversationId, '— marking FAILED.');
       this.transitionState(event.conversationId, ConversationMlsState.Failed);
       this._conversationFailed$$.next({ conversationId: event.conversationId });
-      const user = this.authSvc.currentUser();
-      const device = this.authSvc.currentDevice();
+      const user = this.currentUserProfile;
+      const device = this.currentSessionDevice;
       if (user && device) {
         this.scheduleFailedRecovery(event.conversationId, user, device);
       }
@@ -145,6 +146,8 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   override async initializeForSession(user: UserProfile, device: DeviceInfo): Promise<void> {
     assertMls(!!user?.did,    'initializeForSession: user.did required', { user });
     assertMls(!!device?.id,   'initializeForSession: device.id required', { device });
+    this.currentUserProfile = user;
+    this.currentSessionDevice = device;
     await this.mlsSvc.initializeForSession(user, device);
     await this.pendingRepo.initialize(user.did, device.id);
     void this.pendingRepo.pruneStale();
