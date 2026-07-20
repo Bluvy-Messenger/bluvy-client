@@ -36,6 +36,7 @@ import { NavigationRedirectService } from './core/auth/navigation-redirect.servi
 import { JournalService } from './core/journal/journal.service';
 import { NotificationService } from './core/notification/notification.service';
 import { PushNotificationService } from './core/notification/push-notification.service';
+import { AccountBadgeService } from './core/notification/account-badge.service';
 
 @Component({
   selector: 'app-root',
@@ -51,6 +52,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private coordinator  = inject(MlsCoordinatorBase);
   protected readonly notificationSvc = inject(NotificationService);
   private pushNotificationSvc = inject(PushNotificationService);
+  private badgeSvc = inject(AccountBadgeService);
   readonly connectivitySvc = inject(ConnectivityService);
 
   constructor() {
@@ -81,6 +83,7 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.notificationSvc.initialize();
     this.pushNotificationSvc.initialize();
+    this.badgeSvc.initListeners();
 
     this.subs.add(
       this.socketSvc.deviceNew$.subscribe(payload => {

@@ -27,15 +27,23 @@
         @for (acc of accounts; track acc.did) {
           @if (acc.did !== auth.currentUser()?.did) {
             <button class="account-item" (click)="switchAccount(acc.did)" [disabled]="switching">
-              <app-avatar
-                [src]="acc.avatarUrl ?? null"
-                [handle]="acc.handle"
-                size="md"
-              ></app-avatar>
+              <div class="account-item__avatar-wrap">
+                <app-avatar
+                  [src]="acc.avatarUrl ?? null"
+                  [handle]="acc.handle"
+                  size="md"
+                ></app-avatar>
+                @if (badgeSvc.hasBadge(acc.did)) {
+                  <span class="account-item__badge" aria-label="Unread messages"></span>
+                }
+              </div>
               <div class="account-item__info">
                 <span class="account-item__name">{{ acc.displayName || acc.handle }}</span>
                 <span class="account-item__handle">@{{ acc.handle }}</span>
               </div>
+              @if (badgeSvc.hasBadge(acc.did)) {
+                <span class="account-item__unread-label">{{ 'menu.unread' | translate }}</span>
+              }
               <ion-icon name="swap-horizontal-outline" class="account-item__icon"></ion-icon>
             </button>
           }

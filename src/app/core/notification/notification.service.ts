@@ -26,11 +26,17 @@ export class NotificationService {
 
   private readonly activeConversationId = signal<string | null>(null);
 
-  readonly isToastOpen = signal<boolean>(false);
-  readonly toastTitle = signal<string>('');
-  readonly toastText = signal<string>('');
-  readonly toastAvatar = signal<string>('assets/default-avatar.png');
-  readonly toastConvId = signal<string>('');
+  readonly isToastOpen    = signal<boolean>(false);
+  readonly isToastClosing = signal<boolean>(false);
+  readonly toastTitle     = signal<string>('');
+  readonly toastText      = signal<string>('');
+  readonly toastAvatar    = signal<string>('assets/default-avatar.png');
+  readonly toastConvId    = signal<string>('');
+
+  private toastTimer:   ReturnType<typeof setTimeout> | null = null;
+  private closingTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly TOAST_DURATION_MS  = 4500;
+  private readonly CLOSE_ANIMATION_MS = 380;
 
   initialize(): void {
     // 1. Track active conversation from route
@@ -141,12 +147,50 @@ export class NotificationService {
       this.toastConvId.set(msg.conversationId);
       this.isToastOpen.set(true);
     });
+
+    // Auto-dismiss after TOAST_DURATION_MS — reset timer if a new message arrives
+    this.scheduleAutoDismiss();
+  }
+
+  private scheduleAutoDismiss(): void {
+    if (this.toastTimer) {
+      clearTimeout(this.toastTimer);
+    }
+    this.toastTimer = setTimeout(() => {
+      this.closeToast();
+      this.toastTimer = null;
+    }, this.TOAST_DURATION_MS);
+  }
+
+  /** Called by AuthService on every account switch to reset notification state. */
+  onAccountSwitch(): void {
+    this.clearAllTimers();
+    this.zone.run(() => {
+      this.isToastClosing.set(false);
+      this.isToastOpen.set(false);
+      this.toastTitle.set('');
+      this.toastText.set('');
+      this.toastAvatar.set('assets/default-avatar.png');
+      this.toastConvId.set('');
+    });
   }
 
   closeToast(): void {
-    this.zone.run(() => {
-      this.isToastOpen.set(false);
-    });
+    this.clearAllTimers();
+    // Trigger the exit animation first, then remove from DOM after it completes
+    this.zone.run(() => this.isToastClosing.set(true));
+    this.closingTimer = setTimeout(() => {
+      this.zone.run(() => {
+        this.isToastOpen.set(false);
+        this.isToastClosing.set(false);
+      });
+      this.closingTimer = null;
+    }, this.CLOSE_ANIMATION_MS);
+  }
+
+  private clearAllTimers(): void {
+    if (this.toastTimer)   { clearTimeout(this.toastTimer);   this.toastTimer   = null; }
+    if (this.closingTimer) { clearTimeout(this.closingTimer); this.closingTimer = null; }
   }
 
   setFallbackAvatar(): void {

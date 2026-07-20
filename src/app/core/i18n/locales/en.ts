@@ -343,6 +343,7 @@ export const en: Record<string, string> = {
   'menu.about': 'About',
   'menu.logout': 'Sign out',
   'menu.add_account': 'Add account',
+  'menu.unread': 'New',
   'menu.switch_account': 'Switch account',
 
   'composer.placeholder': 'Message...',

@@ -4,6 +4,7 @@ import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
 import { AuthService, StoredAccount } from '../../core/auth/auth.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { AccountBadgeService } from '../../core/notification/account-badge.service';
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -15,6 +16,7 @@ import { ROUTES } from '../../core/routes';
 })
 export class MenuPage implements OnInit {
   auth           = inject(AuthService);
+  badgeSvc       = inject(AccountBadgeService);
   private router = inject(Router);
 
   accounts: StoredAccount[] = [];
@@ -22,6 +24,11 @@ export class MenuPage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await this.loadAccounts();
+  }
+
+  async ionViewWillEnter(): Promise<void> {
+    // Refresh unread badges for inactive accounts every time the menu is opened
+    void this.badgeSvc.refresh();
   }
 
   async loadAccounts(): Promise<void> {

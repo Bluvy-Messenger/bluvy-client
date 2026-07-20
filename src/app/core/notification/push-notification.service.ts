@@ -53,6 +53,20 @@ export class PushNotificationService {
     });
   }
 
+  /**
+   * Called by AuthService after every account switch.
+   * Re-registers the FCM token with the backend so that push notifications
+   * are delivered to the newly active account rather than the previous one.
+   */
+  async onAccountSwitch(): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
+    if (!this.isPushEnabled()) return;
+
+    // Re-request and re-register: the registration listener will upload the
+    // token to the backend, which will now bind it to the current active user.
+    this.registerPush();
+  }
+
   async setPushEnabled(enabled: boolean): Promise<void> {
     localStorage.setItem('notifications_push_enabled', String(enabled));
     if (!Capacitor.isNativePlatform()) {

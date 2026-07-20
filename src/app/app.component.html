@@ -8,7 +8,9 @@
 
   <!-- Custom In-App Notification Toast (Overlay bypasses Shadow DOM limitations) -->
   @if (notificationSvc.isToastOpen()) {
-    <div class="custom-toast-overlay" (click)="notificationSvc.openToastConversation()">
+    <div class="custom-toast-overlay"
+         [class.is-closing]="notificationSvc.isToastClosing()"
+         (click)="notificationSvc.openToastConversation()">
       <div class="notification-toast">
         <img class="notification-toast__avatar" [src]="notificationSvc.toastAvatar()" (error)="notificationSvc.setFallbackAvatar()" />
         <div class="notification-toast__content">

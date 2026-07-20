@@ -213,22 +213,49 @@ ion-checkbox {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.10);
   z-index: 9999;
   padding: 4px 16px;
   box-sizing: border-box;
-  animation: toastSlideIn 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
   cursor: pointer;
+
+  // Entry animation — spring overshoot
+  animation: toastEnter 0.42s cubic-bezier(0.18, 1.4, 0.4, 1) both;
+
+  // Exit animation — triggered by .is-closing class
+  &.is-closing {
+    animation: toastLeave 0.38s cubic-bezier(0.4, 0, 1, 1) both;
+    pointer-events: none;
+  }
 }
 
-@keyframes toastSlideIn {
-  from {
-    transform: translateY(-40px);
+@keyframes toastEnter {
+  0% {
+    transform: translateY(-56px) scale(0.92);
     opacity: 0;
+    filter: blur(4px);
   }
-  to {
-    transform: translateY(0);
+  60% {
     opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes toastLeave {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: translateY(-32px) scale(0.94);
+    opacity: 0;
+    filter: blur(3px);
   }
 }
 

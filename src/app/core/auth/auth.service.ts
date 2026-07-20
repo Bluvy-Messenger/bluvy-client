@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, Injector } from '@angular/core';
 import { Router } from '@angular/router';
 import { Preferences } from '@capacitor/preferences';
 import { environment } from '../../../environments/environment';
@@ -18,6 +18,9 @@ import type { UserProfile, AuthSessionResponse } from './auth.types';
 import { TokenRepository } from '../infrastructure/token.repository';
 import { SecureLocalStorageService } from '../secure-local-storage/secure-local-storage.service';
 import { MessageCacheService } from '../conversation/message-cache.service';
+import { NotificationService } from '../notification/notification.service';
+import { PushNotificationService } from '../notification/push-notification.service';
+import { AccountBadgeService } from '../notification/account-badge.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
@@ -45,6 +48,11 @@ export class AuthService {
   private tokenRepo       = inject(TokenRepository);
   private secureStorage   = inject(SecureLocalStorageService);
   private msgCache        = inject(MessageCacheService);
+  private injector        = inject(Injector);
+  // Lazy-resolved to break circular dependency (NotificationService -> AuthService -> NotificationService)
+  private get notifSvc(): NotificationService     { return this.injector.get(NotificationService); }
+  private get pushSvc():  PushNotificationService { return this.injector.get(PushNotificationService); }
+  private get badgeSvc(): AccountBadgeService     { return this.injector.get(AccountBadgeService); }
 
   readonly currentUser     = signal<UserProfile | null>(null);
   readonly currentDevice   = signal<DeviceInfo | null>(null);
@@ -149,9 +157,12 @@ export class AuthService {
     // 1. Disconnect current socket
     this.socketSvc.disconnect();
     
-    // 2. Clear in-memory active states
+    // 2. Clear in-memory active states + close any visible notification toast
     this.syncSvc.reset();
     this.contactsSvc.reset();
+    this.notifSvc.onAccountSwitch();
+    this.badgeSvc.clearBadge(did); // Clear the unread badge for the account we're switching TO
+    await this.pushSvc.onAccountSwitch();
     
     // 3. Set the active DID
     await this.tokenRepo.setActiveDid(did);
