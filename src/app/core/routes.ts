@@ -22,6 +22,7 @@ export const ROUTES = {
   settings:           '/settings',
   settingsAppearance: '/settings/appearance',
   settingsLanguage:   '/settings/language',
+  settingsNotifications: '/settings/notifications',
   settingsSync:       '/settings/sync',
   security:           '/security',
   devices:            '/devices',

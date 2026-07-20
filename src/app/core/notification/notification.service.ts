@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, NgZone } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { ToastController } from '@ionic/angular/standalone';
 import { filter, firstValueFrom } from 'rxjs';
@@ -22,8 +22,15 @@ export class NotificationService {
   private readonly router           = inject(Router);
   private readonly toastCtrl         = inject(ToastController);
   private readonly translationSvc   = inject(TranslationService);
+  private readonly zone             = inject(NgZone);
 
   private readonly activeConversationId = signal<string | null>(null);
+
+  readonly isToastOpen = signal<boolean>(false);
+  readonly toastTitle = signal<string>('');
+  readonly toastText = signal<string>('');
+  readonly toastAvatar = signal<string>('assets/default-avatar.png');
+  readonly toastConvId = signal<string>('');
 
   initialize(): void {
     // 1. Track active conversation from route
@@ -90,8 +97,8 @@ export class NotificationService {
       // If decryption fails, we still proceed with displaying a generic notification
     }
 
-    // Only display in-app toast if the user is NOT actively looking at this conversation
-    if (this.activeConversationId() !== msg.conversationId) {
+    // Only display in-app toast if the user is NOT actively looking at this conversation AND in-app notifications are enabled
+    if (this.activeConversationId() !== msg.conversationId && this.isInAppEnabled()) {
       await this.showInAppToast(msg, decryptedText);
     }
   }
@@ -126,31 +133,43 @@ export class NotificationService {
       }
     }
 
-    // HTML-like custom toast utilizing CSS variables
-    const toast = await this.toastCtrl.create({
-      message: `
-        <div class="notification-toast">
-          <img class="notification-toast__avatar" src="${avatarUrl}" onerror="this.src='assets/default-avatar.png'" />
-          <div class="notification-toast__content">
-            <div class="notification-toast__title">${displayName}</div>
-            <div class="notification-toast__text">${text}</div>
-          </div>
-        </div>
-      `,
-      duration: 4000,
-      position: 'top',
-      cssClass: 'custom-notification-toast',
-      buttons: [
-        {
-          text: this.translationSvc.t('notifications.open'),
-          role: 'cancel',
-          handler: () => {
-            void this.router.navigate([ROUTES.conversation(msg.conversationId)]);
-          }
-        }
-      ]
+    // Set state signals inside Angular zone to trigger change detection
+    this.zone.run(() => {
+      this.toastTitle.set(displayName);
+      this.toastText.set(text);
+      this.toastAvatar.set(avatarUrl);
+      this.toastConvId.set(msg.conversationId);
+      this.isToastOpen.set(true);
     });
+  }
 
-    await toast.present();
+  closeToast(): void {
+    this.zone.run(() => {
+      this.isToastOpen.set(false);
+    });
+  }
+
+  setFallbackAvatar(): void {
+    this.zone.run(() => {
+      this.toastAvatar.set('assets/default-avatar.png');
+    });
+  }
+
+  openToastConversation(): void {
+    const convId = this.toastConvId();
+    if (convId) {
+      this.zone.run(() => {
+        void this.router.navigate([ROUTES.conversation(convId)]);
+      });
+    }
+    this.closeToast();
+  }
+
+  setInAppEnabled(enabled: boolean): void {
+    localStorage.setItem('notifications_in_app_enabled', String(enabled));
+  }
+
+  isInAppEnabled(): boolean {
+    return localStorage.getItem('notifications_in_app_enabled') !== 'false';
   }
 }

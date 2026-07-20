@@ -151,7 +151,13 @@ export class ConversationPage implements OnDestroy {
       this.error = 'Could not load conversation.';
     } finally {
       this.loading = false;
+      this.cdr.detectChanges();
+      this.scrollToBottom();
     }
+  }
+
+  ionViewDidEnter(): void {
+    this.scrollToBottom();
   }
 
   ionViewWillLeave(): void {

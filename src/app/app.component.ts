@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonToast, IonIcon } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
@@ -24,7 +24,7 @@ import {
   globe, globeOutline, flaskOutline,
   colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
   ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
-  archiveOutline, folderOpenOutline,
+  archiveOutline, folderOpenOutline, notificationsOutline, close,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -41,7 +41,7 @@ import { PushNotificationService } from './core/notification/push-notification.s
   selector: 'app-root',
   templateUrl: 'app.component.html',
   styleUrl: 'app.component.scss',
-  imports: [IonApp, IonRouterOutlet, TranslatePipe],
+  imports: [IonApp, IonRouterOutlet, IonToast, IonIcon, TranslatePipe],
 })
 export class AppComponent implements OnInit, OnDestroy {
   private authSvc      = inject(AuthService);
@@ -49,7 +49,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private provisionSvc = inject(DeviceProvisioningService);
   private kpSvc        = inject(KeyPackageService);
   private coordinator  = inject(MlsCoordinatorBase);
-  private notificationSvc = inject(NotificationService);
+  protected readonly notificationSvc = inject(NotificationService);
   private pushNotificationSvc = inject(PushNotificationService);
   readonly connectivitySvc = inject(ConnectivityService);
 
@@ -72,7 +72,7 @@ export class AppComponent implements OnInit, OnDestroy {
       colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
       chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
       ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
-      archiveOutline, folderOpenOutline,
+      archiveOutline, folderOpenOutline, notificationsOutline, close,
     });
   }
 
