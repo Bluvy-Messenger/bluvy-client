@@ -8,7 +8,7 @@ import { App } from '@capacitor/app';
 import { addIcons } from 'ionicons';
 import {
   chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
-  personOutline, chevronForwardOutline, phonePortraitOutline,
+  personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,
   shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
   logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
   sunny, contrastOutline, contrast, checkmarkCircleOutline, checkmarkCircle,
@@ -55,7 +55,7 @@ export class AppComponent implements OnInit, OnDestroy {
     inject(JournalService); // Start console interception at boot
     addIcons({
       chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
-      personOutline, chevronForwardOutline, phonePortraitOutline,
+      personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,
       shieldCheckmarkOutline, settingsOutline, informationCircleOutline,
       logOutOutline, chevronBackOutline, moonOutline, moon, sunnyOutline,
       sunny, contrastOutline, contrast, checkmarkCircleOutline, checkmarkCircle,
