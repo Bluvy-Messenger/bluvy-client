@@ -256,9 +256,9 @@ export class MlsService {
       add:          { keyPackage: decodedKP.keyPackage },
     };
     if (!environment.production) console.log(`[MLS:trace:6b] createCommit using addProposal  b64fp=${consumed.keyPackage.substring(0, 48)}`);
-    const { newState: groupState, welcome } = await createCommit(
+    const { newState: groupState, welcome, commit } = await createCommit(
       { state: initialGroupState, cipherSuite: cs },
-      { extraProposals: [addProposal], ratchetTreeExtension: true },
+      { extraProposals: [addProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
     );
 
     if (welcome) {
@@ -267,20 +267,19 @@ export class MlsService {
       if (!environment.production) console.log(`[MLS:trace:6c] createCommit Welcome secrets count=${_refs6c.length}  refs=${_refs6c.join(' | ')}`);
     }
 
-    // Post the Welcome (network, before the atomic state write).
-    if (welcome) {
-      await this.mlsRepo.postWelcome(
-        consumed.deviceId,
-        this.bytesToBase64(encodeMlsMessage({
-          version:    'mls10',
-          wireformat: 'mls_welcome',
-          welcome,
-        })),
-        conversationId,
-      );
-    } else {
-      console.warn('[MLS] ensureGroupReady: createCommit returned no welcome for', conversationId);
-    }
+    const welcomeB64 = welcome ? this.bytesToBase64(encodeMlsMessage({
+      version:    'mls10',
+      wireformat: 'mls_welcome',
+      welcome,
+    })) : undefined;
+
+    const commitB64 = this.bytesToBase64(encodeMlsMessage(commit));
+    const currentEpoch = Number(initialGroupState.groupContext.epoch); // This is 0!
+
+    await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch, welcomeB64 ? {
+      targetDeviceId: consumed.deviceId,
+      welcome: welcomeB64,
+    } : undefined);
 
     // ── Atomic state write ────────────────────────────────────────────────────
 
@@ -745,13 +744,13 @@ export class MlsService {
       add:          { keyPackage: decodedKP.keyPackage },
     };
 
-    // Captured from inside update() for the subsequent HTTP calls.
-    let welcomeB64!:          string;
-    let commitB64!:           string;
-    let newEpoch!:            number;
-    let newStateB64pd!:       string;
-    let previousStateB64pd:   string | undefined;
-    let shouldSkip           = false;
+    let currentEpoch: number;
+    let shouldSkip = false;
+    let welcomeB64 = '';
+    let commitB64  = '';
+    let newEpoch   = 0;
+    let previousStateB64pd: string | undefined;
+    let newStateB64pd      = '';
 
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state) throw new Error('MLS not initialized');
@@ -762,11 +761,14 @@ export class MlsService {
         return null;
       }
 
+      const clientState = this.restoreClientState(encoded);
+      currentEpoch = Number(clientState.groupContext.epoch);
+
       // Guard inside the lock: verify device is not already a member.
       // This prevents the TOCTOU race where two concurrent provisionDevice calls
       // both consumed a KP before entering this lock.
       {
-        const members = getGroupMembers(this.restoreClientState(encoded));
+        const members = getGroupMembers(clientState);
         const dec = new TextDecoder();
         const alreadyMember = members.some((m: ReturnType<typeof getGroupMembers>[number]) =>
           m.credential.credentialType === 'basic' &&
@@ -779,7 +781,6 @@ export class MlsService {
         }
       }
 
-      const clientState = this.restoreClientState(encoded);
       const { newState, welcome, commit } = await createCommit(
         { state: clientState, cipherSuite: cs },
         { extraProposals: [addProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
@@ -807,7 +808,7 @@ export class MlsService {
     // Network: post Welcome and Commit atomically (after the storage lock).
     let stored;
     try {
-      stored = await this.mlsRepo.postCommit(conversationId, commitB64, newEpoch, {
+      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
         targetDeviceId: newDeviceId,
         welcome: welcomeB64,
       });
@@ -1165,11 +1166,13 @@ export class MlsService {
         console.warn('[MLS] removeRevokedDevice: failed to acquire commit lock for conv', convId, '— proceeding without it', err);
       }
 
+      let currentEpoch: number;
       await this.storage.update<StoredMlsState>(scope, async (current) => {
         if (!current || !current.groupStates || !current.groupStates[convId]) return null;
 
         const encoded = current.groupStates[convId];
         const clientState = this.restoreClientState(encoded);
+        currentEpoch = Number(clientState.groupContext.epoch);
         const members = getGroupMembers(clientState);
         const dec = new TextDecoder();
 
@@ -1200,7 +1203,7 @@ export class MlsService {
 
         let stored;
         try {
-          stored = await this.mlsRepo.postCommit(convId, serializedCommit, Number(newState.groupContext.epoch));
+          stored = await this.mlsRepo.postCommit(convId, serializedCommit, currentEpoch);
         } catch (err) {
           if (err instanceof HttpErrorResponse && err.status === 409) {
             console.warn('[MLS] removeRevokedDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
