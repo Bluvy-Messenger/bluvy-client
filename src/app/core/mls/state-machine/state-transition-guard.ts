@@ -9,7 +9,7 @@ export type TransitionReason = typeof TRANSITION_REASON_RESTORE | undefined;
 const ALLOWED = new Map<ConversationMlsState, ReadonlySet<ConversationMlsState>>([
   [
     ConversationMlsState.Empty,
-    new Set([ConversationMlsState.Joining, ConversationMlsState.Initializing]),
+    new Set([ConversationMlsState.Joining, ConversationMlsState.Initializing, ConversationMlsState.Failed]),
   ],
   [
     ConversationMlsState.Joining,

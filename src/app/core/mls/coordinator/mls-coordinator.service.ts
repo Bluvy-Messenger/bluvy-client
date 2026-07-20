@@ -603,13 +603,13 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     }
   }
 
-  // Single point of state modification — validates transition, updates watchdog.
   private transitionState(
     convId: string,
     to:     ConversationMlsState,
     reason?: typeof TRANSITION_REASON_RESTORE,
   ): void {
     const from = this.states.get(convId) ?? ConversationMlsState.Empty;
+    if (from === to) return;
     MlsStateTransitionGuard.validate(from, to, convId, reason);
     this.states.set(convId, to);
     this.watchdog.watch(convId, to);
