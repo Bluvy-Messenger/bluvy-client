@@ -342,7 +342,14 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
   }
 
   private markReadIfVisible(): void {
-    const lastFromOther = [...this.displayMessages].filter(m => !m.isMine && !m.pending).at(-1);
+    // See conversation.page.ts's markReadIfVisible: spliced-in historical
+    // messages carry a synthetic "spliced:<convId>:<originalId>" cache key,
+    // never a real server-side message id -- sending one here makes the
+    // backend's read-state check silently no-op, leaving the unread badge
+    // stuck forever. Skip them and report the most recent genuine message.
+    const lastFromOther = [...this.displayMessages]
+      .filter(m => !m.isMine && !m.pending && !m.id.startsWith('spliced:'))
+      .at(-1);
     if (lastFromOther) this.receiptsSvc.markConversationRead(this.conversationId, lastFromOther.id);
   }
 

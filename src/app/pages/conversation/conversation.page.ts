@@ -611,8 +611,16 @@ export class ConversationPage implements OnDestroy {
   }
 
   private markReadIfVisible(): void {
+    // Messages spliced in from a superseded conversation's history (see
+    // MessageCacheService.spliceHistory) carry a synthetic client-only cache
+    // key ("spliced:<newConvId>:<originalId>"), never a real server-side
+    // message id. Sending one to markConversationRead makes the backend's
+    // messageExistsInConversation() check fail silently (that id was never
+    // inserted into the messages table under this conversationId), so the
+    // read state never updates and the unread badge gets stuck forever --
+    // skip them and report the most recent genuine message instead.
     const lastFromOther = [...this.displayMessages]
-      .filter(m => !m.isMine && !m.pending)
+      .filter(m => !m.isMine && !m.pending && !m.id.startsWith('spliced:'))
       .at(-1);
     if (lastFromOther) {
       this.receiptsSvc.markConversationRead(this.conversationId, lastFromOther.id);
