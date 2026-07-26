@@ -104,6 +104,13 @@ export class MlsService {
   async initializeForSession(user: UserProfile, device: SessionDevice): Promise<void> {
     const scope = this.makeScope(user.did, device.id);
 
+    // Keyed by conversationId only (see MlsCoordinatorService.initializeForSession
+    // for the full account-switch rationale). AuthService.switchAccount() always
+    // disconnects the socket before this runs and doesn't reconnect until after
+    // it resolves, so no commit processing can genuinely be in flight here --
+    // safe to drop unconditionally rather than track the previous scope.
+    this.pendingCommits.clear();
+
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state || state.userDid !== user.did || state.deviceId !== device.id) {
         return {

@@ -146,6 +146,35 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   override async initializeForSession(user: UserProfile, device: DeviceInfo): Promise<void> {
     assertMls(!!user?.did,    'initializeForSession: user.did required', { user });
     assertMls(!!device?.id,   'initializeForSession: device.id required', { device });
+
+    // All per-conversation in-memory state below (states, failedRecovery timers,
+    // etc.) is keyed by conversationId ONLY, with no account/device dimension.
+    // That's fine within one session, but AuthService.switchAccount() reuses
+    // this same singleton without ever destroying it -- and two locally-linked
+    // accounts that DM each other share the exact same conversationId. Without
+    // this reset, a stale ConversationMlsState.Ready (or a scheduleFailedRecovery
+    // setTimeout still pending) left behind by the PREVIOUS account leaks into
+    // the newly active account's use of that same conversationId: e.g.
+    // ensureGroupReady()'s `if (isConversationReady(convId)) return;` shortcut
+    // (line ~262) skips real group establishment for the new account entirely,
+    // or a delayed recoverFromFailed() timer fires later against the OLD
+    // account's user/device closure while the NEW account is active, mutating
+    // the wrong account's MLS group. Only a full page reload cleared this
+    // before (it wipes the singleton), matching the reported symptom.
+    if (this.currentUserProfile &&
+        (this.currentUserProfile.did !== user.did || this.currentSessionDevice?.id !== device.id)) {
+      for (const entry of this.failedRecovery.values()) {
+        if (entry.timerId !== undefined) clearTimeout(entry.timerId);
+      }
+      this.failedRecovery.clear();
+      this.states.clear();
+      this.pendingDerivations.clear();
+      this.inFlightDecrypts.clear();
+      this.commitFailureCounts.clear();
+      this.decryptionFailures.clear();
+      this.readyTimestamps.clear();
+    }
+
     this.currentUserProfile = user;
     this.currentSessionDevice = device;
     await this.mlsSvc.initializeForSession(user, device);
