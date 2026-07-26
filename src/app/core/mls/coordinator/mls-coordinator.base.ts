@@ -127,6 +127,18 @@ export abstract class MlsCoordinatorBase {
     device:          DeviceInfo,
   ): Promise<void>;
 
+  // Re-provisions a device that already has a leaf in the MLS tree but lost
+  // its local state (see Phase 8b / AUDIT_02 Root Cause #3). Unlike
+  // provisionDevice(), which no-ops when the target is already a member,
+  // this removes the stale leaf and re-adds it in the same commit so a fresh
+  // Welcome is produced.
+  abstract reprovisionLostStateDevice(
+    staleDeviceId: string,
+    convId:        string,
+    user:          UserProfile,
+    device:        DeviceInfo,
+  ): Promise<void>;
+
   // ── Restore ───────────────────────────────────────────────────────────────
   abstract injectRestoredGroupStates(
     groupStates: Record<string, string>,

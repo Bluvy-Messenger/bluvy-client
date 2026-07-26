@@ -586,6 +586,16 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     return this.mlsSvc.removeRevokedDeviceFromAllGroups(revokedDeviceId, user, device);
   }
 
+  override async reprovisionLostStateDevice(
+    staleDeviceId: string,
+    convId:        string,
+    user:          UserProfile,
+    device:        DeviceInfo,
+  ): Promise<void> {
+    assertMls(!!staleDeviceId, 'reprovisionLostStateDevice: staleDeviceId required', { convId });
+    return this.mlsSvc.reprovisionLostStateDevice(staleDeviceId, convId, user, device);
+  }
+
   // ── Restore ────────────────────────────────────────────────────────────────
 
   override async injectRestoredGroupStates(

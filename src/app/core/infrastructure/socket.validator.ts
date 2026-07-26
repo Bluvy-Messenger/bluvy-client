@@ -28,6 +28,12 @@ export function validateDeviceNewPayload(data: DeviceNewPayload): DeviceNewPaylo
   if (typeof data['deviceId'] !== 'string') throw new Error('DeviceNewPayload.deviceId: expected string');
   if (typeof data['deviceName'] !== 'string') throw new Error('DeviceNewPayload.deviceName: expected string');
   if (typeof data['platform'] !== 'string') throw new Error('DeviceNewPayload.platform: expected string');
+  if (data['reason'] !== undefined && data['reason'] !== 'new' && data['reason'] !== 'lost_state') {
+    throw new Error("DeviceNewPayload.reason: expected 'new' | 'lost_state' | undefined");
+  }
+  if (data['conversationId'] !== undefined && typeof data['conversationId'] !== 'string') {
+    throw new Error('DeviceNewPayload.conversationId: expected string or undefined');
+  }
   return data;
 }
 
