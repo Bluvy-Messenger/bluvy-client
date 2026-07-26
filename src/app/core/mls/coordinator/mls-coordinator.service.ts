@@ -332,6 +332,29 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   ): Promise<void> {
     console.log('[MLS:observability] clearConversationGroup', { conversationId: convId, caller: 'coordinator.clearConversationGroup' });
     await this.mlsSvc.clearConversationGroup(convId, user, device);
+
+    // Messages still queued here were never written anywhere visible (see
+    // decryptMessage's TransientMlsError branch: state 'pending_decrypt'
+    // writes nothing to the cache, only to this queue, waiting to be
+    // replayed once the group becomes ready again -- see
+    // replayPendingDecrypts). Abandoning the group entirely (this method is
+    // called right before recreating the conversation, or by the
+    // no-welcome branch of recoverFromFailed) means that ready state will
+    // never come: no key material for this conversationId will ever be
+    // able to decrypt them again. Convert them to the same undecryptable
+    // placeholder replayPendingDecrypts already uses for a permanent
+    // failure, instead of pendingRepo.clear() silently discarding them
+    // with no trace at all -- otherwise a message the recipient genuinely
+    // received during the broken window would vanish from the spliced
+    // history entirely, instead of showing as "[Encrypted]" like any other
+    // permanently-undecryptable message.
+    const pending = await this.pendingRepo.getAll(convId);
+    if (pending.length > 0) {
+      const placeholders = pending.map(entry => this.buildCached(entry, '', true));
+      await Promise.all(placeholders.map(cached => this.messageCacheSvc.store(cached)));
+      this._pendingDecryptReplayed$$.next({ conversationId: convId, messages: placeholders });
+    }
+
     await this.pendingRepo.clear(convId);
     this.transitionState(convId, ConversationMlsState.Empty);
   }
