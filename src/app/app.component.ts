@@ -95,7 +95,7 @@ export class AppComponent implements OnInit, OnDestroy {
         const user   = this.authSvc.currentUser();
         const device = this.authSvc.currentDevice();
         if (!user || !device || payload.deviceId === device.id) return;
-        void this.provisionSvc.handleDeviceNew(payload.deviceId, user, device);
+        void this.provisionSvc.handleDeviceNew(payload.deviceId, user, device, payload.reason ?? 'new');
       }),
     );
 

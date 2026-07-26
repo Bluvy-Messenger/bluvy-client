@@ -15,9 +15,19 @@ export interface WelcomeNewPayload {
 }
 
 export interface DeviceNewPayload {
-  deviceId:   string;
-  deviceName: string;
-  platform:   string;
+  deviceId:        string;
+  deviceName:      string;
+  platform:        string;
+  // 'new': first-time device pairing (key-packages.routes.ts).
+  // 'lost_state': nudge to re-provision a device that consumed a Welcome
+  // before but has no local MLS state now (claimInitiatorSlot's lost-state
+  // branch, see Phase 8b / AUDIT_02 Root Cause #3). Optional for backward
+  // compatibility with an older backend that doesn't send it yet.
+  reason?:         'new' | 'lost_state';
+  // Only present for reason: 'lost_state'. Informational/logging only — the
+  // client still sweeps all conversations, since local state loss is not
+  // generally scoped to a single conversation.
+  conversationId?: string;
 }
 
 export interface MlsCommitPayload {

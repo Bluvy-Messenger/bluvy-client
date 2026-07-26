@@ -876,6 +876,192 @@ export class MlsService {
     if (!environment.production) console.log('[MLS] provisionDevice: provisioned', newDeviceId, 'for', conversationId, 'epoch', newEpoch);
   }
 
+  // Re-provisions a device that already has a leaf in the MLS tree but lost
+  // its local state (see Phase 8b / AUDIT_02 Root Cause #3): claimInitiatorSlot
+  // nudges another of the account's devices via device:new{reason:'lost_state'}
+  // instead of letting the stale device unilaterally reset the group.
+  // provisionDevice() can't help here — its "already a member" guard always
+  // fires for this device, since it was never removed from the tree, and MLS
+  // has no operation to "resend a Welcome" to an existing leaf. This removes
+  // the stale leaf and re-adds it in the same commit, producing a fresh
+  // Welcome in one epoch bump.
+  async reprovisionLostStateDevice(
+    staleDeviceId:  string,
+    conversationId: string,
+    user:           UserProfile,
+    device:         SessionDevice,
+  ): Promise<void> {
+    // Same rationale as provisionDevice(): don't race a proposal against an
+    // epoch that's about to be superseded by an in-flight incoming commit.
+    const pendingIncoming = this.pendingCommits.get(conversationId);
+    if (pendingIncoming) await pendingIncoming;
+
+    const scope = this.makeScope(user.did, device.id);
+
+    // Pre-check: abort early if there is nothing to fix (read-only, no lock).
+    const preState = await this.storage.load<StoredMlsState>(scope);
+    if (!preState) throw new Error('MLS not initialized');
+    if (!preState.groupStates[conversationId]) {
+      if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: no group state for', conversationId, '— skipping');
+      return;
+    }
+
+    // Same reusable server-side commit lock as provisionDevice(): if another
+    // of our own devices is already reacting to the same nudge, skip
+    // cleanly — whichever one succeeds accomplishes the same goal.
+    try {
+      const { acquired } = await this.mlsRepo.acquireCommitLock(conversationId);
+      if (!acquired) {
+        if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: commit lock held by another device for conv', conversationId, '— skipping');
+        return;
+      }
+    } catch (err) {
+      console.warn('[MLS] reprovisionLostStateDevice: failed to acquire commit lock for conv', conversationId, '— proceeding without it', err);
+    }
+
+    // Network: consume a fresh key package for the stale device (before the
+    // storage lock) so its re-added leaf gets new key material, not the
+    // (possibly compromised or simply stale) key material it originally
+    // joined with.
+    let consumed: { keyPackage: string; deviceId: string };
+    try {
+      consumed = await this.mlsRepo.consumeOwnKeyPackage(staleDeviceId);
+    } catch (err) {
+      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
+        console.warn('[MLS] reprovisionLostStateDevice: no key packages for', staleDeviceId, '— cannot reprovision conv', conversationId);
+      }
+      throw err;
+    }
+
+    const decodedKP = decodeMlsMessage(this.base64ToBytes(consumed.keyPackage), 0)?.[0];
+    if (!decodedKP || decodedKP.wireformat !== 'mls_key_package') {
+      throw new Error('Invalid key package received from server');
+    }
+
+    const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
+
+    const addProposal: ProposalAdd = {
+      proposalType: 'add',
+      add:          { keyPackage: decodedKP.keyPackage },
+    };
+
+    let currentEpoch: number;
+    let shouldSkip = false;
+    let welcomeB64 = '';
+    let commitB64  = '';
+    let newEpoch   = 0;
+    let previousStateB64pd: string | undefined;
+    let newStateB64pd      = '';
+
+    await this.storage.update<StoredMlsState>(scope, async (state) => {
+      if (!state) throw new Error('MLS not initialized');
+      const encoded = state.groupStates[conversationId];
+      if (!encoded) {
+        // Group disappeared while we were fetching the key package.
+        shouldSkip = true;
+        return null;
+      }
+
+      const clientState = this.restoreClientState(encoded);
+      currentEpoch = Number(clientState.groupContext.epoch);
+
+      // Find the stale device's current leaf. If it's no longer a member,
+      // another device already fixed it (or it was never a member to begin
+      // with) — skip idempotently rather than attempt a Remove for a leaf
+      // that doesn't exist.
+      const members = getGroupMembers(clientState);
+      const dec = new TextDecoder();
+      const leafIndex = members.findIndex((m: ReturnType<typeof getGroupMembers>[number]) =>
+        m.credential.credentialType === 'basic' &&
+        dec.decode(m.credential.identity).endsWith(`#${staleDeviceId}`)
+      );
+
+      if (leafIndex === -1) {
+        if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: device not (or no longer) a member, nothing to fix', staleDeviceId, conversationId);
+        shouldSkip = true;
+        return null;
+      }
+
+      console.log('[MLS:observability] reprovisionLostStateDevice', {
+        conversationId, staleDeviceId, removedLeafIndex: leafIndex, actingDeviceId: device.id, currentEpoch,
+      });
+
+      // Remove the stale leaf and re-add the same identity fresh in a single
+      // commit. Order of extraProposals doesn't matter: ts-mls groups
+      // proposal application by type (update -> remove -> add) regardless of
+      // array order, and explicitly permits an Add for an identity already
+      // in the group when a matching Remove is in the same commit.
+      const removeProposal = {
+        proposalType: 'remove' as const,
+        remove:       { removed: leafIndex },
+      };
+
+      const { newState, welcome, commit } = await createCommit(
+        { state: clientState, cipherSuite: cs },
+        { extraProposals: [removeProposal, addProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
+      );
+
+      if (!welcome) throw new Error('createCommit returned no welcome for lost-state re-provisioning');
+
+      welcomeB64 = this.bytesToBase64(encodeMlsMessage({
+        version:    'mls10',
+        wireformat: 'mls_welcome',
+        welcome,
+      }));
+      commitB64       = this.bytesToBase64(encodeMlsMessage(commit));
+      newEpoch        = Number(newState.groupContext.epoch);
+      previousStateB64pd = state.groupStates[conversationId];
+      newStateB64pd      = this.bytesToBase64(encodeGroupState(newState));
+
+      state.groupStates[conversationId] = newStateB64pd;
+      state.updatedAt = Date.now();
+      return state;
+    });
+
+    if (shouldSkip) return;
+
+    // Network: post Welcome and Commit atomically (after the storage lock).
+    let stored;
+    try {
+      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
+        targetDeviceId: staleDeviceId,
+        welcome: welcomeB64,
+      });
+    } catch (err) {
+      if (err instanceof HttpErrorResponse && err.status === 409) {
+        console.warn('[MLS] reprovisionLostStateDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
+        console.log('[MLS:observability] clearConversationGroup caller', { conversationId, caller: 'reprovisionLostStateDevice 409 handler' });
+        await this.clearConversationGroup(conversationId, user, device);
+        this.epochConflict$.next({ conversationId });
+      }
+      throw err;
+    }
+
+    // Same lost-commit-race handling as provisionDevice(): if another of our
+    // own devices (reacting to the same nudge) posted a commit for this
+    // epoch first, resync onto its commit instead of forking.
+    if (stored.senderDeviceId !== device.id) {
+      console.warn(
+        '[MLS] reprovisionLostStateDevice: lost commit race for epoch', newEpoch, 'on conv', conversationId,
+        '— rolling back optimistic state and applying the winning commit from', stored.senderDeviceId,
+      );
+      await this.storage.update<StoredMlsState>(scope, async (s) => {
+        if (!s) return null;
+        if (previousStateB64pd === undefined) delete s.groupStates[conversationId];
+        else s.groupStates[conversationId] = previousStateB64pd;
+        s.updatedAt = Date.now();
+        return s;
+      });
+      await this.processIncomingCommit(conversationId, stored.commit, stored.epoch, user, device);
+      return;
+    }
+
+    if (newStateB64pd !== previousStateB64pd) {
+      this.backupSvcRef?.backupGroupState(conversationId, newStateB64pd);
+    }
+    if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: reprovisioned', staleDeviceId, 'for', conversationId, 'epoch', newEpoch);
+  }
+
   // Provisions all other own devices into an existing MLS group.
   async provisionAllOtherDevices(
     conversationId: string,

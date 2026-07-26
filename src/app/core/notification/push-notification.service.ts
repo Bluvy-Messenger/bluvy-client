@@ -27,8 +27,15 @@ export class PushNotificationService {
       return;
     }
 
-    // 1. Request permission and register
-    this.registerPush();
+    // 1. Request permission and register.
+    // Deferred: calling a native plugin's requestPermissions() immediately on
+    // cold start can race the Android Capacitor Bridge before it has finished
+    // attaching to the activity, crashing the whole app with a
+    // NullPointerException in Bridge.getPermissionStates (a known Capacitor
+    // bridge-timing issue, not something in our own plugin usage). A short
+    // delay lets the bridge finish initializing before the very first native
+    // permission call of the app's lifecycle.
+    setTimeout(() => this.registerPush(), 1000);
 
     // 2. Listeners
     PushNotifications.addListener('registration', async (token) => {

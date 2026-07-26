@@ -140,7 +140,7 @@ class FakeMlsStorage {
   }
 }
 
-describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDeviceFromAllGroups)', () => {
+describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDeviceFromAllGroups / reprovisionLostStateDevice)', () => {
   let service: MlsService;
   let mockRepo: jasmine.SpyObj<MlsRepository>;
   let fakeStorage: FakeMlsStorage;
@@ -280,6 +280,170 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
 
       expect(identities).toContain('did:plc:bob#device-winner');
       expect(identities).not.toContain('did:plc:bob#device-loser');
+    });
+
+    // Baseline pin-down (see Phase 8b / AUDIT_02 Root Cause #3): this guard is
+    // correct for a genuine TOCTOU race between two concurrent provisions of a
+    // brand-new device, but it also fires — permanently — for a device that
+    // lost local state while remaining a tree member, which is exactly why
+    // reprovisionLostStateDevice() exists below.
+    it('skips without posting a commit when the target device is already a member of the tree (TOCTOU guard)', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-existing');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
+      const kpB64 = await makeKeyPackageB64('did:plc:bob#device-existing', cs);
+      mockRepo.consumeOwnKeyPackage.and.returnValue(Promise.resolve({ keyPackage: kpB64, deviceId: 'device-existing' }));
+
+      await service.provisionDevice('device-existing', CONV_ID, USER, DEVICE);
+
+      expect(mockRepo.postCommit).not.toHaveBeenCalled();
+      const finalState = await fakeStorage.load<StoredMlsState>(SCOPE);
+      expect(finalState!.groupStates[CONV_ID]).toBe(added.newStateB64);
+    });
+  });
+
+  describe('reprovisionLostStateDevice', () => {
+    it('waits for an in-progress incoming commit to finish applying before starting', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-stale');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+
+      let resolveIncoming!: () => void;
+      const blocking = new Promise<void>(resolve => { resolveIncoming = resolve; });
+      (service as unknown as { pendingCommits: Map<string, Promise<void>> })
+        .pendingCommits.set(CONV_ID, blocking);
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
+
+      let settled = false;
+      const reprovisionPromise = service.reprovisionLostStateDevice('device-stale', CONV_ID, USER, DEVICE)
+        .then(() => { settled = true; });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockRepo.acquireCommitLock).not.toHaveBeenCalled();
+      expect(settled).toBe(false);
+
+      resolveIncoming();
+      await reprovisionPromise;
+
+      expect(mockRepo.acquireCommitLock).toHaveBeenCalledWith(CONV_ID);
+      expect(settled).toBe(true);
+    });
+
+    it('skips cleanly without building a commit when the lock is held by another device', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-stale');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
+
+      await service.reprovisionLostStateDevice('device-stale', CONV_ID, USER, DEVICE);
+
+      expect(mockRepo.acquireCommitLock).toHaveBeenCalledWith(CONV_ID);
+      expect(mockRepo.consumeOwnKeyPackage).not.toHaveBeenCalled();
+    });
+
+    it('proceeds to build a commit once the lock is acquired', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-stale');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
+      mockRepo.consumeOwnKeyPackage.and.returnValue(Promise.reject(new Error('stop-test-sentinel')));
+
+      await expectAsync(service.reprovisionLostStateDevice('device-stale', CONV_ID, USER, DEVICE))
+        .toBeRejectedWithError('stop-test-sentinel');
+
+      expect(mockRepo.consumeOwnKeyPackage).toHaveBeenCalledWith('device-stale');
+    });
+
+    it('proceeds anyway when acquiring the lock fails over the network (not treated as denial)', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-stale');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+      mockRepo.acquireCommitLock.and.returnValue(Promise.reject(new Error('network down')));
+      mockRepo.consumeOwnKeyPackage.and.returnValue(Promise.reject(new Error('stop-test-sentinel')));
+
+      await expectAsync(service.reprovisionLostStateDevice('device-stale', CONV_ID, USER, DEVICE))
+        .toBeRejectedWithError('stop-test-sentinel');
+
+      expect(mockRepo.consumeOwnKeyPackage).toHaveBeenCalledWith('device-stale');
+    });
+
+    it('skips idempotently when the target device is not (or no longer) a member of the tree', async () => {
+      const { cs, stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
+      const kpB64 = await makeKeyPackageB64('did:plc:bob#device-gone', cs);
+      mockRepo.consumeOwnKeyPackage.and.returnValue(Promise.resolve({ keyPackage: kpB64, deviceId: 'device-gone' }));
+
+      await service.reprovisionLostStateDevice('device-gone', CONV_ID, USER, DEVICE);
+
+      expect(mockRepo.postCommit).not.toHaveBeenCalled();
+    });
+
+    // Core regression test (see Phase 8b): this is the exact scenario where
+    // provisionDevice() would silently skip forever (pinned above) — proves
+    // the Remove+Add combined commit succeeds instead, producing a fresh
+    // Welcome for the stale device without duplicating its membership.
+    it('removes the stale leaf and re-adds the device fresh in a single commit, producing a Welcome — where provisionDevice would silently skip', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-stale');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
+      const freshKpB64 = await makeKeyPackageB64('did:plc:bob#device-stale', cs);
+      mockRepo.consumeOwnKeyPackage.and.returnValue(Promise.resolve({ keyPackage: freshKpB64, deviceId: 'device-stale' }));
+      mockRepo.postCommit.and.callFake((_convId: string, commit: string, epoch: number) => Promise.resolve({
+        id: 'commit-1', conversationId: CONV_ID, senderDeviceId: DEVICE.id, commit, epoch, createdAt: Date.now(),
+      }));
+
+      await service.reprovisionLostStateDevice('device-stale', CONV_ID, USER, DEVICE);
+
+      expect(mockRepo.postCommit).toHaveBeenCalled();
+      const [, , , welcomeOpt] = mockRepo.postCommit.calls.mostRecent().args as [string, string, number, { targetDeviceId: string; welcome: string }];
+      expect(welcomeOpt.targetDeviceId).toBe('device-stale');
+      expect(welcomeOpt.welcome).toBeTruthy();
+
+      const finalState = await fakeStorage.load<StoredMlsState>(SCOPE);
+      const identities = memberIdentities(finalState!.groupStates[CONV_ID]!);
+      expect(identities.filter(id => id === 'did:plc:bob#device-stale').length).toBe(1);
+    });
+
+    it('detects a lost commit race after posting and resyncs onto the winning commit instead of forking', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-stale');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
+      const freshKpB64 = await makeKeyPackageB64('did:plc:bob#device-stale', cs);
+      mockRepo.consumeOwnKeyPackage.and.returnValue(Promise.resolve({ keyPackage: freshKpB64, deviceId: 'device-stale' }));
+
+      // Another device races for the SAME epoch (built independently from the
+      // same base state) and wins.
+      const winner = await commitAdd(added.newStateB64, cs, 'did:plc:carol#device-winner');
+      mockRepo.postCommit.and.returnValue(Promise.resolve({
+        id:             'commit-1',
+        conversationId: CONV_ID,
+        senderDeviceId: 'device-a2', // not us
+        commit:         winner.commitB64,
+        epoch:          winner.epoch,
+        createdAt:      Date.now(),
+      }));
+
+      await service.reprovisionLostStateDevice('device-stale', CONV_ID, USER, DEVICE);
+
+      const finalState = await fakeStorage.load<StoredMlsState>(SCOPE);
+      const identities = memberIdentities(finalState!.groupStates[CONV_ID]!);
+      expect(identities).toContain('did:plc:carol#device-winner');
     });
   });
 

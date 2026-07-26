@@ -19,6 +19,7 @@ export class DeviceProvisioningService {
     newDeviceId: string,
     user:        UserProfile,
     device:      DeviceInfo,
+    reason:      'new' | 'lost_state' = 'new',
   ): Promise<void> {
     await this.syncSvc.flush();
 
@@ -31,10 +32,21 @@ export class DeviceProvisioningService {
       return;
     }
 
+    console.log('[MLS:observability] handleDeviceNew', { newDeviceId, reason, conversationCount: conversations.length });
+
     for (const conv of conversations) {
       if (!await this.coordinator.canProvision(conv.id, user, device)) continue;
       try {
-        await this.coordinator.provisionDevice(newDeviceId, conv.id, user, device);
+        if (reason === 'lost_state') {
+          // See Phase 8b / AUDIT_02 Root Cause #3: this device already has a
+          // leaf in the MLS tree (it consumed a Welcome before), so a plain
+          // add-commit would no-op on the "already a member" guard. A
+          // Remove+Add commit in a single step kicks the stale leaf and
+          // re-adds it fresh, producing a new Welcome.
+          await this.coordinator.reprovisionLostStateDevice(newDeviceId, conv.id, user, device);
+        } else {
+          await this.coordinator.provisionDevice(newDeviceId, conv.id, user, device);
+        }
       } catch (err) {
         if (!environment.production) console.warn('[DeviceProvisioning] handleDeviceNew: failed for conv', conv.id, ':', err);
       }
