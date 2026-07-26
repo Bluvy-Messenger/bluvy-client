@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { ApiClientService } from '../infrastructure/api-client.service';
@@ -115,18 +116,20 @@ export class PushNotificationService {
    * backend binds it per account (`deviceId` resolved from the bearer
    * token's session) — so every linked account needs its own upload to
    * actually receive pushes while it isn't the one selected in the app.
-   * Best-effort per account: a missing/expired access token for a linked
-   * account simply skips that account, same as AccountBadgeService.
+   * Best-effort per account: a missing access token for a linked account
+   * simply skips it; an expired one is refreshed (scoped to that account,
+   * see AuthService.refreshTokensForDid) and retried once before giving up.
    */
   private async uploadTokenForAllAccounts(token: string, platform: 'fcm' | 'apns'): Promise<void> {
     const accounts = await this.authSvc.getStoredAccounts();
     await Promise.allSettled(accounts.map(async (acc) => {
       const accessToken = await this.tokenRepo.getAccessToken(acc.did);
       if (!accessToken) return;
-      await this.apiClient.post('/v1/devices/push-token', { token, platform }, {
-        skipAuth: true,
-        headers:  { Authorization: `Bearer ${accessToken}` },
-      });
+      await this.pushTokenRequestWithRefresh(acc.did, accessToken, (bearer) =>
+        this.apiClient.post('/v1/devices/push-token', { token, platform }, {
+          skipAuth: true,
+          headers:  { Authorization: `Bearer ${bearer}` },
+        }));
     }));
   }
 
@@ -136,10 +139,32 @@ export class PushNotificationService {
     await Promise.allSettled(accounts.map(async (acc) => {
       const accessToken = await this.tokenRepo.getAccessToken(acc.did);
       if (!accessToken) return;
-      await this.apiClient.delete('/v1/devices/push-token', {
-        skipAuth: true,
-        headers:  { Authorization: `Bearer ${accessToken}` },
-      });
+      await this.pushTokenRequestWithRefresh(acc.did, accessToken, (bearer) =>
+        this.apiClient.delete('/v1/devices/push-token', {
+          skipAuth: true,
+          headers:  { Authorization: `Bearer ${bearer}` },
+        }));
     }));
+  }
+
+  // skipAuth + a manually-attached per-account token bypasses
+  // ApiClientService's own refresh-on-401 handling (that logic only knows
+  // how to refresh the currently active account) — so without this, a
+  // linked-but-inactive account's expired token would make every push-token
+  // upload/delete for it fail silently and permanently. Refresh that
+  // specific account's token and retry once before giving up.
+  private async pushTokenRequestWithRefresh(
+    did:         string,
+    accessToken: string,
+    send:        (bearer: string) => Promise<unknown>,
+  ): Promise<void> {
+    try {
+      await send(accessToken);
+    } catch (err) {
+      if (!(err instanceof HttpErrorResponse) || err.status !== 401) return;
+      const refreshed = await this.authSvc.refreshTokensForDid(did);
+      if (!refreshed) return;
+      await send(refreshed).catch(() => {});
+    }
   }
 }

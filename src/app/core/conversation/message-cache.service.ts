@@ -218,6 +218,49 @@ export class MessageCacheService {
     await this.keyStore.clearKey();
   }
 
+  // Root Cause #3 fallback (Phase 10, see AUDIT_02/04/05): after a conversation
+  // is recreated, copies the old conversation's cached plaintext history into
+  // the new conversation's local cache so the user sees one continuous thread
+  // instead of an empty new conversation. This is pure local-cache copying —
+  // no MLS or network involved, consistent with history rendering already
+  // being independent of live MLS state (see AUDIT_01).
+  //
+  // The cache store's primary key is the message id alone (conversationId is
+  // just an indexed field) -- reusing the source message's id unchanged would
+  // not create a second row, it would silently MOVE the existing row (put()
+  // upserts by id), emptying the old conversation's cache in the process. So
+  // each copy gets a fresh, deterministic synthetic id derived from the
+  // source id instead of the id itself, which also makes this idempotent:
+  // calling it more than once (e.g. retried after a partial failure) recomputes
+  // the same synthetic ids and the existing-id check skips them.
+  async spliceHistory(fromConversationId: string, toConversationId: string): Promise<number> {
+    const splicedId = (sourceId: string) => `spliced:${toConversationId}:${sourceId}`;
+
+    const existingDestIds = await this.getAllIds(toConversationId);
+    const BATCH = 200;
+    let cursor = 0;
+    let copied = 0;
+
+    for (;;) {
+      const page = await this.getMessagesPage(fromConversationId, cursor, BATCH);
+      if (page.length === 0) break;
+
+      const toCopy = page
+        .filter(m => !existingDestIds.has(splicedId(m.id)))
+        .map(m => ({ ...m, id: splicedId(m.id), conversationId: toConversationId }));
+
+      if (toCopy.length > 0) {
+        await this.storeMany(toCopy);
+        copied += toCopy.length;
+      }
+
+      cursor = page[page.length - 1]!.createdAt;
+      if (page.length < BATCH) break;
+    }
+
+    return copied;
+  }
+
   async clearConversation(conversationId: string): Promise<void> {
     await this.msgStore.clearConversation(conversationId);
     localStorage.setItem(this.historyClearedKey(conversationId), String(Date.now()));

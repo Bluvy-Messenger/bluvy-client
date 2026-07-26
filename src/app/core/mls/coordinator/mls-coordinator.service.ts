@@ -146,6 +146,35 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   override async initializeForSession(user: UserProfile, device: DeviceInfo): Promise<void> {
     assertMls(!!user?.did,    'initializeForSession: user.did required', { user });
     assertMls(!!device?.id,   'initializeForSession: device.id required', { device });
+
+    // All per-conversation in-memory state below (states, failedRecovery timers,
+    // etc.) is keyed by conversationId ONLY, with no account/device dimension.
+    // That's fine within one session, but AuthService.switchAccount() reuses
+    // this same singleton without ever destroying it -- and two locally-linked
+    // accounts that DM each other share the exact same conversationId. Without
+    // this reset, a stale ConversationMlsState.Ready (or a scheduleFailedRecovery
+    // setTimeout still pending) left behind by the PREVIOUS account leaks into
+    // the newly active account's use of that same conversationId: e.g.
+    // ensureGroupReady()'s `if (isConversationReady(convId)) return;` shortcut
+    // (line ~262) skips real group establishment for the new account entirely,
+    // or a delayed recoverFromFailed() timer fires later against the OLD
+    // account's user/device closure while the NEW account is active, mutating
+    // the wrong account's MLS group. Only a full page reload cleared this
+    // before (it wipes the singleton), matching the reported symptom.
+    if (this.currentUserProfile &&
+        (this.currentUserProfile.did !== user.did || this.currentSessionDevice?.id !== device.id)) {
+      for (const entry of this.failedRecovery.values()) {
+        if (entry.timerId !== undefined) clearTimeout(entry.timerId);
+      }
+      this.failedRecovery.clear();
+      this.states.clear();
+      this.pendingDerivations.clear();
+      this.inFlightDecrypts.clear();
+      this.commitFailureCounts.clear();
+      this.decryptionFailures.clear();
+      this.readyTimestamps.clear();
+    }
+
     this.currentUserProfile = user;
     this.currentSessionDevice = device;
     await this.mlsSvc.initializeForSession(user, device);
@@ -157,6 +186,10 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
   override isConversationReady(convId: string): boolean {
     return this.states.get(convId) === ConversationMlsState.Ready;
+  }
+
+  override isConversationFailed(convId: string): boolean {
+    return this.states.get(convId) === ConversationMlsState.Failed;
   }
 
   override canEncrypt(convId: string): boolean {
@@ -297,6 +330,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<void> {
+    console.log('[MLS:observability] clearConversationGroup', { conversationId: convId, caller: 'coordinator.clearConversationGroup' });
     await this.mlsSvc.clearConversationGroup(convId, user, device);
     await this.pendingRepo.clear(convId);
     this.transitionState(convId, ConversationMlsState.Empty);
@@ -664,12 +698,15 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     const attempts = (this.failedRecovery.get(convId)?.attempts ?? 0) + 1;
     this.failedRecovery.set(convId, { attempts, timerId: undefined });
 
+    console.log('[MLS:observability] recoverFromFailed invoked', { conversationId: convId, attempt: attempts });
+
     this.transitionState(convId, ConversationMlsState.Empty);
 
     try {
       const ok = await this.fetchAndProcessPendingWelcome(convId, user, device);
       if (ok) {
         // fetchAndProcessPendingWelcome joined the group in IndexedDB — reflect that here.
+        console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'healed_via_welcome' });
         this.transitionState(convId, ConversationMlsState.Ready);
         this.failedRecovery.delete(convId);
         void this.replayPendingDecrypts(convId, user, device);
@@ -679,6 +716,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       // Since recovery failed and there are no Welcomes, the local state is permanently
       // forked/broken. Clear the local group state to allow re-initialization.
       if (!environment.production) console.warn('[MLS:coordinator] recoverFromFailed: no pending welcome found, clearing local group state to trigger reset', convId);
+      console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'no_welcome_clearing_group_state', caller: 'recoverFromFailed' });
       await this.mlsSvc.clearConversationGroup(convId, user, device);
     } catch (err) {
       console.warn('[MLS:coordinator] recoverFromFailed attempt', attempts, 'for', convId, ':', err);
@@ -696,7 +734,11 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     if (from === to) return;
     MlsStateTransitionGuard.validate(from, to, convId, reason);
     this.states.set(convId, to);
-    
+
+    if (to === ConversationMlsState.Failed) {
+      console.log('[MLS:observability] FAILED transition', { conversationId: convId, from, to });
+    }
+
     if (to === ConversationMlsState.Ready) {
       if (!this.readyTimestamps.has(convId)) {
         this.readyTimestamps.set(convId, Date.now());

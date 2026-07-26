@@ -1,4 +1,5 @@
 import { Injectable, inject, signal, effect, Injector, NgZone } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -148,16 +149,34 @@ export class AccountBadgeService {
     if (!token) return false;
 
     try {
-      // skipAuth + manual Authorization header: this fetches on behalf of an
-      // inactive account, whose token is not the one ApiClientService would
-      // otherwise attach automatically (the active account's token).
-      const page = await this.api.get<ConversationPage>('/v1/conversations?limit=20', {
-        skipAuth: true,
-        headers:  { Authorization: `Bearer ${token}` },
-      });
-      return Array.isArray(page?.data) && page.data.some(c => (c.unreadCount ?? 0) > 0);
-    } catch {
-      return false;
+      return await this.fetchHasUnreadWithToken(token);
+    } catch (err) {
+      // skipAuth means ApiClientService never attempts a refresh for this
+      // request (that mechanism is scoped to the active account's token
+      // only) -- so an inactive account's expired token would otherwise
+      // 401 on every 15s poll forever, with nothing ever refreshing it.
+      // Refresh THIS account's own token (scoped by did) and retry once.
+      if (!(err instanceof HttpErrorResponse) || err.status !== 401) return false;
+
+      const refreshedToken = await this.authSvc.refreshTokensForDid(did);
+      if (!refreshedToken) return false;
+
+      try {
+        return await this.fetchHasUnreadWithToken(refreshedToken);
+      } catch {
+        return false;
+      }
     }
+  }
+
+  private async fetchHasUnreadWithToken(token: string): Promise<boolean> {
+    // skipAuth + manual Authorization header: this fetches on behalf of an
+    // inactive account, whose token is not the one ApiClientService would
+    // otherwise attach automatically (the active account's token).
+    const page = await this.api.get<ConversationPage>('/v1/conversations?limit=20', {
+      skipAuth: true,
+      headers:  { Authorization: `Bearer ${token}` },
+    });
+    return Array.isArray(page?.data) && page.data.some(c => (c.unreadCount ?? 0) > 0);
   }
 }

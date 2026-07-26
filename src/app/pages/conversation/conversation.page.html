@@ -39,10 +39,6 @@
     <div class="loading-center">
       <div class="spinner"></div>
     </div>
-  } @else if (error && displayMessages.length === 0) {
-    <div class="ion-text-center ion-padding">
-      <ion-text color="danger">{{ error }}</ion-text>
-    </div>
   } @else {
     @if (displayMessages.length === 0) {
       <div class="chat-empty">
@@ -92,13 +88,13 @@
           (click)="reestablishEncryption()"
         >
           @if (reestablishing) { <div class="spinner spinner--sm"></div> }
-          {{ 'conversation.restore' | translate }}
+          {{ (recreatingFallback ? 'conversation.restoring_step2' : 'conversation.restore') | translate }}
         </button>
       </div>
     }
   }
 
-  @if (error && displayMessages.length > 0) {
+  @if (error && !loading) {
     <div class="ion-padding-horizontal error-inline">
       <ion-text color="danger">{{ error }}</ion-text>
     </div>

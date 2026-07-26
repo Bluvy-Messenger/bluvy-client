@@ -60,6 +60,13 @@ export interface ConversationNewPayload {
   };
 }
 
+// Emitted to every member's currently-connected devices when a conversation
+// is recreated (Root Cause #3 fallback — see AUDIT_02/04/05, Phase 9).
+export interface ConversationSupersededPayload {
+  oldConversationId: string;
+  newConversationId: string;
+}
+
 export interface ReceiptUpdatePayload {
   conversationId:    string;
   lastReadMessageId: string;

@@ -104,6 +104,13 @@ export class MlsService {
   async initializeForSession(user: UserProfile, device: SessionDevice): Promise<void> {
     const scope = this.makeScope(user.did, device.id);
 
+    // Keyed by conversationId only (see MlsCoordinatorService.initializeForSession
+    // for the full account-switch rationale). AuthService.switchAccount() always
+    // disconnects the socket before this runs and doesn't reconnect until after
+    // it resolves, so no commit processing can genuinely be in flight here --
+    // safe to drop unconditionally rather than track the previous scope.
+    this.pendingCommits.clear();
+
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state || state.userDid !== user.did || state.deviceId !== device.id) {
         return {
@@ -441,12 +448,30 @@ export class MlsService {
 
     const response = await this.mlsRepo.getMissedCommits(conversationId, currentEpoch);
 
+    console.log('[MLS:observability] catchUpMissedCommits', {
+      conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch, returnedCommits: response.data.length,
+    });
+
     if (response.data.length === 0) return;
 
     if (!environment.production) console.log('[MLS] catchUpMissedCommits: applying', response.data.length, 'missed commit(s) from epoch', currentEpoch, 'for conv', conversationId);
+    let appliedCommits = 0;
     for (const item of response.data) {
-      await this.processIncomingCommit(conversationId, item.commit, item.epoch, user, device);
+      try {
+        await this.processIncomingCommit(conversationId, item.commit, item.epoch, user, device);
+        appliedCommits++;
+      } catch (err) {
+        console.log('[MLS:observability] catchUpMissedCommits', {
+          conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch,
+          returnedCommits: response.data.length, appliedCommits, result: 'failed', failedAtEpoch: item.epoch,
+        });
+        throw err;
+      }
     }
+    console.log('[MLS:observability] catchUpMissedCommits', {
+      conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch,
+      returnedCommits: response.data.length, appliedCommits, result: 'complete',
+    });
   }
 
   // Processes an incoming Welcome and joins the corresponding MLS group.
@@ -815,6 +840,7 @@ export class MlsService {
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 409) {
         console.warn('[MLS] provisionDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
+        console.log('[MLS:observability] clearConversationGroup caller', { conversationId, caller: 'provisionDevice 409 handler' });
         await this.clearConversationGroup(conversationId, user, device);
         this.epochConflict$.next({ conversationId });
       }
@@ -880,6 +906,7 @@ export class MlsService {
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
+    console.log('[MLS:observability] clearConversationGroup', { conversationId, deviceId: device.id, caller: 'mlsService.clearConversationGroup' });
     const scope = this.makeScope(user.did, device.id);
 
     await this.storage.update<StoredMlsState>(scope, async (state) => {
@@ -952,7 +979,18 @@ export class MlsService {
 
       const clientState  = this.restoreClientState(encoded);
       const currentEpoch = Number(clientState.groupContext.epoch);
-      if (currentEpoch >= epoch) return null; // already applied
+      // Root Cause #1 fix (see AUDIT_02/03): a commit's declared epoch equals the
+      // epoch it was built FROM. The legitimate next commit therefore always has
+      // epoch === currentEpoch — that case must be applied, not skipped. Only
+      // epoch < currentEpoch is genuinely already-applied/stale. Using `>=` here
+      // silently discarded every legitimate next commit for any non-committing
+      // member, with no error and no log — see AUDIT_02/03 for the full trace.
+      if (currentEpoch > epoch) {
+        console.log('[MLS:observability] applyCommit', {
+          conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'skipped_already_applied',
+        });
+        return null; // already applied
+      }
 
       try {
         const result = await processPublicMessage(
@@ -967,9 +1005,15 @@ export class MlsService {
         newStateB64ac      = this.bytesToBase64(encodeGroupState(result.newState));
         state.groupStates[conversationId] = newStateB64ac;
         state.updatedAt = Date.now();
+        console.log('[MLS:observability] applyCommit', {
+          conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'applied',
+        });
         if (!environment.production) console.log('[MLS] processIncomingCommit: applied epoch', epoch, 'for conv', conversationId);
         return state;
       } catch (err) {
+        console.log('[MLS:observability] applyCommit', {
+          conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'failed', error: err instanceof Error ? err.message : String(err),
+        });
         console.error('[MLS] processIncomingCommit: failed to apply epoch', epoch, 'for conv', conversationId, ':', err);
         throw err;
       }
@@ -1207,6 +1251,7 @@ export class MlsService {
         } catch (err) {
           if (err instanceof HttpErrorResponse && err.status === 409) {
             console.warn('[MLS] removeRevokedDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
+            console.log('[MLS:observability] clearConversationGroup caller', { conversationId: convId, caller: 'removeRevokedDeviceFromAllGroups 409 handler' });
             await this.clearConversationGroup(convId, user, device);
             this.epochConflict$.next({ conversationId: convId });
           }

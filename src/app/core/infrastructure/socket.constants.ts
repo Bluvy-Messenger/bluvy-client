@@ -13,6 +13,7 @@ export const SOCKET_EVENTS = {
   MESSAGE_DELIVERED:    'message:delivered',
   MESSAGE_SEND:         'message:send',
   CONVERSATION_NEW:     'conversation:new',
+  CONVERSATION_SUPERSEDED: 'conversation:superseded',
   CONNECT:              'connect',
   CONNECT_ERROR:        'connect_error',
   MLS_REFILL_KEY_PACKAGES: 'mls:refill_key_packages',
