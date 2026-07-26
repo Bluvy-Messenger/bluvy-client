@@ -98,6 +98,20 @@ export class ReceiptsService implements OnDestroy {
     this.recalcTotal();
   }
 
+  // Fully stops tracking a conversation (as opposed to setCount(id, 0), which
+  // keeps contributing 0 to the total but leaves the entry in place). Needed
+  // when a conversation is recreated (see AUDIT_02/04/05 Root Cause #3
+  // fallback): setUnreadCounts() only ever sets/updates counts for the ids it
+  // is given -- it never removes an id that's no longer in the list -- so the
+  // superseded conversation's last known count would otherwise go on
+  // contributing to totalUnread$ forever, even after a full reload.
+  removeConversation(conversationId: string): void {
+    this.unreadSubjects.delete(conversationId);
+    this.readStates.delete(conversationId);
+    this.deliveredStates.delete(conversationId);
+    this.recalcTotal();
+  }
+
   async initReadStates(): Promise<void> {
     const data = await this.apiClient.get<{ states: ReadStateEntry[] }>('/v1/receipts/states');
     this.setReadStates(data.states);
