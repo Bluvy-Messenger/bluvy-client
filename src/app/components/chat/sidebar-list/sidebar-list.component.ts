@@ -286,6 +286,18 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     this.subs.add(this.socketSvc.messageNew$.subscribe(msg => this.onMessageNew(msg)));
     this.subs.add(this.socketSvc.conversationNew$.subscribe(conv => this.onConversationNew(conv)));
     this.subs.add(this.socketSvc.reconnect$.subscribe(() => void this.load()));
+    // Root Cause #3 fallback (see AUDIT_02/04/05): a conversation was just
+    // recreated. conversation:new (handled above) adds the successor, but
+    // nothing was ever removing the superseded original from this list --
+    // it stayed until the next full load() (or forever, for its unread
+    // count -- see ReceiptsService.removeConversation), showing as a
+    // duplicate entry and inflating the unread badge.
+    this.subs.add(
+      this.socketSvc.conversationSuperseded$.subscribe(({ oldConversationId }) => {
+        this.conversations = this.conversations.filter(c => c.id !== oldConversationId);
+        this.receiptsSvc.removeConversation(oldConversationId);
+      }),
+    );
     this.subs.add(
       this.cacheSvc.stored$.subscribe(msg => {
         const conv = this.conversations.find(c => c.lastMessageId === msg.id);
