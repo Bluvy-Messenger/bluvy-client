@@ -744,6 +744,18 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
     if (to === ConversationMlsState.Failed) {
       console.log('[MLS:observability] FAILED transition', { conversationId: convId, from, to });
+      // Centralized here rather than left to each call site: of the several
+      // places that transition a conversation to Failed (epoch conflict,
+      // consecutive commit failures, consecutive decryption failures, the
+      // no-welcome branch of recoverFromFailed...), only two used to emit
+      // this event manually. The decryptMessage failure path -- the one
+      // that actually fires in practice -- never did, so
+      // conversation.page.ts's live subscription (the only thing that
+      // flips mlsGroupReady to false and shows the "Restore encryption"
+      // button while a conversation is already open) never fired for it.
+      // Emitting unconditionally on every transition into Failed removes
+      // that class of bug for good, including any future call site.
+      this._conversationFailed$$.next({ conversationId: convId });
     }
 
     if (to === ConversationMlsState.Ready) {
