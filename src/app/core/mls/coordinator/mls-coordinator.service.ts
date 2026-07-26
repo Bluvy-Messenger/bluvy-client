@@ -712,12 +712,19 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         void this.replayPendingDecrypts(convId, user, device);
         return;
       }
-      // No pending Welcome available — leave EMPTY, do not retry.
-      // Since recovery failed and there are no Welcomes, the local state is permanently
-      // forked/broken. Clear the local group state to allow re-initialization.
+      // No pending Welcome available. Since recovery failed and there are no
+      // Welcomes, the local state is permanently forked/broken. Clear the
+      // local group state so a future ensureGroupReady() attempt starts
+      // clean -- but go back to FAILED (a legal EMPTY -> FAILED transition)
+      // rather than leaving the state at EMPTY. isConversationFailed() is
+      // the only signal that shows the "Restore encryption" button (the
+      // sole remaining manual escalation path, up to a full recreate) --
+      // leaving EMPTY after a failed automatic recovery silently hid that
+      // button exactly when it was the only way left to unblock the user.
       if (!environment.production) console.warn('[MLS:coordinator] recoverFromFailed: no pending welcome found, clearing local group state to trigger reset', convId);
       console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'no_welcome_clearing_group_state', caller: 'recoverFromFailed' });
       await this.mlsSvc.clearConversationGroup(convId, user, device);
+      this.transitionState(convId, ConversationMlsState.Failed);
     } catch (err) {
       console.warn('[MLS:coordinator] recoverFromFailed attempt', attempts, 'for', convId, ':', err);
       this.transitionState(convId, ConversationMlsState.Failed);
