@@ -30,6 +30,14 @@ export abstract class MlsCoordinatorBase {
   // ── Semantic capability checks ────────────────────────────────────────────
   // Synchronous checks based on in-memory state only.
   abstract isConversationReady(convId: string): boolean;
+  // True only when this conversation has explicitly transitioned to FAILED --
+  // NOT simply "not yet ready". A conversation that has never been touched by
+  // ensureGroupReady() (e.g. freshly created, or freshly recreated -- see
+  // AUDIT_02/04/05 Root Cause #3 fallback) is neither ready nor failed; it
+  // will establish transparently on first send. Conflating "not ready yet"
+  // with "broken" here previously caused a brand-new/recreated conversation
+  // to show the same "restore encryption" affordance as a genuinely broken one.
+  abstract isConversationFailed(convId: string): boolean;
   abstract canEncrypt(convId: string): boolean;
   abstract canDecrypt(convId: string): boolean;
   // Async: reads IndexedDB for conversations not yet in memory.

@@ -10,6 +10,7 @@ import { MlsCoordinatorBase } from '../mls/coordinator/mls-coordinator.base';
 import { MlsStateStorageService } from '../mls/mls-state-storage.service';
 import { PendingDecryptRepository } from '../mls/repositories/pending-decrypt.repository';
 import { KeyPackageService } from '../mls/key-package/key-package.service';
+import { DeviceProvisioningService } from '../device/device-provisioning.service';
 import { SocketService } from '../infrastructure/socket.service';
 import { SyncService } from '../sync/sync.service';
 import { ContactsService } from '../contact/contacts.service';
@@ -41,6 +42,7 @@ export class AuthService {
   private mlsStateStorage = inject(MlsStateStorageService);
   private pendingDecrypt  = inject(PendingDecryptRepository);
   private kpSvc           = inject(KeyPackageService);
+  private provisionSvc    = inject(DeviceProvisioningService);
   private socketSvc       = inject(SocketService);
   private syncSvc         = inject(SyncService);
   private contactsSvc     = inject(ContactsService);
@@ -61,6 +63,45 @@ export class AuthService {
   private _socketErrorBound  = false;
   private _syncListenersBound = false;
   private _refreshing         = false;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Decodes the (unverified — verification is the server's job, this is only
+  // used to schedule a client-side timer) `exp` claim of a JWT access token.
+  private decodeJwtExp(token: string): number | null {
+    try {
+      const payloadB64 = token.split('.')[1];
+      if (!payloadB64) return null;
+      const normalized = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+      const payload = JSON.parse(atob(padded)) as { exp?: number };
+      return typeof payload.exp === 'number' ? payload.exp : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Refreshes the access token shortly before it actually expires, so the
+  // reactive 401-then-retry path in ApiClientService rarely fires in
+  // practice. Purely additive: that reactive path stays as the safety net
+  // for whenever this timer doesn't run (app was backgrounded/killed, clock
+  // skew, etc.) — it is not replaced.
+  private scheduleProactiveRefresh(accessToken: string): void {
+    this.cancelProactiveRefresh();
+    const exp = this.decodeJwtExp(accessToken);
+    if (!exp) return;
+
+    const marginMs = 60_000; // refresh 1 minute before actual expiry
+    const delay = Math.max(1_000, exp * 1000 - Date.now() - marginMs);
+
+    this.refreshTimer = setTimeout(() => { void this.refreshTokens(); }, delay);
+  }
+
+  private cancelProactiveRefresh(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
 
   // Retries a critical MLS bootstrap step with backoff before giving up.
   // Used so login/session-restore only proceed once the MLS connection is
@@ -227,6 +268,7 @@ export class AuthService {
     await this.tokenRepo.setActiveDid(response.user.did);
     await this.tokenRepo.setAccessToken(response.accessToken, response.user.did);
     await this.tokenRepo.setRefreshToken(response.refreshToken, response.user.did);
+    this.scheduleProactiveRefresh(response.accessToken);
 
     // Save/update account in the list
     await this.addOrUpdateAccount({
@@ -267,7 +309,14 @@ export class AuthService {
     this.startSocket();
     this.bindSyncListeners();
 
-    await this.syncSvc.initialize(response.user.did, response.device.id)
+    // Phase 6 (proactive recovery sweep, see MLS_FINAL_IMPLEMENTATION_PLAN.md):
+    // catch up any conversation that fell behind before the applyCommit/catch-up
+    // fixes shipped, instead of waiting for the user to reopen it organically.
+    // Fire-and-forget -- must not delay login/navigation.
+    void this.provisionSvc.proactiveCatchUpSweep(response.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] login: proactiveCatchUpSweep failed', err); });
+
+    await this.syncSvc.initialize(response.user.did, response.device.id, response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: sync initialize failed', err); });
 
     // If MBK loaded from SecureLocalStorage → navigate to conversations.
@@ -278,6 +327,7 @@ export class AuthService {
   }
 
   async logout(): Promise<void> {
+    this.cancelProactiveRefresh();
     this.syncSvc.reset();
     this.contactsSvc.reset();
 
@@ -347,6 +397,7 @@ export class AuthService {
     this.currentUser.set(session.user);
     this.currentDevice.set(sessionDevice);
     this.isAuthenticated.set(true);
+    this.scheduleProactiveRefresh(token);
 
     // Migrate legacy single account if needed
     if (!activeDid && hasLegacyTokens) {
@@ -391,13 +442,20 @@ export class AuthService {
     this.startSocket();
     this.bindSyncListeners();
 
-    await this.syncSvc.initialize(session.user.did, session.device.id)
+    // Phase 6 (proactive recovery sweep, see MLS_FINAL_IMPLEMENTATION_PLAN.md):
+    // same as login() -- catch up any conversation that fell behind before the
+    // applyCommit/catch-up fixes shipped. Fire-and-forget.
+    void this.provisionSvc.proactiveCatchUpSweep(session.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: proactiveCatchUpSweep failed', err); });
+
+    await this.syncSvc.initialize(session.user.did, session.device.id, session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: sync initialize failed', err); });
 
     return true;
   }
 
   async clearSession(): Promise<void> {
+    this.cancelProactiveRefresh();
     const userDid = this.currentUser()?.did ?? null;
 
     await this.tokenRepo.clearTokens();
@@ -432,6 +490,32 @@ export class AuthService {
     }
   }
 
+  /**
+   * Refreshes the access token for an arbitrary, possibly-inactive account,
+   * scoped by did — unlike refreshTokens()/scheduleProactiveRefresh(), which
+   * only ever track the currently active account. Used by services that act
+   * on behalf of every linked account regardless of which one is selected
+   * (AccountBadgeService, PushNotificationService): their calls use
+   * `skipAuth: true` with a manually-attached per-account token, which
+   * deliberately bypasses ApiClientService's own refresh-on-401 handling
+   * (that logic only knows how to refresh the active account). Without this,
+   * an inactive account's token simply stops working, silently, forever,
+   * once it expires.
+   */
+  async refreshTokensForDid(did: string): Promise<string | null> {
+    const refreshToken = await this.tokenRepo.getRefreshToken(did);
+    if (!refreshToken) return null;
+
+    try {
+      const tokens = await this.authRepo.refresh(refreshToken);
+      await this.tokenRepo.setAccessToken(tokens.accessToken, did);
+      await this.tokenRepo.setRefreshToken(tokens.refreshToken, did);
+      return tokens.accessToken;
+    } catch {
+      return null;
+    }
+  }
+
   async refreshTokens(): Promise<boolean> {
     const activeDid = await this.tokenRepo.getActiveDid();
     const refreshToken = await this.tokenRepo.getRefreshToken(activeDid || undefined);
@@ -441,6 +525,7 @@ export class AuthService {
       const tokens = await this.authRepo.refresh(refreshToken);
       await this.tokenRepo.setAccessToken(tokens.accessToken, activeDid || undefined);
       await this.tokenRepo.setRefreshToken(tokens.refreshToken, activeDid || undefined);
+      this.scheduleProactiveRefresh(tokens.accessToken);
       return true;
     } catch (err) {
       const status = (err as Error & { status?: number }).status;

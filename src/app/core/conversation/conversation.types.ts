@@ -7,6 +7,13 @@ export interface ConversationResult {
   lastMessageAt: number | null;
 }
 
+// Response shape for POST /v1/conversations/:id/recreate (Root Cause #3
+// fallback — see AUDIT_02/04/05, Phase 9).
+export interface RecreateConversationResult {
+  oldConversationId: string;
+  newConversation:   ConversationResult;
+}
+
 export interface ConversationParticipant {
   did:         string;
   handle:      string;
@@ -24,6 +31,12 @@ export interface ConversationListItem {
   unreadCount:          number;
   participant:          ConversationParticipant;
   archived?:            boolean;
+  supersededByConversationId?: string | null;
+  // Reverse of supersededByConversationId: set when THIS conversation is
+  // itself the successor of an older recreated one (see backend
+  // getConversationById()). Lets a device that never saw the old
+  // conversation's URL or the live socket event still splice its history in.
+  predecessorConversationId?: string | null;
 }
 
 export type ConversationsPage = Paginated<ConversationListItem>;

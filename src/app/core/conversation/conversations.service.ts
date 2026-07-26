@@ -9,6 +9,7 @@ import type {
   ConversationsPage,
   MessageItem,
   MessagesPage,
+  RecreateConversationResult,
 } from './conversation.types';
 
 export type {
@@ -18,6 +19,7 @@ export type {
   ConversationsPage,
   MessageItem,
   MessagesPage,
+  RecreateConversationResult,
 } from './conversation.types';
 
 @Injectable({ providedIn: 'root' })
@@ -56,5 +58,9 @@ export class ConversationsService {
     return this.repo.archiveConversation(id, archived).pipe(
       tap(() => this.conversationArchivedSubject.next({ id, archived }))
     );
+  }
+
+  recreateConversation(id: string): Observable<RecreateConversationResult> {
+    return this.repo.recreateConversation(id);
   }
 }

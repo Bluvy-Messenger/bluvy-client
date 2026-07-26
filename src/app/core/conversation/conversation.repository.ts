@@ -6,6 +6,7 @@ import type {
   ConversationResult,
   ConversationsPage,
   MessagesPage,
+  RecreateConversationResult,
 } from './conversation.types';
 import {
   mapConversationListItem,
@@ -57,5 +58,12 @@ export class ConversationRepository {
 
   archiveConversation(id: string, archived: boolean): Observable<void> {
     return from(this.apiClient.post<void>(`/v1/conversations/${encodeURIComponent(id)}/archive`, { archived }));
+  }
+
+  // Root Cause #3 fallback (see AUDIT_02/04/05, Phase 9): explicit, user-visible
+  // recreate when the automatic re-provisioning path (claimInitiatorSlot Option A)
+  // cannot heal a conversation on its own. Idempotent server-side.
+  recreateConversation(id: string): Observable<RecreateConversationResult> {
+    return from(this.apiClient.post<RecreateConversationResult>(`/v1/conversations/${encodeURIComponent(id)}/recreate`, {}));
   }
 }

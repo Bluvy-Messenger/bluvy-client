@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
 import { IonApp, IonRouterOutlet, IonToast, IonIcon } from '@ionic/angular/standalone';
@@ -37,6 +38,8 @@ import { JournalService } from './core/journal/journal.service';
 import { NotificationService } from './core/notification/notification.service';
 import { PushNotificationService } from './core/notification/push-notification.service';
 import { AccountBadgeService } from './core/notification/account-badge.service';
+import { MessageCacheService } from './core/conversation/message-cache.service';
+import { ROUTES } from './core/routes';
 
 @Component({
   selector: 'app-root',
@@ -53,6 +56,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly notificationSvc = inject(NotificationService);
   private pushNotificationSvc = inject(PushNotificationService);
   private badgeSvc = inject(AccountBadgeService);
+  private msgCacheSvc = inject(MessageCacheService);
+  private router = inject(Router);
   readonly connectivitySvc = inject(ConnectivityService);
 
   constructor() {
@@ -135,6 +140,29 @@ export class AppComponent implements OnInit, OnDestroy {
         if (!environment.production) console.warn('[AppComponent] device:revoked received for device:', payload.deviceId);
         void this.coordinator.removeRevokedDeviceFromAllGroups(payload.deviceId, user, device)
           .catch(err => { if (!environment.production) console.error('[AppComponent] deviceRevoked: remove failed', err); });
+      }),
+    );
+
+    // Root Cause #3 fallback (Phase 9/10, see AUDIT_02/04/05): a conversation
+    // was recreated (by this device or another member's). Splice the old
+    // conversation's cached history into the new one locally so history stays
+    // continuous, and redirect away if this device is currently viewing the
+    // old conversation. Never touches MLS state directly -- the new
+    // conversation's group is established the normal way (ensureGroupReady)
+    // the next time it's opened, exactly like any brand-new conversation.
+    this.subs.add(
+      this.socketSvc.conversationSuperseded$.subscribe(async payload => {
+        if (!environment.production) console.log('[AppComponent] conversation:superseded', payload);
+        try {
+          await this.msgCacheSvc.spliceHistory(payload.oldConversationId, payload.newConversationId);
+        } catch (err) {
+          if (!environment.production) console.error('[AppComponent] conversation:superseded splice failed', err);
+        }
+
+        const currentUrl = this.router.url;
+        if (currentUrl.startsWith(ROUTES.conversation(payload.oldConversationId))) {
+          void this.router.navigateByUrl(ROUTES.conversation(payload.newConversationId), { replaceUrl: true });
+        }
       }),
     );
 

@@ -33,6 +33,8 @@ import type {
   SyncSetupResult,
 } from './sync.types';
 import type { CachedMessage } from '../conversation/conversation.types';
+import type { UserProfile } from '../auth/auth.types';
+import type { DeviceInfo } from '../device/device.types';
 import { KeyPackageService } from '../mls/key-package/key-package.service';
 import { ConversationsService } from '../conversation/conversations.service';
 import { MessageCacheService } from '../conversation/message-cache.service';
@@ -69,6 +71,11 @@ export class SyncService {
   private mbk:       CryptoKey | null = null;
   private userDid:   string | null    = null;
   private deviceId:  string | null    = null;
+  // Full profile/device objects, stored only so restore paths below can call
+  // coordinatorSvc.injectRestoredGroupStates(...), which requires this shape
+  // (only .did/.id are actually read internally, but the type is UserProfile/DeviceInfo).
+  private userProfile:   UserProfile | null = null;
+  private sessionDevice: DeviceInfo  | null = null;
   private rebuilding                  = false;
   private groupNotReadyRestorePending = false;
 
@@ -94,10 +101,12 @@ export class SyncService {
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-  async initialize(userDid: string, deviceId: string): Promise<void> {
+  async initialize(userDid: string, deviceId: string, user?: UserProfile, device?: DeviceInfo): Promise<void> {
     try {
       this.userDid  = userDid;
       this.deviceId = deviceId;
+      this.userProfile   = user ?? null;
+      this.sessionDevice = device ?? null;
 
       await this.failedBatchRepo.initialize(userDid);
 
@@ -141,9 +150,20 @@ export class SyncService {
     this.groupNotReadyRestorePending = true;
 
     if (this.mbk) {
-      void this.doRestore().finally(() => {
-        this.groupNotReadyRestorePending = false;
-      });
+      void this.doRestore()
+        .then(result => {
+          // AUDIT_01 W2 fast-follow: doRestore() computes restoredGroupStates
+          // but a caller must explicitly inject it -- this path never did,
+          // so a recovered GroupState snapshot from backup was silently
+          // dropped even when it could have healed the conversation.
+          if (Object.keys(result.restoredGroupStates).length > 0 && this.userProfile && this.sessionDevice) {
+            void this.coordinatorSvc.injectRestoredGroupStates(result.restoredGroupStates, this.userProfile, this.sessionDevice)
+              .catch(err => { if (!environment.production) console.error('[SyncService] onGroupNotReady: injectRestoredGroupStates failed', err); });
+          }
+        })
+        .finally(() => {
+          this.groupNotReadyRestorePending = false;
+        });
     } else {
       this.pinRequired$.next();
       this.groupNotReadyRestorePending = false;

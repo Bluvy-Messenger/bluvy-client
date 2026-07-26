@@ -10,6 +10,7 @@ import {
   IonText,
   IonButtons, IonBackButton, IonButton,
   IonPopover, IonIcon,
+  ToastController,
 } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
 import { MessageBubbleComponent } from '../../components/chat/message-bubble/message-bubble.component';
@@ -66,6 +67,7 @@ export class ConversationPage implements OnDestroy {
   private syncSvc         = inject(SyncService);
   private typingSvc       = inject(TypingService);
   private receiptsSvc     = inject(ReceiptsService);
+  private toastCtrl       = inject(ToastController);
 
   readonly presenceSvc = inject(PresenceService);
   private i18n         = inject(TranslationService);
@@ -133,12 +135,55 @@ export class ConversationPage implements OnDestroy {
 
       const user   = this.authSvc.currentUser();
       const device = this.authSvc.currentDevice();
+
+      // Root Cause #3 fallback (Phase 9/10, see AUDIT_02/04/05): this
+      // conversation was already recreated (e.g. superseded while this device
+      // was offline and missed the live 'conversation:superseded' event).
+      // Splice its history into the successor and redirect there instead of
+      // trying to establish MLS on a conversation that's permanently done.
+      const supersededBy = this.conversation.supersededByConversationId;
+      if (supersededBy) {
+        if (user && device) {
+          await this.messageCacheSvc.initialize(user.did, device.id);
+          try {
+            await this.messageCacheSvc.spliceHistory(this.conversationId, supersededBy);
+          } catch (err) {
+            if (!environment.production) console.error('[Conversation] supersession splice failed:', err);
+          }
+        }
+        await this.router.navigateByUrl(ROUTES.conversation(supersededBy), { replaceUrl: true });
+        void this.showRecreatedNotice();
+        return;
+      }
+
       if (user && device) {
         await this.messageCacheSvc.initialize(user.did, device.id);
+
+        // This device may have missed the recreation entirely: it wasn't
+        // connected for the live 'conversation:superseded' event AND it
+        // never navigated to the old conversation's URL (e.g. it opened this
+        // successor directly from the conversation list). spliceHistory() is
+        // idempotent (skips ids it already copied), so it's safe to run this
+        // unconditionally on every load rather than only once.
+        const predecessorId = this.conversation.predecessorConversationId;
+        if (predecessorId) {
+          try {
+            await this.messageCacheSvc.spliceHistory(predecessorId, this.conversationId);
+          } catch (err) {
+            if (!environment.production) console.error('[Conversation] predecessor splice failed:', err);
+          }
+        }
+
         try {
           const hadWelcome = await this.coordinator.fetchAndProcessPendingWelcome(this.conversationId, user, device);
           if (hadWelcome && this.syncSvc.isMbkAvailable()) {
-            await this.syncSvc.restore();
+            const restoreResult = await this.syncSvc.restore();
+            // AUDIT_01 W2 fast-follow: inject any recovered GroupState snapshot
+            // instead of silently discarding it (fill-only-if-empty, never
+            // overwrites an existing local state -- see MlsService.injectRestoredGroupStates).
+            if (Object.keys(restoreResult.restoredGroupStates).length > 0) {
+              await this.coordinator.injectRestoredGroupStates(restoreResult.restoredGroupStates, user, device);
+            }
           }
         } catch (err) {
           if (!environment.production) console.warn('[MLS] fetchAndProcessPendingWelcome failed:', err);
@@ -150,7 +195,14 @@ export class ConversationPage implements OnDestroy {
         }
       }
 
-      this.mlsGroupReady = this.coordinator.isConversationReady(this.conversationId);
+      // A conversation that simply hasn't been established yet (fresh, or
+      // freshly recreated -- see AUDIT_02/04/05 Root Cause #3 fallback) is
+      // NOT the same as one that's genuinely broken: it will establish
+      // transparently on first send via the normal ensureGroupReady path.
+      // Only show the "restore encryption" affordance when explicitly FAILED,
+      // not merely "not yet confirmed ready" -- otherwise every brand-new or
+      // just-recreated conversation misleadingly looks broken.
+      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId);
 
       await this.loadHistory();
       this.markReadIfVisible();
@@ -675,7 +727,10 @@ export class ConversationPage implements OnDestroy {
           // so by the time this device joins the group the backup is up to date.
           // This overwrites any undecryptable cache entries with backup plaintext.
           if (this.syncSvc.isMbkAvailable()) {
-            await this.syncSvc.restore();
+            const restoreResult = await this.syncSvc.restore();
+            if (Object.keys(restoreResult.restoredGroupStates).length > 0) {
+              await this.coordinator.injectRestoredGroupStates(restoreResult.restoredGroupStates, user, device);
+            }
           }
           // Pending messages were replayed by coordinator.processWelcome() and display
           // was updated via pendingDecryptReplayed$. Load history to fill any server gaps.
@@ -759,24 +814,78 @@ export class ConversationPage implements OnDestroy {
     };
   }
 
+  // true once Option A (safe automatic re-provisioning) has failed/timed out
+  // and the fallback recreate is underway -- drives the button's label so the
+  // user isn't staring at an unexplained ~30s spinner (see AUDIT_02/04 Root
+  // Cause #3 fix + the dev-session finding that this wait looked like "nothing
+  // happens").
+  recreatingFallback = false;
+
   async reestablishEncryption(): Promise<void> {
     const user           = this.authSvc.currentUser();
     const device         = this.authSvc.currentDevice();
     const participantDid = this.conversation?.participant.did;
     if (!user || !device || !participantDid) return;
 
-    this.reestablishing = true;
-    this.error          = '';
+    this.reestablishing   = true;
+    this.recreatingFallback = false;
+    this.error            = '';
+    this.cdr.detectChanges();
+
     try {
+      // Option A (see AUDIT_02/04 Root Cause #3 fix): safe automatic
+      // re-provisioning. Succeeds quickly if another currently-connected
+      // device of either account can help; otherwise ensureGroupReady times
+      // out on its own bounded poll (~30s) rather than hanging forever.
       await this.coordinator.clearConversationGroup(this.conversationId, user, device);
       await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device);
       this.mlsGroupReady = true;
       await this.loadHistory();
-    } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Could not re-establish encryption.';
-    } finally {
       this.reestablishing = false;
       this.cdr.detectChanges();
+      return;
+    } catch (err) {
+      if (!environment.production) console.warn('[Conversation] reestablishEncryption: Option A failed, falling back to recreate:', err);
+    }
+
+    // Option B/C fallback (Phase 9, see AUDIT_04/05): no other device could
+    // help -- explicitly recreate the conversation instead of leaving the
+    // user stuck. Never deletes the old conversation or its messages;
+    // splices the cached history into the new one so the thread stays
+    // continuous, and uses neutral, non-technical copy (Phase 12) -- never
+    // "reset"/"broken"/"fork".
+    this.recreatingFallback = true;
+    this.cdr.detectChanges();
+
+    try {
+      const result = await firstValueFrom(this.convSvc.recreateConversation(this.conversationId));
+      await this.messageCacheSvc.spliceHistory(this.conversationId, result.newConversation.id);
+      await this.router.navigateByUrl(ROUTES.conversation(result.newConversation.id), { replaceUrl: true });
+      void this.showRecreatedNotice();
+    } catch (err) {
+      if (!environment.production) console.error('[Conversation] reestablishEncryption: recreate failed:', err);
+      this.error = this.i18n.t('conversation.restore_failed');
+    } finally {
+      this.reestablishing     = false;
+      this.recreatingFallback = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  // Phase 12 (see AUDIT_05): neutral, non-technical notice shown when a
+  // conversation was recreated -- never exposes "reset"/"broken"/"fork"/epoch/
+  // commit/MLS terminology.
+  private async showRecreatedNotice(): Promise<void> {
+    try {
+      const toast = await this.toastCtrl.create({
+        message:  this.i18n.t('conversation.recreated_notice'),
+        duration: 3500,
+        position: 'bottom',
+        color:    'medium',
+      });
+      await toast.present();
+    } catch {
+      // Non-critical -- ignore.
     }
   }
 

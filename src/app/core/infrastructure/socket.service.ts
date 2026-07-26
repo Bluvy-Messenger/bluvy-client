@@ -7,7 +7,7 @@ import type {
   MessageNewPayload, WelcomeNewPayload, DeviceNewPayload, MlsCommitPayload,
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
-  ConversationNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
+  ConversationNewPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
   SendAck,
 } from './socket.types';
 import { SOCKET_EVENTS } from './socket.constants';
@@ -23,6 +23,7 @@ import {
   validateReceiptUpdatePayload,
   validateReceiptDeliveredPayload,
   validateConversationNewPayload,
+  validateConversationSupersededPayload,
   validateMlsRefillKeyPackagesPayload,
   validateDeviceRevokedPayload,
 } from './socket.validator';
@@ -31,7 +32,7 @@ export type {
   MessageNewPayload, WelcomeNewPayload, DeviceNewPayload, MlsCommitPayload,
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
-  ConversationNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
+  ConversationNewPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
 } from './socket.types';
 
 @Injectable({ providedIn: 'root' })
@@ -53,6 +54,7 @@ export class SocketService {
   private readonly _receiptUpdate       = new Subject<ReceiptUpdatePayload>();
   private readonly _receiptDelivered    = new Subject<ReceiptDeliveredPayload>();
   private readonly _conversationNew     = new Subject<ConversationNewPayload>();
+  private readonly _conversationSuperseded = new Subject<ConversationSupersededPayload>();
   private readonly _reconnect           = new Subject<void>();
   private readonly _connectError        = new Subject<Error>();
   private readonly _mlsRefillKeyPackages = new Subject<MlsRefillKeyPackagesPayload>();
@@ -71,6 +73,7 @@ export class SocketService {
   readonly receiptUpdate$:       Observable<ReceiptUpdatePayload>       = this._receiptUpdate.asObservable();
   readonly receiptDelivered$:    Observable<ReceiptDeliveredPayload>    = this._receiptDelivered.asObservable();
   readonly conversationNew$:     Observable<ConversationNewPayload>     = this._conversationNew.asObservable();
+  readonly conversationSuperseded$: Observable<ConversationSupersededPayload> = this._conversationSuperseded.asObservable();
   readonly reconnect$:           Observable<void>                       = this._reconnect.asObservable();
   readonly connectError$:        Observable<Error>                      = this._connectError.asObservable();
   readonly mlsRefillKeyPackages$: Observable<MlsRefillKeyPackagesPayload> = this._mlsRefillKeyPackages.asObservable();
@@ -166,6 +169,12 @@ export class SocketService {
       let data: ConversationNewPayload;
       try { data = validateConversationNewPayload(raw); } catch { return; }
       this.zone.run(() => this._conversationNew.next(data));
+    });
+
+    this.socket.on(SOCKET_EVENTS.CONVERSATION_SUPERSEDED, (raw: ConversationSupersededPayload) => {
+      let data: ConversationSupersededPayload;
+      try { data = validateConversationSupersededPayload(raw); } catch { return; }
+      this.zone.run(() => this._conversationSuperseded.next(data));
     });
 
     this.socket.on(SOCKET_EVENTS.MLS_REFILL_KEY_PACKAGES, (raw: MlsRefillKeyPackagesPayload) => {
