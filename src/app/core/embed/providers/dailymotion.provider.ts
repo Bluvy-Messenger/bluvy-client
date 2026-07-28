@@ -7,7 +7,8 @@ export const dailymotionProvider: EmbedProvider = {
   id: 'dailymotion',
   label: 'Dailymotion',
   embeddable: true,
-  renderKind: 'iframe',
+  icon: 'film-outline',
+  accentColor: '#00AAFF',
 
   match(url: URL): EmbedMatch | null {
     if (!ALLOWED_HOSTS.has(url.hostname)) return null;

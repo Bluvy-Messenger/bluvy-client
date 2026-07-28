@@ -188,7 +188,7 @@ export const en: Record<string, string> = {
   'embeds.provider.twitch.label': 'Twitch',
   'embeds.provider.twitch.sub': 'twitch.tv, clips.twitch.tv',
   'embeds.provider.gif.label': 'Show GIFs',
-  'embeds.provider.gif.sub': 'tenor.com',
+  'embeds.provider.gif.sub': 'giphy.com',
   'embed.fallback.load_once': 'Load this once',
   'embed.fallback.always_allow': 'Always allow {provider}',
   'settings.section.account': 'Account',

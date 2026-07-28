@@ -14,6 +14,9 @@ import type { EmbedMatch } from '../../../core/embed/embed-provider.types';
   imports: [IonIcon, TranslatePipe],
   templateUrl: './message-embed.component.html',
   styleUrls: ['./message-embed.component.scss'],
+  // Exposes the provider on the host element so the parent bubble stylesheet
+  // can give GIFs the full-bleed treatment without affecting other embeds.
+  host: { '[attr.data-provider]': 'match.provider' },
 })
 export class MessageEmbedComponent {
   @Input({ required: true }) match!: EmbedMatch;
@@ -37,20 +40,23 @@ export class MessageEmbedComponent {
   });
 
   readonly showOverrideActions = computed(() => this.provider().embeddable);
-  readonly renderKind          = computed(() => this.provider().renderKind);
 
   readonly safeEmbedUrl = computed<SafeResourceUrl | null>(() => {
-    if (this.renderMode() !== 'render' || this.renderKind() !== 'iframe') return null;
+    if (this.renderMode() !== 'render') return null;
     // Reconstructed by Bluvy from a validated, provider-parsed ID -- never
     // taken directly from message text.
     const url = this.provider().buildEmbedUrl(this.match);
     return this.sanitizer.bypassSecurityTrustResourceUrl(url);
   });
 
-  readonly plainImageUrl = computed<string | null>(() => {
-    if (this.renderMode() !== 'render' || this.renderKind() !== 'image') return null;
-    return this.provider().buildEmbedUrl(this.match);
-  });
+  // Fallback domain label for the disabled-provider card.
+  hostnameOf(url: string): string {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return url;
+    }
+  }
 
   // Session-only: never persisted to the cache or the PDS record.
   loadOnce(): void {

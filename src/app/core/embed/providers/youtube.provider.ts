@@ -12,7 +12,8 @@ export const youtubeProvider: EmbedProvider = {
   id: 'youtube',
   label: 'YouTube',
   embeddable: true,
-  renderKind: 'iframe',
+  icon: 'logo-youtube',
+  accentColor: '#FF0000',
 
   match(url: URL): EmbedMatch | null {
     if (!ALLOWED_HOSTS.has(url.hostname)) return null;

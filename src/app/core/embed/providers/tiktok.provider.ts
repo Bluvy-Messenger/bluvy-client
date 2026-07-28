@@ -13,7 +13,8 @@ export const tiktokProvider: EmbedProvider = {
   id: 'tiktok',
   label: 'TikTok',
   embeddable: false,
-  renderKind: 'iframe',
+  icon: 'logo-tiktok',
+  accentColor: '#000000',
 
   match(url: URL): EmbedMatch | null {
     if (!ALLOWED_HOSTS.has(url.hostname)) return null;

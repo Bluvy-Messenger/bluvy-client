@@ -12,7 +12,9 @@ export interface EmbedProvider {
   // false = never rendered live (no live embed method available yet); only a
   // branded fallback card + "open externally" link is ever shown for this provider.
   readonly embeddable: boolean;
-  readonly renderKind: 'iframe' | 'image';
+  // ion-icon name (kebab-case) and brand accent color for the fallback card's icon badge.
+  readonly icon: string;
+  readonly accentColor: string;
 
   /** Real hostname + path/query parsing against an allow-list. Never substring matching. */
   match(url: URL): EmbedMatch | null;

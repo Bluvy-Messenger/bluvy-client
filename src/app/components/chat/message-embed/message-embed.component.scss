@@ -1,5 +1,9 @@
-:host { display: block; margin-top: 8px; }
+// Outer placement (margins, full-bleed vs. inset) is owned by the parent
+// message-bubble stylesheet, which knows about sibling text/footer layout.
+:host { display: block; }
 
+// Default: a normal inset player card (YouTube, Spotify, Dailymotion,
+// Twitch) -- a fixed 16:9 player reads better with bubble chrome around it.
 .msg-embed__iframe {
   display: block;
   width: 100%;
@@ -10,34 +14,39 @@
   background: rgba(128, 128, 128, 0.12);
 }
 
-.msg-embed__image {
-  display: block;
-  max-width: 260px;
-  max-height: 260px;
-  width: auto;
-  height: auto;
-  border-radius: 14px;
-  object-fit: contain;
-}
-
 @media (min-width: 768px) {
   .msg-embed__iframe { max-width: 380px; }
 }
 
-// Mirrors message-bubble's .bubble__preview card so a disabled provider
-// reads the same as the existing generic link-preview card.
+// GIFs only: full-bleed, no frame of its own -- the bubble itself
+// (overflow: hidden + its own border-radius, see message-bubble.component.scss)
+// clips this to the bubble shape.
+:host([data-provider='gif']) .msg-embed__iframe {
+  max-width: none;
+  aspect-ratio: auto;
+  height: 220px;
+  border-radius: 0;
+}
+
+@media (min-width: 768px) {
+  :host([data-provider='gif']) .msg-embed__iframe { height: 260px; }
+}
+
+// A disabled provider gets a compact identity card (brand-colored icon +
+// name + domain) plus its own actions, distinct from the generic
+// message-bubble preview card but built from the same tokens.
 .msg-embed__fallback {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 340px;
+  max-width: 300px;
 }
 
 .msg-embed__fallback-link {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px;
+  gap: 12px;
+  padding: 10px;
   border-radius: 14px;
   text-decoration: none;
   color: inherit;
@@ -56,15 +65,14 @@
 
 .msg-embed__fallback-icon {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 9px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(128, 128, 128, 0.18);
 
-  ion-icon { font-size: 18px; opacity: 0.6; }
+  ion-icon { font-size: 21px; color: #fff; }
 }
 
 .msg-embed__fallback-body {
@@ -83,43 +91,51 @@
 .msg-embed__fallback-url {
   font-family: var(--font-sans);
   font-size: 11px;
-  opacity: 0.65;
+  font-weight: var(--weight-medium);
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.msg-embed__fallback-open {
+  flex-shrink: 0;
+  font-size: 15px;
+  opacity: 0.4;
+}
+
 .msg-embed__fallback-actions {
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .msg-embed__btn {
-  flex: 1;
   font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: var(--weight-medium);
-  padding: 6px 10px;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
   cursor: pointer;
+  border: none;
+  background: none;
 
   &--primary {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: var(--weight-semibold);
     color: #fff;
+    border: 1px solid transparent; // color set inline per provider
   }
 
-  .bubble--mine & {
-    background: rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.25);
-    color: #fff;
+  &--ghost {
+    padding: 2px 4px;
+    align-self: center;
+    font-size: 11px;
+    font-weight: var(--weight-medium);
+    color: var(--color-text-secondary);
 
-    &.msg-embed__btn--primary {
-      background: #fff;
-      color: var(--color-primary);
-    }
+    &:hover { text-decoration: underline; }
+
+    .bubble--mine & { color: rgba(255, 255, 255, 0.75); }
   }
 }

@@ -9,7 +9,8 @@ export const twitchProvider: EmbedProvider = {
   id: 'twitch',
   label: 'Twitch',
   embeddable: true,
-  renderKind: 'iframe',
+  icon: 'logo-twitch',
+  accentColor: '#9146FF',
 
   match(url: URL): EmbedMatch | null {
     if (!ALLOWED_HOSTS.has(url.hostname)) return null;

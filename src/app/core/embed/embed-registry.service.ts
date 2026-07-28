@@ -5,7 +5,7 @@ import { spotifyProvider } from './providers/spotify.provider';
 import { dailymotionProvider } from './providers/dailymotion.provider';
 import { tiktokProvider } from './providers/tiktok.provider';
 import { twitchProvider } from './providers/twitch.provider';
-import { tenorGifProvider } from './providers/tenor-gif.provider';
+import { giphyProvider } from './providers/giphy.provider';
 
 @Injectable({ providedIn: 'root' })
 export class EmbedRegistry {
@@ -15,7 +15,7 @@ export class EmbedRegistry {
     dailymotionProvider,
     tiktokProvider,
     twitchProvider,
-    tenorGifProvider,
+    giphyProvider,
   ];
 
   /** Real URL parsing against each provider's hostname allow-list — never substring matching. */

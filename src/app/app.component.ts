@@ -26,6 +26,8 @@ import {
   colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
   ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
   archiveOutline, folderOpenOutline, notificationsOutline, close,
+  // embed provider fallback cards
+  logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -82,6 +84,7 @@ export class AppComponent implements OnInit, OnDestroy {
       chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
       ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
       archiveOutline, folderOpenOutline, notificationsOutline, close,
+      logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
     });
   }
 

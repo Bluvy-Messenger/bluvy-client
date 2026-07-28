@@ -8,7 +8,10 @@ export const spotifyProvider: EmbedProvider = {
   id: 'spotify',
   label: 'Spotify',
   embeddable: true,
-  renderKind: 'iframe',
+  // No Spotify logo mark in the installed ionicons set -- a fitting neutral
+  // icon paired with the brand color still reads as intentional.
+  icon: 'musical-notes-outline',
+  accentColor: '#1DB954',
 
   match(url: URL): EmbedMatch | null {
     if (!ALLOWED_HOSTS.has(url.hostname)) return null;
