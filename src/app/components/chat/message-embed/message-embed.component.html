@@ -1,0 +1,49 @@
+@switch (renderMode()) {
+  @case ('render') {
+    @if (renderKind() === 'image') {
+      @if (plainImageUrl(); as src) {
+        <img class="msg-embed__image" [src]="src" alt="" loading="lazy" />
+      }
+    } @else {
+      @if (safeEmbedUrl(); as src) {
+        <iframe
+          class="msg-embed__iframe"
+          [src]="src"
+          loading="lazy"
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+          allow="autoplay; encrypted-media; picture-in-picture"
+          allowfullscreen
+        ></iframe>
+      }
+    }
+  }
+  @case ('disabled-card') {
+    <div class="msg-embed__fallback">
+      <a
+        class="msg-embed__fallback-link"
+        [href]="sourceUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        (click)="$event.stopPropagation()"
+      >
+        <span class="msg-embed__fallback-icon">
+          <ion-icon name="link-outline"></ion-icon>
+        </span>
+        <span class="msg-embed__fallback-body">
+          <span class="msg-embed__fallback-label">{{ provider().label }}</span>
+          <span class="msg-embed__fallback-url">{{ sourceUrl }}</span>
+        </span>
+      </a>
+      @if (showOverrideActions()) {
+        <div class="msg-embed__fallback-actions">
+          <button type="button" class="msg-embed__btn" (click)="loadOnce()">
+            {{ 'embed.fallback.load_once' | translate }}
+          </button>
+          <button type="button" class="msg-embed__btn msg-embed__btn--primary" (click)="alwaysAllow()">
+            {{ 'embed.fallback.always_allow' | translate: { provider: provider().label } }}
+          </button>
+        </div>
+      }
+    </div>
+  }
+}

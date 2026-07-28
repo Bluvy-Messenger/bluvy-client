@@ -9,6 +9,9 @@
     @if (displayText()) {
       <p class="bubble__text">{{ displayText() }}</p>
     }
+    @if (embed(); as e) {
+      <app-message-embed [match]="e.match" [sourceUrl]="e.url"></app-message-embed>
+    }
     @if (preview(); as p) {
       <a class="bubble__preview" [href]="p.url" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
         <div class="bubble__preview-thumb">

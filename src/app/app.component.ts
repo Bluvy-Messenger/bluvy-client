@@ -39,6 +39,7 @@ import { NotificationService } from './core/notification/notification.service';
 import { PushNotificationService } from './core/notification/push-notification.service';
 import { AccountBadgeService } from './core/notification/account-badge.service';
 import { MessageCacheService } from './core/conversation/message-cache.service';
+import { EmbedPreferencesService } from './core/embed/embed-preferences.service';
 import { ROUTES } from './core/routes';
 
 @Component({
@@ -57,6 +58,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private pushNotificationSvc = inject(PushNotificationService);
   private badgeSvc = inject(AccountBadgeService);
   private msgCacheSvc = inject(MessageCacheService);
+  private embedPrefsSvc = inject(EmbedPreferencesService);
   private router = inject(Router);
   readonly connectivitySvc = inject(ConnectivityService);
 
@@ -173,6 +175,8 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!user || !device) return;
       void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
         .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
+      void this.embedPrefsSvc.refreshFromPds()
+        .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: embed preferences refresh failed', err); });
     });
   }
 

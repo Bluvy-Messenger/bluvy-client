@@ -2,6 +2,9 @@ import { Injectable, inject } from '@angular/core';
 import { Agent } from '@atproto/api';
 import { OAuthService } from './oauth.service';
 import { environment } from '../../../environments/environment';
+import type { EmbedPreferencesRecord } from '../embed/embed-preferences.types';
+
+const EMBED_PREFERENCES_COLLECTION = 'com.bluvy.preferences.embeds';
 
 @Injectable({ providedIn: 'root' })
 export class AtprotoRepoService {
@@ -65,6 +68,48 @@ export class AtprotoRepoService {
     } catch (err) {
       // Ignore if record already deleted or doesn't exist
     }
+  }
+
+  /**
+   * Fetches the com.bluvy.preferences.embeds record from the user's ATProto
+   * repository. Returns null both when the record doesn't exist yet (new
+   * account, never configured) and when it can't be reached (network/PDS
+   * failure) — callers must never distinguish the two as "allow everything"
+   * vs "deny everything"; both fall back to cache-then-defaults.
+   */
+  async getEmbedPreferences(): Promise<EmbedPreferencesRecord | null> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) return null;
+
+    try {
+      const res = await agent.com.atproto.repo.getRecord({
+        repo: this.oauth.session.sub,
+        collection: EMBED_PREFERENCES_COLLECTION,
+        rkey: 'self',
+      });
+      return res.data.value as unknown as EmbedPreferencesRecord;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Writes the full com.bluvy.preferences.embeds record to the user's
+   * ATProto repository. Always the complete record — putRecord replaces the
+   * whole value, so partial patches would silently drop other providers.
+   */
+  async putEmbedPreferences(record: EmbedPreferencesRecord): Promise<void> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) {
+      throw new Error('No active ATProto session');
+    }
+
+    await agent.com.atproto.repo.putRecord({
+      repo: this.oauth.session.sub,
+      collection: EMBED_PREFERENCES_COLLECTION,
+      rkey: 'self',
+      record: record as unknown as Record<string, unknown>,
+    });
   }
 
   /**
