@@ -43,6 +43,9 @@
       <button class="segment-btn" role="radio" [attr.aria-checked]="palette() === 'mu'" [class.segment-btn--active]="palette() === 'mu'" (click)="setPalette('mu')">
         {{ 'appearance.palette.mu' | translate }}
       </button>
+      <button class="segment-btn" role="radio" [attr.aria-checked]="palette() === 'blacksky'" [class.segment-btn--active]="palette() === 'blacksky'" (click)="setPalette('blacksky')">
+        {{ 'appearance.palette.blacksky' | translate }}
+      </button>
     </div>
 
     <!-- SECTION 4: Accent Color -->
@@ -51,6 +54,9 @@
       <button class="accent-dot accent-dot--blue" role="radio" [attr.aria-checked]="accentColor() === 'blue'" [class.accent-dot--active]="accentColor() === 'blue'" (click)="setAccentColor('blue')" [attr.aria-label]="'appearance.accent.blue' | translate"></button>
       <button class="accent-dot accent-dot--pink" role="radio" [attr.aria-checked]="accentColor() === 'pink'" [class.accent-dot--active]="accentColor() === 'pink'" (click)="setAccentColor('pink')" [attr.aria-label]="'appearance.accent.pink' | translate"></button>
       <button class="accent-dot accent-dot--orange" role="radio" [attr.aria-checked]="accentColor() === 'orange'" [class.accent-dot--active]="accentColor() === 'orange'" (click)="setAccentColor('orange')" [attr.aria-label]="'appearance.accent.orange' | translate"></button>
+      <button class="accent-dot accent-dot--green" role="radio" [attr.aria-checked]="accentColor() === 'green'" [class.accent-dot--active]="accentColor() === 'green'" (click)="setAccentColor('green')" [attr.aria-label]="'appearance.accent.green' | translate"></button>
+      <button class="accent-dot accent-dot--purple" role="radio" [attr.aria-checked]="accentColor() === 'purple'" [class.accent-dot--active]="accentColor() === 'purple'" (click)="setAccentColor('purple')" [attr.aria-label]="'appearance.accent.purple' | translate"></button>
+      <button class="accent-dot accent-dot--indigo" role="radio" [attr.aria-checked]="accentColor() === 'indigo'" [class.accent-dot--active]="accentColor() === 'indigo'" (click)="setAccentColor('indigo')" [attr.aria-label]="'appearance.accent.indigo' | translate"></button>
     </div>
 
     <!-- SECTION 5: Police de caractère -->

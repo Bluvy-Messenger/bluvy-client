@@ -160,7 +160,41 @@ html.palette-mu.theme-dark {
   --color-interactive-focus-bg: rgba(219, 74, 166, 0.15);
 }
 
-// 3. Media query support for theme "auto" (prefers-color-scheme: dark)
+// 3. Blacksky palette overrides
+html.palette-blacksky {
+  --color-bg:             #F8FAF9; // Unified Blacksky off-white background
+  --color-surface:        #F8FAF9; // Unified Blacksky off-white surface
+  --color-primary:        #6060E9; // Vibrant Blacksky Indigo/Violet
+  --color-primary-hover:  #5252C3;
+  --color-primary-active: #4545A8;
+  --color-border:         #DFE1E1;
+  --color-text-primary:   #070C0C;
+  --color-text-secondary: #6A6A6A;
+  --color-bubble-recv:    #E8EAEA;
+  --color-bubble-recv-border: #DFE1E1;
+  --color-search-bg:      #E8EAEA; // Subdued search
+  --focus-ring:           0 0 0 3px rgba(96, 96, 233, 0.2);
+  --color-interactive-hover:  rgba(96, 96, 233, 0.04);
+  --color-interactive-active: rgba(96, 96, 233, 0.08);
+  --color-interactive-focus-bg: rgba(96, 96, 233, 0.06);
+}
+
+html.palette-blacksky.theme-dark {
+  --color-bg:             #161E27; // Twilight background
+  --color-surface:        #161E27; // Twilight surface
+  --color-border:         #2B3644;
+  --color-text-primary:   #F8FAF9;
+  --color-text-secondary: #9C9E9E;
+  --color-bubble-recv:    #1F2936;
+  --color-bubble-recv-border: transparent;
+  --color-search-bg:      #1F2936; // Twilight search
+  --focus-ring:           0 0 0 3px rgba(134, 134, 255, 0.3);
+  --color-interactive-hover:  rgba(134, 134, 255, 0.06);
+  --color-interactive-active: rgba(134, 134, 255, 0.12);
+  --color-interactive-focus-bg: rgba(134, 134, 255, 0.15);
+}
+
+// 4. Media query support for theme "auto" (prefers-color-scheme: dark)
 @media (prefers-color-scheme: dark) {
   html.palette-bluesky:not(.theme-light) {
     --color-bg:             #151D28;
@@ -191,6 +225,21 @@ html.palette-mu.theme-dark {
     --color-interactive-active: rgba(219, 74, 166, 0.12);
     --color-interactive-focus-bg: rgba(219, 74, 166, 0.15);
   }
+
+  html.palette-blacksky:not(.theme-light) {
+    --color-bg:             #161E27;
+    --color-surface:        #161E27;
+    --color-border:         #2B3644;
+    --color-text-primary:   #F8FAF9;
+    --color-text-secondary: #9C9E9E;
+    --color-bubble-recv:    #1F2936;
+    --color-bubble-recv-border: transparent;
+    --color-search-bg:      #1F2936;
+    --focus-ring:           0 0 0 3px rgba(134, 134, 255, 0.3);
+    --color-interactive-hover:  rgba(134, 134, 255, 0.06);
+    --color-interactive-active: rgba(134, 134, 255, 0.12);
+    --color-interactive-focus-bg: rgba(134, 134, 255, 0.15);
+  }
 }
 
 // ── Advanced display options overrides ──────────────────────────────────────
@@ -213,6 +262,14 @@ html.theme-dark-black {
     --color-border:         #5C5C5C;
     --color-bubble-recv:    #1F1F1F;
     --color-search-bg:      #1F1F1F;
+  }
+
+  &.palette-blacksky {
+    --color-bg:             #070C0C;
+    --color-surface:        #070C0C;
+    --color-border:         #4F5050;
+    --color-bubble-recv:    #121313;
+    --color-search-bg:      #121313;
   }
 }
 
@@ -247,6 +304,36 @@ html.accent-orange {
   --color-interactive-focus-bg: rgba(242, 87, 31, 0.05);
 }
 
+html.accent-green {
+  --color-primary:        #0D8A4B;
+  --color-primary-hover:  #0B7440;
+  --color-primary-active: #10642C;
+  --focus-ring:           0 0 0 3px rgba(13, 138, 75, 0.15);
+  --color-interactive-hover:  rgba(13, 138, 75, 0.03);
+  --color-interactive-active: rgba(13, 138, 75, 0.08);
+  --color-interactive-focus-bg: rgba(13, 138, 75, 0.05);
+}
+
+html.accent-purple {
+  --color-primary:        #986DC4;
+  --color-primary-hover:  #7845AA;
+  --color-primary-active: #6B4392;
+  --focus-ring:           0 0 0 3px rgba(152, 109, 196, 0.15);
+  --color-interactive-hover:  rgba(152, 109, 196, 0.03);
+  --color-interactive-active: rgba(152, 109, 196, 0.08);
+  --color-interactive-focus-bg: rgba(152, 109, 196, 0.05);
+}
+
+html.accent-indigo {
+  --color-primary:        #6060E9;
+  --color-primary-hover:  #5252C3;
+  --color-primary-active: #4545A8;
+  --focus-ring:           0 0 0 3px rgba(96, 96, 233, 0.15);
+  --color-interactive-hover:  rgba(96, 96, 233, 0.03);
+  --color-interactive-active: rgba(96, 96, 233, 0.08);
+  --color-interactive-focus-bg: rgba(96, 96, 233, 0.05);
+}
+
 // Dark modes & system-dark accents overrides
 html.accent-blue.theme-dark,
 html.accent-blue.theme-dark-black {
@@ -272,6 +359,30 @@ html.accent-orange.theme-dark-black {
   --color-interactive-focus-bg: rgba(242, 87, 31, 0.15);
 }
 
+html.accent-green.theme-dark,
+html.accent-green.theme-dark-black {
+  --focus-ring:           0 0 0 3px rgba(13, 138, 75, 0.3);
+  --color-interactive-hover:  rgba(13, 138, 75, 0.06);
+  --color-interactive-active: rgba(13, 138, 75, 0.12);
+  --color-interactive-focus-bg: rgba(13, 138, 75, 0.15);
+}
+
+html.accent-purple.theme-dark,
+html.accent-purple.theme-dark-black {
+  --focus-ring:           0 0 0 3px rgba(152, 109, 196, 0.3);
+  --color-interactive-hover:  rgba(152, 109, 196, 0.06);
+  --color-interactive-active: rgba(152, 109, 196, 0.12);
+  --color-interactive-focus-bg: rgba(152, 109, 196, 0.15);
+}
+
+html.accent-indigo.theme-dark,
+html.accent-indigo.theme-dark-black {
+  --focus-ring:           0 0 0 3px rgba(96, 96, 233, 0.3);
+  --color-interactive-hover:  rgba(96, 96, 233, 0.06);
+  --color-interactive-active: rgba(96, 96, 233, 0.12);
+  --color-interactive-focus-bg: rgba(96, 96, 233, 0.15);
+}
+
 @media (prefers-color-scheme: dark) {
   html.accent-blue:not(.theme-light) {
     --focus-ring:           0 0 0 3px rgba(0, 133, 255, 0.3);
@@ -290,6 +401,24 @@ html.accent-orange.theme-dark-black {
     --color-interactive-hover:  rgba(242, 87, 31, 0.06);
     --color-interactive-active: rgba(242, 87, 31, 0.12);
     --color-interactive-focus-bg: rgba(242, 87, 31, 0.15);
+  }
+  html.accent-green:not(.theme-light) {
+    --focus-ring:           0 0 0 3px rgba(13, 138, 75, 0.3);
+    --color-interactive-hover:  rgba(13, 138, 75, 0.06);
+    --color-interactive-active: rgba(13, 138, 75, 0.12);
+    --color-interactive-focus-bg: rgba(13, 138, 75, 0.15);
+  }
+  html.accent-purple:not(.theme-light) {
+    --focus-ring:           0 0 0 3px rgba(152, 109, 196, 0.3);
+    --color-interactive-hover:  rgba(152, 109, 196, 0.06);
+    --color-interactive-active: rgba(152, 109, 196, 0.12);
+    --color-interactive-focus-bg: rgba(152, 109, 196, 0.15);
+  }
+  html.accent-indigo:not(.theme-light) {
+    --focus-ring:           0 0 0 3px rgba(96, 96, 233, 0.3);
+    --color-interactive-hover:  rgba(96, 96, 233, 0.06);
+    --color-interactive-active: rgba(96, 96, 233, 0.12);
+    --color-interactive-focus-bg: rgba(96, 96, 233, 0.15);
   }
 }
 
