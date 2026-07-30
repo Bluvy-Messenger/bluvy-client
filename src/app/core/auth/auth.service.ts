@@ -316,6 +316,9 @@ export class AuthService {
     void this.provisionSvc.proactiveCatchUpSweep(response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: proactiveCatchUpSweep failed', err); });
 
+    void this.provisionSvc.checkAndProvisionOnConnect(response.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] login: checkAndProvisionOnConnect failed', err); });
+
     await this.syncSvc.initialize(response.user.did, response.device.id, response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: sync initialize failed', err); });
 
@@ -451,6 +454,9 @@ export class AuthService {
     // applyCommit/catch-up fixes shipped. Fire-and-forget.
     void this.provisionSvc.proactiveCatchUpSweep(session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: proactiveCatchUpSweep failed', err); });
+
+    void this.provisionSvc.checkAndProvisionOnConnect(session.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: checkAndProvisionOnConnect failed', err); });
 
     await this.syncSvc.initialize(session.user.did, session.device.id, session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: sync initialize failed', err); });
