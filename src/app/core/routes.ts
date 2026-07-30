@@ -10,6 +10,7 @@ export const ROUTES = {
   pinUnlock:            '/pin-unlock',
   recoveryUnlock:       '/recovery-unlock',
   migrateSync:          '/migrate-sync',
+  notificationsSetup:   '/notifications-setup',
 
   conversations:      '/conversations',
   conversation:       (id: string) => `/conversations/${id}`,

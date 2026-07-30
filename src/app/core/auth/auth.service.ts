@@ -327,10 +327,14 @@ export class AuthService {
     await this.syncSvc.initialize(response.user.did, response.device.id, response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: sync initialize failed', err); });
 
-    // If MBK loaded from SecureLocalStorage → navigate to conversations.
+    // If MBK loaded from SecureLocalStorage → navigate to notifications setup or conversations.
     // Otherwise, setupRequired$ or pinRequired$ subscription handles navigation.
     if (this.syncSvc.isMbkAvailable()) {
-      await this.router.navigate([ROUTES.conversations]);
+      if (await this.pushSvc.shouldPromptForPermission()) {
+        await this.router.navigate([ROUTES.notificationsSetup]);
+      } else {
+        await this.router.navigate([ROUTES.conversations]);
+      }
     }
   }
 

@@ -52,6 +52,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'notifications-setup',
+    loadComponent: () => import('./pages/notification-setup/notification-setup.page').then(m => m.NotificationSetupPage),
+    canActivate: [authGuard],
+  },
+  {
     path: '',
     loadChildren: () => import('./tabs/tabs.routes').then(m => m.routes),
     canActivate: [rootGuard],
