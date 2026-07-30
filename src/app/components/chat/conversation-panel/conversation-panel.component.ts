@@ -266,6 +266,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
 
     const page         = await firstValueFrom(this.convSvc.getMessages(this.conversationId));
     const allCachedIds = await this.messageCacheSvc.getAllIds(this.conversationId);
+    console.log('[MLS:loadHistory] fetched page messages count:', page.data.length, 'cached count:', allCachedIds.size);
 
     let senderUpdated = false;
     for (const msg of page.data) {
@@ -296,6 +297,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
           this.conversationId, stale.id, stale.senderDid ?? user.did, stale.senderDeviceId,
           stale.isMine, stale.createdAt, serverMsg.ciphertext, user, device,
         );
+        console.log('[MLS:loadHistory] retried undecryptable message:', stale.id, 'result:', result.state);
         if (result.state === 'plaintext') {
           const healed = { ...stale, plaintext: result.plaintext, undecryptable: false };
           await this.messageCacheSvc.store(healed);
@@ -313,6 +315,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     }
 
     const missing = page.data.filter(m => !allCachedIds.has(m.id) && !this.knownIds.has(m.id));
+    console.log('[MLS:loadHistory] missing messages:', missing.map(m => m.id));
     for (const msg of page.data) this.knownIds.add(msg.id);
     if (missing.length === 0) return;
 
@@ -323,6 +326,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
         this.conversationId, msg.id, msg.senderDid, msg.senderDeviceId,
         isMine, msg.createdAt, msg.ciphertext, user, device,
       );
+      console.log('[MLS:loadHistory] decrypted missing message:', msg.id, 'isMine:', isMine, 'result:', result.state);
       if (result.state === 'pending_decrypt') continue;
       const plaintext    = result.state === 'plaintext' ? result.plaintext : '';
       const undecryptable = !isMine && result.state === 'undecryptable';
@@ -335,6 +339,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     }
 
     if (newMessages.length > 0) {
+      console.log('[MLS:loadHistory] displaying newMessages count:', newMessages.length);
       for (const m of newMessages) this.upsertDisplay(m);
       this.displayMessages.sort((a, b) => a.createdAt - b.createdAt);
       this.scrollToBottom();

@@ -419,15 +419,14 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
       try {
         const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
+        console.log('[MLS:coordinator] decryptMessage success for', messageId, 'length:', plaintext.length);
         this.states.set(convId, ConversationMlsState.Ready);
         this.decryptionFailures.set(convId, 0);
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
         const classified = this.classifyError(err, convId);
         if (classified instanceof TransientMlsError) {
-          if (!environment.production) {
-            console.warn('[MLS:coordinator] decryptMessage transient error for', messageId, '->', classified.kind, ':', err instanceof Error ? err.message : err);
-          }
+          console.warn('[MLS:coordinator] decryptMessage transient error for', messageId, '->', classified.kind, ':', err instanceof Error ? err.message : err);
         } else {
           console.error('[MLS:coordinator] decryptMessage error for', messageId, '->', classified.kind, ':', err);
         }
