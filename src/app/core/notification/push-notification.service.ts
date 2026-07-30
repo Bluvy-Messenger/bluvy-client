@@ -17,7 +17,7 @@ export class PushNotificationService {
   private readonly router    = inject(Router);
   private readonly kpSvc     = inject(KeyPackageService);
 
-  initialize(): void {
+  async initialize(): Promise<void> {
     if (!Capacitor.isNativePlatform()) {
       return;
     }
@@ -27,17 +27,21 @@ export class PushNotificationService {
       return;
     }
 
-    // 1. Request permission and register.
-    // Deferred: calling a native plugin's requestPermissions() immediately on
-    // cold start can race the Android Capacitor Bridge before it has finished
-    // attaching to the activity, crashing the whole app with a
-    // NullPointerException in Bridge.getPermissionStates (a known Capacitor
-    // bridge-timing issue, not something in our own plugin usage). A short
-    // delay lets the bridge finish initializing before the very first native
-    // permission call of the app's lifecycle.
-    setTimeout(() => this.registerPush(), 1000);
+    // Register listeners first
+    this.setupListeners();
 
-    // 2. Listeners
+    // If permission was already granted previously, automatically register for FCM/APNS token
+    try {
+      const status = await PushNotifications.checkPermissions();
+      if (status.receive === 'granted') {
+        void PushNotifications.register();
+      }
+    } catch (err) {
+      console.warn('[PushNotificationService] Error checking permissions during init:', err);
+    }
+  }
+
+  private setupListeners(): void {
     PushNotifications.addListener('registration', async (token) => {
       try {
         await this.uploadTokenForAllAccounts(token.value, 'fcm');
@@ -72,6 +76,46 @@ export class PushNotificationService {
   }
 
   /**
+   * Returns true if we should present the post-login notification permission page to the user.
+   */
+  async shouldPromptForPermission(): Promise<boolean> {
+    if (!Capacitor.isNativePlatform()) return false;
+    if (!this.isPushEnabled()) return false;
+    if (localStorage.getItem('push_permission_prompted') === 'true') return false;
+
+    try {
+      const status = await PushNotifications.checkPermissions();
+      return status.receive === 'prompt' || status.receive === 'prompt-with-rationale';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Triggers native permission request dialog after user consents on the dedicated onboarding page.
+   */
+  async requestPermissionsFromUser(): Promise<boolean> {
+    localStorage.setItem('push_permission_prompted', 'true');
+    if (!Capacitor.isNativePlatform()) return false;
+
+    try {
+      const result = await PushNotifications.requestPermissions();
+      if (result.receive === 'granted') {
+        void PushNotifications.register();
+        return true;
+      }
+    } catch (err) {
+      console.error('[PushNotificationService] Failed to request permissions:', err);
+    }
+    return false;
+  }
+
+  /** Mark that the user skipped or saw the permission prompt without asking system again */
+  markPermissionPrompted(): void {
+    localStorage.setItem('push_permission_prompted', 'true');
+  }
+
+  /**
    * Called by AuthService after every account switch.
    * Re-registers the FCM token with the backend so that push notifications
    * are delivered to the newly active account rather than the previous one.
@@ -80,9 +124,10 @@ export class PushNotificationService {
     if (!Capacitor.isNativePlatform()) return;
     if (!this.isPushEnabled()) return;
 
-    // Re-request and re-register: the registration listener will upload the
-    // token to the backend, which will now bind it to the current active user.
-    this.registerPush();
+    const status = await PushNotifications.checkPermissions();
+    if (status.receive === 'granted') {
+      void PushNotifications.register();
+    }
   }
 
   async setPushEnabled(enabled: boolean): Promise<void> {
@@ -92,7 +137,7 @@ export class PushNotificationService {
     }
 
     if (enabled) {
-      this.registerPush();
+      void this.requestPermissionsFromUser();
     } else {
       try {
         await PushNotifications.removeAllListeners();
@@ -105,15 +150,6 @@ export class PushNotificationService {
 
   isPushEnabled(): boolean {
     return localStorage.getItem('notifications_push_enabled') !== 'false';
-  }
-
-  private registerPush(): void {
-    PushNotifications.requestPermissions().then((result) => {
-      if (result.receive === 'granted') {
-        // Register with Apple / Google to receive push tokens
-        void PushNotifications.register();
-      }
-    });
   }
 
   /**

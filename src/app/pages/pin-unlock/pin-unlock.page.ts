@@ -5,6 +5,7 @@ import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
 import { SyncService } from '../../core/sync/sync.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
+import { PushNotificationService } from '../../core/notification/push-notification.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
 import { ROUTES } from '../../core/routes';
@@ -19,6 +20,7 @@ import { ROUTES } from '../../core/routes';
 export class PinUnlockPage implements OnInit, OnDestroy {
   private syncSvc     = inject(SyncService);
   private authSvc     = inject(AuthService);
+  private pushSvc     = inject(PushNotificationService);
   private coordinator = inject(MlsCoordinatorBase);
   private router      = inject(Router);
   private i18n        = inject(TranslationService);
@@ -58,7 +60,11 @@ export class PinUnlockPage implements OnInit, OnDestroy {
         await this.coordinator.injectRestoredGroupStates(result.restoredGroupStates, user, device);
       }
 
-      await this.router.navigate([ROUTES.conversations]);
+      if (await this.pushSvc.shouldPromptForPermission()) {
+        await this.router.navigate([ROUTES.notificationsSetup]);
+      } else {
+        await this.router.navigate([ROUTES.conversations]);
+      }
     } catch (err: unknown) {
       this.restoring = false;
       const httpErr = err as { status?: number };

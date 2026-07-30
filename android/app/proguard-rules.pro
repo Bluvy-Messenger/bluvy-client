@@ -26,3 +26,28 @@
 -dontwarn com.google.errorprone.annotations.RestrictedApi
 -dontwarn javax.annotation.Nullable
 -dontwarn javax.annotation.concurrent.GuardedBy
+
+# Preserve line numbers for debugging crash stack traces
+-keepattributes SourceFile,LineNumberTable
+
+# Capacitor Core & Bridge Reflection
+-keep class com.getcapacitor.** { *; }
+-keepclasseswithmembers class * {
+    @com.getcapacitor.PluginMethod <methods>;
+    @com.getcapacitor.annotation.CapacitorPlugin <methods>;
+}
+
+# Capacitor Official Plugins (App, Push, Browser, Preferences, Device, etc.)
+-keep class com.capacitor.plugins.** { *; }
+
+# Capacitor Community SQLite & SQLCipher
+-keep class com.capacitorcommunity.sqlite.** { *; }
+-keep class net.sqlcipher.** { *; }
+-keep class net.sqlcipher.database.** { *; }
+
+# Aparajita Secure Storage
+-keep class com.aparajita.capacitor.securestorage.** { *; }
+
+# Capawesome Edge-to-Edge Support
+-keep class io.capawesome.capacitor.** { *; }
+
