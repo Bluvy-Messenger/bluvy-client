@@ -187,6 +187,8 @@ export const en: Record<string, string> = {
   'embeds.provider.tiktok.sub': 'tiktok.com — link only, no live embed yet',
   'embeds.provider.twitch.label': 'Twitch',
   'embeds.provider.twitch.sub': 'twitch.tv, clips.twitch.tv',
+  'embeds.provider.peertube.label': 'PeerTube',
+  'embeds.provider.peertube.sub': 'PeerTube instances (e.g. peertube.fr, framatube.org)',
   'embeds.provider.gif.label': 'Show GIFs',
   'embeds.provider.gif.sub': 'giphy.com',
   'embed.fallback.load_once': 'Load this once',

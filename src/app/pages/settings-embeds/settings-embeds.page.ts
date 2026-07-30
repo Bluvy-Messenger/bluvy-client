@@ -17,7 +17,7 @@ export class SettingsEmbedsPage {
   private router   = inject(Router);
   protected prefsSvc = inject(EmbedPreferencesService);
 
-  readonly externalProviders: EmbedProviderId[] = ['youtube', 'spotify', 'dailymotion', 'tiktok', 'twitch'];
+  readonly externalProviders: EmbedProviderId[] = ['youtube', 'spotify', 'dailymotion', 'tiktok', 'twitch', 'peertube'];
 
   goBack(): void {
     void this.router.navigate([ROUTES.settingsPrivacy]);

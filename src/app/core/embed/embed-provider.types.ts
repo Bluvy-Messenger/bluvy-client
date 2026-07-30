@@ -1,4 +1,4 @@
-export type EmbedProviderId = 'youtube' | 'spotify' | 'dailymotion' | 'tiktok' | 'twitch' | 'gif';
+export type EmbedProviderId = 'youtube' | 'spotify' | 'dailymotion' | 'tiktok' | 'twitch' | 'peertube' | 'gif';
 
 export interface EmbedMatch {
   provider: EmbedProviderId;

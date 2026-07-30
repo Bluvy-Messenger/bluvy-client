@@ -9,5 +9,6 @@ export const EMBED_PROVIDER_DEFAULTS: Record<EmbedProviderId, boolean> = {
   dailymotion: false,
   tiktok: false,
   twitch: false,
+  peertube: false,
   gif: true,
 };
