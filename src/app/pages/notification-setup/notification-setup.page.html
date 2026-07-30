@@ -1,0 +1,42 @@
+<ion-content class="notif-page-content" [fullscreen]="true">
+  <div class="notif-page">
+    <div class="notif-hero">
+      <ion-icon name="notifications-outline" class="notif-icon"></ion-icon>
+      <h1 class="notif-title">Restez informé en temps réel</h1>
+      <p class="notif-subtitle">
+        Activez les notifications pour être averti instantanément lorsque vous recevez de nouveaux messages chiffrés sur Bluvy.
+      </p>
+    </div>
+
+    <div class="features-list">
+      <div class="feature-item">
+        <ion-icon name="chatbubble-ellipses-outline" class="feat-icon"></ion-icon>
+        <div class="feat-text">
+          <strong>Nouveaux messages</strong>
+          <span>Recevez vos alertes de chat en direct sans manquer de réponse.</span>
+        </div>
+      </div>
+
+      <div class="feature-item">
+        <ion-icon name="shield-checkmark-outline" class="feat-icon"></ion-icon>
+        <div class="feat-text">
+          <strong>Confidentialité garantie</strong>
+          <span>Le contenu chiffré reste privé et sécurisé sur votre téléphone.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary-btn" (click)="enableNotifications()" [disabled]="working">
+        @if (!working) {
+          <ion-icon name="notifications"></ion-icon>
+        }
+        <span>{{ working ? 'Configuration...' : 'Activer les notifications' }}</span>
+      </button>
+
+      <button class="secondary-btn" (click)="skip()" [disabled]="working">
+        Plus tard
+      </button>
+    </div>
+  </div>
+</ion-content>

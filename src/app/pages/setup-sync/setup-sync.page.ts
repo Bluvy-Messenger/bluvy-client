@@ -5,6 +5,7 @@ import { IonContent, IonIcon, IonCheckbox } from '@ionic/angular/standalone';
 import { SyncService } from '../../core/sync/sync.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { PushNotificationService } from '../../core/notification/push-notification.service';
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -53,12 +54,18 @@ export class SetupSyncPage {
     }
   }
 
+  private pushSvc = inject(PushNotificationService);
+
   async copyKey(): Promise<void> {
     try { await navigator.clipboard.writeText(this.recoveryKey); } catch { /* ignore */ }
   }
 
   async onContinue(): Promise<void> {
-    await this.router.navigate([ROUTES.conversations]);
+    if (await this.pushSvc.shouldPromptForPermission()) {
+      await this.router.navigate([ROUTES.notificationsSetup]);
+    } else {
+      await this.router.navigate([ROUTES.conversations]);
+    }
   }
 
   private chunk(s: string, n: number): string[] {
