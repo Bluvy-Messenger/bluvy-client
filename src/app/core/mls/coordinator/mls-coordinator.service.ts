@@ -424,7 +424,13 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
         const classified = this.classifyError(err, convId);
-        console.error('[MLS:coordinator] decryptMessage error for', messageId, '->', classified.kind, ':', err);
+        if (classified instanceof TransientMlsError) {
+          if (!environment.production) {
+            console.warn('[MLS:coordinator] decryptMessage transient error for', messageId, '->', classified.kind, ':', err instanceof Error ? err.message : err);
+          }
+        } else {
+          console.error('[MLS:coordinator] decryptMessage error for', messageId, '->', classified.kind, ':', err);
+        }
 
         if (classified instanceof TransientMlsError) {
           await this.pendingRepo.enqueue({
