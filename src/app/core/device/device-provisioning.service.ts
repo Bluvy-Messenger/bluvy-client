@@ -68,6 +68,8 @@ export class DeviceProvisioningService {
     if (this.sweptForDid.has(user.did)) return;
     this.sweptForDid.add(user.did);
 
+    console.log('[MLS:observability] proactiveCatchUpSweep start', { userDid: user.did, deviceId: device.id });
+
     const seen = new Set<string>();
 
     // getConversations() defaults to non-archived only (backend: `archived`
@@ -99,6 +101,8 @@ export class DeviceProvisioningService {
         cursor = page.hasMore ? (page.cursor ?? undefined) : undefined;
       } while (cursor);
     }
+
+    console.log('[MLS:observability] proactiveCatchUpSweep done', { userDid: user.did, conversationsSwept: seen.size });
   }
 
   private provisioning = false;
