@@ -272,7 +272,12 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<boolean> {
-    return this.mlsSvc.fetchAndProcessPendingWelcome(convId, user, device);
+    const ok = await this.mlsSvc.fetchAndProcessPendingWelcome(convId, user, device);
+    if (ok) {
+      this.transitionState(convId, ConversationMlsState.Ready);
+      void this.replayPendingDecrypts(convId, user, device);
+    }
+    return ok;
   }
 
   // ── Group readiness ────────────────────────────────────────────────────────
