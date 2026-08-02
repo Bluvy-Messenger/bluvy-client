@@ -448,6 +448,18 @@ export class ConversationPage implements OnDestroy {
       }
     }
 
+    // [4.6] Retry cloud-backup recovery for messages still marked
+    // undecryptable after [4.5] (MLS decrypt retry) -- covers placeholders
+    // written by recoverMissingHistoryBeforeClear() when the group's keys
+    // were already gone AND the MBK wasn't unlocked yet at that time. No-op
+    // (and cheap) if the MBK still isn't available now.
+    const healedCount = await this.coordinator.retryUndecryptableViaCloudBackup(this.conversationId, user, device);
+    if (healedCount > 0) {
+      const refreshed = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
+      this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
+      this.scrollToBottom();
+    }
+
     // [5] Missing = on server but not in cache and not already being handled by socket.
     // Messages at/before the last local-history-clear watermark are excluded: they were
     // already decrypted once before being cleared, so their MLS ratchet generation is

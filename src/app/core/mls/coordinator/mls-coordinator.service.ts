@@ -27,6 +27,7 @@ import {
   type ConversationFailedEvent,
   type PendingDecryptQueuedEvent,
   type RestoreCompletedEvent,
+  type HistoryRecoveryCompletedEvent,
 } from './mls-coordinator.events';
 import { MlsCoordinatorBase } from './mls-coordinator.base';
 
@@ -120,6 +121,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly _pendingDecryptQueued$$ = new Subject<PendingDecryptQueuedEvent>();
   private readonly _pendingDecryptReplayed$$ = new Subject<ReplayedDecryptEvent>();
   private readonly _restoreCompleted$$     = new Subject<RestoreCompletedEvent>();
+  private readonly _historyRecoveryCompleted$$ = new Subject<HistoryRecoveryCompletedEvent>();
 
   // ── Public Observables (MlsCoordinatorBase contract) ──────────────────────
   override readonly conversationReady$      = this._conversationReady$$.asObservable();
@@ -129,6 +131,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   override readonly pendingDecryptQueued$   = this._pendingDecryptQueued$$.asObservable();
   override readonly pendingDecryptReplayed$ = this._pendingDecryptReplayed$$.asObservable();
   override readonly restoreCompleted$       = this._restoreCompleted$$.asObservable();
+  override readonly historyRecoveryCompleted$ = this._historyRecoveryCompleted$$.asObservable();
 
   // Called by BackupService at construction time to avoid a circular DI cycle.
   setBackupService(svc: BackupEnqueuerLike): void {
@@ -347,7 +350,9 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   //    even if THIS device's local MLS state is already degraded (often
   //    exactly why we're in this recovery path). Only recovers messages
   //    this account has successfully decrypted+backed-up at some point, on
-  //    any of its own devices -- never the other participant's copy.
+  //    any of its own devices -- never the other participant's copy. Kept
+  //    best-effort (own try/catch): a cloud outage must not stop the MLS
+  //    sweep below, which is an independent recovery path.
   // 2. Fetches the full server-side message list for convId and, for
   //    anything still not in the local cache after (1), attempts decryption
   //    with the group state that's about to be destroyed. Calls
@@ -362,78 +367,83 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   // placeholder conversion below: a message the recipient genuinely
   // received should show as "[Encrypted]", not vanish with no trace once
   // the keys are gone.
+  //
+  // Unlike the cloud-restore substep, a failure to even ENUMERATE what
+  // exists (server pagination, local cache read) is NOT swallowed here --
+  // it propagates to clearConversationGroup(), which must not destroy keys
+  // while it's not known whether every recoverable message was tried. Both
+  // callers already handle a thrown clearConversationGroup() safely:
+  // recoverFromFailed()'s own catch reschedules a retry with backoff, and
+  // reestablishEncryption()'s Option A falls through to the Option B
+  // recreate fallback exactly as it does for any other failure today.
   private async recoverMissingHistoryBeforeClear(
     convId: string,
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<void> {
-    try {
-      if (this.backupSvcRef?.isMbkAvailable()) {
-        try {
-          await this.backupSvcRef.restore();
-        } catch (err) {
-          console.warn('[MLS:coordinator] recoverMissingHistoryBeforeClear: cloud restore failed', convId, err);
-        }
+    if (this.backupSvcRef?.isMbkAvailable()) {
+      try {
+        await this.backupSvcRef.restore();
+      } catch (err) {
+        console.warn('[MLS:coordinator] recoverMissingHistoryBeforeClear: cloud restore failed', convId, err);
       }
-
-      const localIds = await this.messageCacheSvc.getAllIds(convId);
-      let cursor: string | undefined;
-      let hasMore = true;
-      let recovered = 0;
-      let stillUndecryptable = 0;
-
-      while (hasMore) {
-        const page = await firstValueFrom(this.convSvc.getMessages(convId, cursor, 100));
-
-        for (const msg of page.data) {
-          if (localIds.has(msg.id)) continue;
-          const isMine = msg.senderDid === user.did;
-
-          try {
-            const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, msg.ciphertext);
-            await this.messageCacheSvc.store({
-              id:                msg.id,
-              conversationId:    convId,
-              senderDeviceId:    msg.senderDeviceId,
-              senderDid:         msg.senderDid,
-              plaintext,
-              isMine,
-              undecryptable:     false,
-              cacheVersion:      1,
-              encryptionVersion: 1,
-              deletedAt:         null,
-              createdAt:         msg.createdAt,
-              cachedAt:          Date.now(),
-            });
-            recovered++;
-          } catch {
-            await this.messageCacheSvc.store({
-              id:                msg.id,
-              conversationId:    convId,
-              senderDeviceId:    msg.senderDeviceId,
-              senderDid:         msg.senderDid,
-              plaintext:         '',
-              isMine,
-              undecryptable:     true,
-              cacheVersion:      1,
-              encryptionVersion: 1,
-              deletedAt:         null,
-              createdAt:         msg.createdAt,
-              cachedAt:          Date.now(),
-            });
-            stillUndecryptable++;
-          }
-        }
-
-        cursor  = page.cursor ?? undefined;
-        hasMore = page.hasMore;
-      }
-
-      console.log('[MLS:observability] recoverMissingHistoryBeforeClear', { conversationId: convId, recovered, stillUndecryptable });
-    } catch (err) {
-      // Best-effort only -- never let this block the clear that's about to happen.
-      console.warn('[MLS:coordinator] recoverMissingHistoryBeforeClear failed for', convId, ':', err);
     }
+
+    const localIds = await this.messageCacheSvc.getAllIds(convId);
+    let cursor: string | undefined;
+    let hasMore = true;
+    let recovered = 0;
+    let stillUndecryptable = 0;
+
+    while (hasMore) {
+      const page = await firstValueFrom(this.convSvc.getMessages(convId, cursor, 100));
+
+      for (const msg of page.data) {
+        if (localIds.has(msg.id)) continue;
+        const isMine = msg.senderDid === user.did;
+
+        try {
+          const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, msg.ciphertext);
+          await this.messageCacheSvc.store({
+            id:                msg.id,
+            conversationId:    convId,
+            senderDeviceId:    msg.senderDeviceId,
+            senderDid:         msg.senderDid,
+            plaintext,
+            isMine,
+            undecryptable:     false,
+            cacheVersion:      1,
+            encryptionVersion: 1,
+            deletedAt:         null,
+            createdAt:         msg.createdAt,
+            cachedAt:          Date.now(),
+          });
+          recovered++;
+        } catch {
+          await this.messageCacheSvc.store({
+            id:                msg.id,
+            conversationId:    convId,
+            senderDeviceId:    msg.senderDeviceId,
+            senderDid:         msg.senderDid,
+            plaintext:         '',
+            isMine,
+            undecryptable:     true,
+            cacheVersion:      1,
+            encryptionVersion: 1,
+            deletedAt:         null,
+            createdAt:         msg.createdAt,
+            cachedAt:          Date.now(),
+          });
+          stillUndecryptable++;
+        }
+      }
+
+      cursor  = page.cursor ?? undefined;
+      hasMore = page.hasMore;
+    }
+
+    console.log('[MLS:observability] recoverMissingHistoryBeforeClear', { conversationId: convId, recovered, stillUndecryptable });
+    this._historyRecoveryCompleted$$.next({ conversationId: convId, recovered, stillUndecryptable });
   }
 
   override async clearConversationGroup(
@@ -477,6 +487,49 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
     await this.pendingRepo.clear(convId);
     this.transitionState(convId, ConversationMlsState.Empty);
+  }
+
+  // Heals messages left as undecryptable placeholders by
+  // recoverMissingHistoryBeforeClear() because the MBK wasn't unlocked yet
+  // at the time -- cloud restore is a upsert by id (storeMany), so re-running
+  // it once the MBK becomes available can turn a placeholder back into
+  // plaintext. Returns how many of THIS conversation's placeholders were
+  // actually healed by this call, 0 if the MBK still isn't available or
+  // there was nothing to retry.
+  override async retryUndecryptableViaCloudBackup(
+    convId: string,
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<number> {
+    if (!this.backupSvcRef?.isMbkAvailable()) return 0;
+
+    const undecryptableIds: string[] = [];
+    let cursor: number | undefined;
+    for (;;) {
+      const page = await this.messageCacheSvc.getMessagesPage(convId, cursor ?? 0, 500);
+      if (page.length === 0) break;
+      for (const msg of page) {
+        if (msg.undecryptable) undecryptableIds.push(msg.id);
+      }
+      cursor = page[page.length - 1]!.createdAt;
+      if (page.length < 500) break;
+    }
+
+    if (undecryptableIds.length === 0) return 0;
+
+    try {
+      await this.backupSvcRef.restore();
+    } catch (err) {
+      console.warn('[MLS:coordinator] retryUndecryptableViaCloudBackup: cloud restore failed', convId, err);
+      return 0;
+    }
+
+    let healed = 0;
+    for (const id of undecryptableIds) {
+      const msg = await this.messageCacheSvc.getById(id);
+      if (msg && !msg.undecryptable) healed++;
+    }
+    return healed;
   }
 
   override async prepareConversation(

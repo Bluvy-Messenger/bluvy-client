@@ -1,5 +1,5 @@
 import { TestBed, fakeAsync, tick, flush } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { MlsCoordinatorService } from './mls-coordinator.service';
 import { ConversationMlsState } from './mls-coordinator.types';
 import { MlsService } from '../mls.service';
@@ -32,7 +32,7 @@ describe('MlsCoordinatorService', () => {
       'fetchAndProcessPendingWelcome',
       'clearConversationGroup',
     ]);
-    mockMessageCacheSvc = jasmine.createSpyObj<MessageCacheService>('MessageCacheService', ['store', 'exists', 'getAllIds']);
+    mockMessageCacheSvc = jasmine.createSpyObj<MessageCacheService>('MessageCacheService', ['store', 'exists', 'getAllIds', 'getMessagesPage', 'getById']);
     mockConvSvc = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getMessages']);
     mockPendingRepo = jasmine.createSpyObj<PendingDecryptRepository>('PendingDecryptRepository', ['enqueue', 'remove', 'markAttempt', 'getAll']);
     mockWatchdog = jasmine.createSpyObj<MlsWatchdogService>('MlsWatchdogService', ['watch', 'unwatch']);
@@ -47,6 +47,8 @@ describe('MlsCoordinatorService', () => {
     // recoverMissingHistoryBeforeClear (runs inside clearConversationGroup) sees an
     // empty server page by default -- nothing to recover, nothing to fail on.
     mockConvSvc.getMessages.and.returnValue(of({ data: [], cursor: null, hasMore: false }));
+    mockMessageCacheSvc.getMessagesPage.and.returnValue(Promise.resolve([]));
+    mockMessageCacheSvc.getById.and.returnValue(Promise.resolve(null));
 
     TestBed.configureTestingModule({
       providers: [
@@ -408,6 +410,92 @@ describe('MlsCoordinatorService', () => {
       expect(service.getConversationState('conv-catchup-throws')).toBe(ConversationMlsState.Failed);
 
       flush();
+    }));
+  });
+
+  // ── Feature 1: structural recovery failures block destruction ────────────
+  describe('recoverMissingHistoryBeforeClear (structural failure propagation)', () => {
+    it('propagates a server pagination failure and does not destroy group state', fakeAsync(() => {
+      mockConvSvc.getMessages.and.returnValue(throwError(() => new Error('network down')));
+
+      let thrown: unknown;
+      service.clearConversationGroup('conv-recover-fail', mockUser, mockDevice).catch(err => { thrown = err; });
+      tick();
+
+      expect(thrown).toBeDefined();
+      expect(mockMlsSvc.clearConversationGroup).not.toHaveBeenCalled();
+    }));
+
+    it('emits historyRecoveryCompleted$ with counts and still clears after a confirmed-complete sweep', fakeAsync(() => {
+      mockConvSvc.getMessages.and.returnValue(of({
+        data: [{ id: 'srv-1', conversationId: 'conv-recover-ok', ciphertext: 'c1', senderDid: 'did:plc:bob', senderDeviceId: 'device-bob', createdAt: 1 }],
+        cursor:  null,
+        hasMore: false,
+      }));
+      mockMessageCacheSvc.getAllIds.and.returnValue(Promise.resolve(new Set<string>()));
+      mockMlsSvc.decryptMessage.and.returnValue(Promise.resolve('plaintext'));
+
+      let event: { conversationId: string; recovered: number; stillUndecryptable: number } | undefined;
+      service.historyRecoveryCompleted$.subscribe(e => { event = e; });
+
+      service.clearConversationGroup('conv-recover-ok', mockUser, mockDevice).catch(() => {});
+      tick();
+
+      expect(event).toEqual({ conversationId: 'conv-recover-ok', recovered: 1, stillUndecryptable: 0 });
+      expect(mockMlsSvc.clearConversationGroup).toHaveBeenCalledWith('conv-recover-ok', mockUser, mockDevice);
+    }));
+  });
+
+  // ── Feature 3: retroactive cloud healing once the MBK becomes available ──
+  describe('retryUndecryptableViaCloudBackup', () => {
+    const undecryptableMsg = {
+      id: 'msg-u1', conversationId: 'conv-heal', senderDeviceId: 'device-bob', senderDid: 'did:plc:bob',
+      plaintext: '', isMine: false, undecryptable: true, cacheVersion: 1, encryptionVersion: 1,
+      deletedAt: null, createdAt: 1, cachedAt: 1,
+    };
+
+    it('returns 0 without touching the cache when the MBK is not available', fakeAsync(() => {
+      let result: number | undefined;
+      service.retryUndecryptableViaCloudBackup('conv-heal', mockUser, mockDevice).then(r => { result = r; });
+      tick();
+
+      expect(result).toBe(0);
+      expect(mockMessageCacheSvc.getMessagesPage).not.toHaveBeenCalled();
+    }));
+
+    it('returns 0 without calling restore when the MBK is available but nothing is undecryptable', fakeAsync(() => {
+      const restore = jasmine.createSpy('restore').and.returnValue(Promise.resolve());
+      service.setBackupService({
+        enqueue: () => {},
+        isMbkAvailable: () => true,
+        restore,
+      });
+      mockMessageCacheSvc.getMessagesPage.and.returnValue(Promise.resolve([]));
+
+      let result: number | undefined;
+      service.retryUndecryptableViaCloudBackup('conv-heal', mockUser, mockDevice).then(r => { result = r; });
+      tick();
+
+      expect(result).toBe(0);
+      expect(restore).not.toHaveBeenCalled();
+    }));
+
+    it('restores from the cloud and reports how many undecryptable placeholders were healed', fakeAsync(() => {
+      const restore = jasmine.createSpy('restore').and.returnValue(Promise.resolve());
+      service.setBackupService({
+        enqueue: () => {},
+        isMbkAvailable: () => true,
+        restore,
+      });
+      mockMessageCacheSvc.getMessagesPage.and.returnValue(Promise.resolve([undecryptableMsg]));
+      mockMessageCacheSvc.getById.and.returnValue(Promise.resolve({ ...undecryptableMsg, plaintext: 'hi', undecryptable: false }));
+
+      let result: number | undefined;
+      service.retryUndecryptableViaCloudBackup('conv-heal', mockUser, mockDevice).then(r => { result = r; });
+      tick();
+
+      expect(restore).toHaveBeenCalled();
+      expect(result).toBe(1);
     }));
   });
 });
