@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet, IonToast, IonIcon } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
@@ -16,7 +16,7 @@ import {
   eyeOutline, eyeOffOutline, lockClosedOutline, checkmarkDone,
   checkmarkDoneOutline, checkmarkOutline, send,
   // landing + legal + about
-  arrowForwardOutline, fingerPrintOutline, keyOutline,
+  arrowForwardOutline, fingerPrintOutline, keyOutline, linkOutline,
   documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
   chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
   // devices + security + settings
@@ -58,12 +58,15 @@ export class AppComponent implements OnInit, OnDestroy {
   private badgeSvc = inject(AccountBadgeService);
   private msgCacheSvc = inject(MessageCacheService);
   private router = inject(Router);
+  private platform = inject(Platform);
   readonly connectivitySvc = inject(ConnectivityService);
+
+  @ViewChild(IonRouterOutlet) private routerOutlet?: IonRouterOutlet;
 
   constructor() {
     inject(ThemeService);
     inject(NavigationRedirectService);
-    inject(JournalService); // Start console interception at boot
+    inject(JournalService); // Console capture already started in main.ts; this wires up IndexedDB persistence
     addIcons({
       chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
       personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,
@@ -72,7 +75,7 @@ export class AppComponent implements OnInit, OnDestroy {
       sunny, contrastOutline, contrast, checkmarkCircleOutline, checkmarkCircle,
       eyeOutline, eyeOffOutline, lockClosedOutline, checkmarkDone,
       checkmarkDoneOutline, checkmarkOutline, send,
-      arrowForwardOutline, fingerPrintOutline, keyOutline,
+      arrowForwardOutline, fingerPrintOutline, keyOutline, linkOutline,
       documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
       laptopOutline, trashOutline, syncOutline,
       globe, globeOutline, flaskOutline,
@@ -173,6 +176,33 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!user || !device) return;
       void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
         .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
+    });
+
+    // This empty listener is required for Android hardware back to reach
+    // Ionic at all: Capacitor's native side only forwards the event into
+    // the 'backbutton' DOM event (which Platform.backButton below listens
+    // to) when at least one 'backButton' listener is registered -- with
+    // none registered, it silently replays the WebView's own history
+    // instead. The actual handling lives in Platform.backButton so it
+    // stays coordinated with Ionic's own default pop handler (priority 0)
+    // instead of running a second, uncoordinated navigation in parallel.
+    void App.addListener('backButton', () => {});
+
+    // Priority 1 runs before Ionic's own default handler (priority 0,
+    // which calls NavController.pop()). If the ion-router-outlet stack can
+    // still pop, defer to that default. Otherwise the stack is exhausted
+    // -- e.g. a cold start opened directly into a conversation from a
+    // notification tap -- and letting the event fall through would exit
+    // the app instead of landing somewhere sensible.
+    this.platform.backButton.subscribeWithPriority(1, (processNextHandler) => {
+      if (this.routerOutlet?.canGoBack()) {
+        processNextHandler();
+        return;
+      }
+      void this.router.navigate(
+        [this.authSvc.isAuthenticated() ? ROUTES.conversations : ROUTES.welcome],
+        { replaceUrl: true },
+      );
     });
   }
 

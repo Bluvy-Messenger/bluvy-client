@@ -289,17 +289,25 @@ export class SyncService {
 
   // ── Queue (public) ─────────────────────────────────────────────────────────
 
-  // Called by external consumers (socket, send, gap-fill via MlsCoordinatorService).
+  // Called by external consumers (socket, send, gap-fill via MlsCoordinatorService)
+  // for a single just-decrypted/just-sent message. Writes durably before any
+  // network attempt (see writeDurable()) -- a message backup lost to the
+  // process being killed right after decrypt is not just locally gone, it's
+  // unrecoverable from the cloud too, since it was never actually flushed.
   // Silently dropped during rebuild to prevent cross-contamination.
   enqueue(item: Omit<PendingSyncItem, 'keyVersion'>): void {
     if (this.rebuilding) return;
-    this.pushToQueue(item);
+    void this.writeDurable(item);
   }
 
-  // Called by MlsService when MLS group state changes.
+  // Called by MlsService when MLS group state changes. Same durability
+  // reasoning as enqueue() above -- a group state must never be lost to the
+  // process being killed in the up-to-5s window the in-memory queue would
+  // otherwise sit in unflushed. Fire-and-forget: callers (MlsService) call
+  // this synchronously and don't await it.
   backupGroupState(conversationId: string, groupStateB64: string): void {
     if (this.rebuilding) return;
-    this.pushToQueue({
+    void this.writeDurable({
       messageId:      `group-state:${conversationId}`,
       conversationId,
       plaintext:      groupStateB64,
@@ -309,10 +317,38 @@ export class SyncService {
     });
   }
 
+  // Writes a single high-value item durably to IndexedDB (via
+  // failedBatchRepo) before any network attempt, then triggers an immediate
+  // flush -- used for both live message backups and group-state backups, the
+  // two cases where losing the up-to-5s in-memory-queue window to a killed
+  // process is unacceptable (unlike doLocalUpload()'s bulk backfill path,
+  // which keeps using the plain in-memory queue: it already flushes
+  // synchronously page-by-page and per-item durable writes for a 500-message
+  // batch would be needless overhead).
+  // Falls back to the in-memory queue, unchanged, when the MBK isn't
+  // unlocked yet -- nothing can be encrypted regardless, and flush() already
+  // retries the in-memory queue once an MBK becomes available.
+  private async writeDurable(item: Omit<PendingSyncItem, 'keyVersion'>): Promise<void> {
+    const mbk = this.mbk; // snapshot — key may change during the awaits below
+    if (!mbk) { this.pushToQueue(item); return; }
+    try {
+      const encrypted = await this.encryptItem({ ...item, keyVersion: 1 }, mbk);
+      await this.failedBatchRepo.saveBatch([encrypted]);
+    } catch (err) {
+      if (!environment.production) console.error('[SyncService] writeDurable: durable write failed:', err);
+      return;
+    }
+    void this.flush();
+  }
+
   // Returns the in-flight flush Promise if one is already running.
   async flush(): Promise<void> {
     if (this.currentFlush) return this.currentFlush;
-    if (this.queue.length === 0 || !this.mbk) return;
+    // No early-return on an empty in-memory queue: runFlush() must still
+    // drain failedBatchRepo, which is where backupGroupState() now writes
+    // durably ahead of the network attempt (and where any prior flush
+    // failure -- message or group-state -- ends up for retry).
+    if (!this.mbk) return;
     this.currentFlush = this.runFlush().finally(() => { this.currentFlush = null; });
     return this.currentFlush;
   }

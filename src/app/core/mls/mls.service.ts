@@ -430,18 +430,24 @@ export class MlsService {
   }
 
   // Fetches and applies any MLS commits missed while offline.
+  // Returns the number of commits actually applied -- the recovery signal
+  // consumed by MlsCoordinatorService.recoverFromFailed to distinguish "this
+  // device merely missed commits and is now caught up" (a sound basis for
+  // healing without a Welcome) from "nothing changed" (0, proves nothing on
+  // its own -- a forked device at an epoch >= the server's also gets 0
+  // without throwing).
   async catchUpMissedCommits(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
-  ): Promise<void> {
+  ): Promise<number> {
     const scope = this.makeScope(user.did, device.id);
 
     // Read-only pre-check to get the current epoch for the query parameter.
     const state = await this.storage.load<StoredMlsState>(scope);
-    if (!state) return;
+    if (!state) return 0;
     const encoded = state.groupStates[conversationId];
-    if (!encoded) return;
+    if (!encoded) return 0;
 
     const clientState  = this.restoreClientState(encoded);
     const currentEpoch = Number(clientState.groupContext.epoch);
@@ -452,7 +458,7 @@ export class MlsService {
       conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch, returnedCommits: response.data.length,
     });
 
-    if (response.data.length === 0) return;
+    if (response.data.length === 0) return 0;
 
     if (!environment.production) console.log('[MLS] catchUpMissedCommits: applying', response.data.length, 'missed commit(s) from epoch', currentEpoch, 'for conv', conversationId);
     let appliedCommits = 0;
@@ -472,6 +478,7 @@ export class MlsService {
       conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch,
       returnedCommits: response.data.length, appliedCommits, result: 'complete',
     });
+    return appliedCommits;
   }
 
   // Processes an incoming Welcome and joins the corresponding MLS group.
@@ -498,10 +505,19 @@ export class MlsService {
     const preState = await this.storage.load<StoredMlsState>(scope);
     if (!preState) throw new Error('MLS not initialized');
 
-    // Idempotence: if this Welcome was already processed on this device, ACK and return.
-    if (welcomeId && preState.processedWelcomeIds?.includes(welcomeId)) {
+    // Idempotence: keyed by content digest, not the server row id -- the
+    // backend UPSERTs a device's pending Welcome row on (targetDeviceId,
+    // conversationId) when re-provisioning (mls.schema.ts's
+    // device_welcomes_target_conv_unique), so a genuinely NEW Welcome can
+    // arrive under an id already seen. Treating the id as identity silently
+    // discarded and falsely ACKed that new Welcome, leaving the device
+    // stuck on a stale group state. The digest only answers "have I seen
+    // these exact bytes before" -- it never substitutes for joinGroup()'s
+    // cryptographic verification below.
+    const welcomeDigest = await this._sha256hex(welcomeBytes);
+    if (preState.processedWelcomeDigests?.includes(welcomeDigest)) {
       if (!environment.production) console.log('[MLS] processWelcomeForConversation: Welcome already processed, ACKing:', welcomeId);
-      this.ackWelcome(welcomeId);
+      if (welcomeId) this.ackWelcome(welcomeId);
       return;
     }
 
@@ -586,15 +602,13 @@ export class MlsService {
         kp => kp.serializedKeyPackage !== consumedKpB64,
       );
       state.groupStates[conversationId] = newStateB64wfc;
-      // Record processed welcomeId for idempotent re-delivery handling (max 200, FIFO).
-      if (welcomeId) {
-        const ids = state.processedWelcomeIds ?? [];
-        if (!ids.includes(welcomeId)) {
-          ids.push(welcomeId);
-          if (ids.length > 200) ids.splice(0, ids.length - 200);
-        }
-        state.processedWelcomeIds = ids;
+      // Record processed Welcome digest for idempotent re-delivery handling (max 200, FIFO).
+      const digests = state.processedWelcomeDigests ?? [];
+      if (!digests.includes(welcomeDigest)) {
+        digests.push(welcomeDigest);
+        if (digests.length > 200) digests.splice(0, digests.length - 200);
       }
+      state.processedWelcomeDigests = digests;
       state.updatedAt = Date.now();
       return state;
     });
@@ -605,21 +619,30 @@ export class MlsService {
     }
   }
 
-  // Marks a Welcome consumed on the server with up to 3 retries (backoff: 2s, 4s).
+  // Marks a Welcome consumed on the server with up to 5 retries (backoff: 1s, 2s, 4s, 8s).
+  //
+  // Durability invariant: a permanently-failed ACK here is not a dead end.
+  // The row stays "pending" server-side, so the next getPendingWelcomes
+  // fetch (every conversation open, every ensureGroupReady() call) re-serves
+  // it, and processWelcomeForConversation()'s content-digest guard above
+  // recognizes it as already-processed and re-ACKs it. That opportunistic
+  // refetch IS the durable retry -- do not add a separate pending-ack store,
+  // it would just duplicate this existing mechanism with a second source of truth.
   private ackWelcome(welcomeId: string): void {
     void this.ackWelcomeWithRetry(welcomeId);
   }
 
   private async ackWelcomeWithRetry(welcomeId: string): Promise<void> {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const delaysMs = [1000, 2000, 4000, 8000];
+    for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
       try {
         await this.mlsRepo.ackWelcome(welcomeId);
         return;
       } catch (err) {
-        if (attempt < 2) {
-          await new Promise<void>(r => setTimeout(r, 2000 * (attempt + 1)));
+        if (attempt < delaysMs.length) {
+          await new Promise<void>(r => setTimeout(r, delaysMs[attempt]));
         } else {
-          console.warn('[MLS] ACK permanently failed for Welcome', welcomeId, 'after 3 attempts:', err);
+          console.warn('[MLS] ACK failed for Welcome', welcomeId, `after ${delaysMs.length + 1} attempts (will retry opportunistically on next pending-Welcome fetch):`, err);
         }
       }
     }
@@ -676,28 +699,54 @@ export class MlsService {
 
   // Injects restored MLS group states from a backup into local storage.
   // Only injects states for conversations without an existing local state.
+  // Returns the conversationIds actually injected (a subset of the input:
+  // an existing local group state is never overwritten, and a candidate
+  // whose epoch regresses below what this device is known to have already
+  // reached -- per the tombstone recorded by clearConversationGroup() -- is
+  // refused rather than silently adopted).
   async injectRestoredGroupStates(
     groupStates: Record<string, string>,
     user:        UserProfile,
     device:      SessionDevice,
-  ): Promise<void> {
-    if (Object.keys(groupStates).length === 0) return;
+  ): Promise<string[]> {
+    if (Object.keys(groupStates).length === 0) return [];
 
     const scope = this.makeScope(user.did, device.id);
+    const injectedIds: string[] = [];
 
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state) return null;
       let injected = false;
       for (const [convId, gs] of Object.entries(groupStates)) {
-        if (!state.groupStates[convId]) {
-          state.groupStates[convId] = gs;
-          injected = true;
+        if (state.groupStates[convId]) continue;
+
+        const lastKnownEpoch = state.lastKnownEpochs?.[convId];
+        if (lastKnownEpoch !== undefined) {
+          let restoredEpoch: number;
+          try {
+            restoredEpoch = Number(this.restoreClientState(gs).groupContext.epoch);
+          } catch (err) {
+            console.warn('[MLS] injectRestoredGroupStates: failed to decode candidate for', convId, ':', err);
+            continue;
+          }
+          if (restoredEpoch < lastKnownEpoch) {
+            console.log('[MLS:observability] injectRestoredGroupStates refused', {
+              conversationId: convId, restoredEpoch, lastKnownEpoch, result: 'refused_stale_backup',
+            });
+            continue;
+          }
         }
+
+        state.groupStates[convId] = gs;
+        injectedIds.push(convId);
+        injected = true;
       }
       if (!injected) return null;
       state.updatedAt = Date.now();
       return state;
     });
+
+    return injectedIds;
   }
 
   // Provisions a single device into an existing MLS group.
@@ -723,6 +772,19 @@ export class MlsService {
     if (!preState) throw new Error('MLS not initialized');
     if (!preState.groupStates[conversationId]) {
       if (!environment.production) console.log('[MLS] provisionDevice: no group state for', conversationId, '— skipping');
+      return;
+    }
+
+    // Pre-check: skip immediately if already a member -- read-only, no network,
+    // avoids wasting a KeyPackage consumption attempt on every reconnect for a
+    // device that doesn't need (re-)provisioning at all (this is called for
+    // every device x every conversation on each socket reconnect, see
+    // DeviceProvisioningService.checkAndProvisionOnConnect). The check inside
+    // the storage lock below stays as-is, as the TOCTOU safety net for two
+    // concurrent provisionDevice calls racing each other.
+    const preClientState = this.restoreClientState(preState.groupStates[conversationId]);
+    if (this.isDeviceMember(preClientState, newDeviceId)) {
+      if (!environment.production) console.log('[MLS] provisionDevice: device already member (pre-check), skipping', newDeviceId, conversationId);
       return;
     }
 
@@ -792,18 +854,10 @@ export class MlsService {
       // Guard inside the lock: verify device is not already a member.
       // This prevents the TOCTOU race where two concurrent provisionDevice calls
       // both consumed a KP before entering this lock.
-      {
-        const members = getGroupMembers(clientState);
-        const dec = new TextDecoder();
-        const alreadyMember = members.some((m: ReturnType<typeof getGroupMembers>[number]) =>
-          m.credential.credentialType === 'basic' &&
-          dec.decode(m.credential.identity).endsWith(`#${newDeviceId}`)
-        );
-        if (alreadyMember) {
-          if (!environment.production) console.log('[MLS] provisionDevice: device already member (inside lock), skipping', newDeviceId, conversationId);
-          shouldSkip = true;
-          return null;
-        }
+      if (this.isDeviceMember(clientState, newDeviceId)) {
+        if (!environment.production) console.log('[MLS] provisionDevice: device already member (inside lock), skipping', newDeviceId, conversationId);
+        shouldSkip = true;
+        return null;
       }
 
       const { newState, welcome, commit } = await createCommit(
@@ -1097,6 +1151,25 @@ export class MlsService {
 
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state) return null;
+
+      // Record a tombstone of the highest epoch this device is known to
+      // have reached, before deleting the only local record of it. Without
+      // this, a later automatic backup-restore (SyncService.onGroupNotReady)
+      // has nothing to compare against and can silently resurrect a stale
+      // snapshot -- see injectRestoredGroupStates()'s anti-regression check.
+      const encoded = state.groupStates[conversationId];
+      if (encoded) {
+        try {
+          const epoch = Number(this.restoreClientState(encoded).groupContext.epoch);
+          const epochs = state.lastKnownEpochs ?? {};
+          epochs[conversationId] = Math.max(epochs[conversationId] ?? -1, epoch);
+          state.lastKnownEpochs = epochs;
+        } catch (err) {
+          // A corrupt/undecodable group state must not block the clear.
+          console.warn('[MLS] clearConversationGroup: failed to record epoch tombstone for', conversationId, ':', err);
+        }
+      }
+
       delete state.groupStates[conversationId];
       state.updatedAt = Date.now();
       return state;
@@ -1211,6 +1284,14 @@ export class MlsService {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  private isDeviceMember(clientState: ClientState, deviceId: string): boolean {
+    const dec = new TextDecoder();
+    return getGroupMembers(clientState).some((m: ReturnType<typeof getGroupMembers>[number]) =>
+      m.credential.credentialType === 'basic' &&
+      dec.decode(m.credential.identity).endsWith(`#${deviceId}`)
+    );
+  }
 
   private restoreClientState(base64: string): ClientState {
     const bytes   = this.base64ToBytes(base64);

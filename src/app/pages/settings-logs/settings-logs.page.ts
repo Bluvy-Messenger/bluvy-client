@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { JournalService, JournalEntry, LogLevel } from '../../core/journal/journal.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-settings-logs',
@@ -57,7 +58,7 @@ export class SettingsLogsPage implements OnInit {
   }
 
   goBack(): void {
-    void this.router.navigate(['/about']);
+    void this.router.navigate([ROUTES.about]);
   }
 
   formatTime(ts: number): string {

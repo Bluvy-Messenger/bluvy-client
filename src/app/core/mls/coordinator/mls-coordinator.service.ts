@@ -530,7 +530,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     convId: string,
     user:   UserProfile,
     device: DeviceInfo,
-    op:     () => Promise<void>,
+    op:     () => Promise<unknown>,
   ): Promise<void> {
     const wasReady = (await this.getOrDeriveState(convId, user, device)) === ConversationMlsState.Ready;
     if (wasReady) this.transitionState(convId, ConversationMlsState.ApplyingCommit);
@@ -569,10 +569,30 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<void> {
-    return this.trackCommitOutcome(
+    await this.trackCommitOutcome(
       convId, user, device,
       () => this.mlsSvc.catchUpMissedCommits(convId, user, device),
     );
+
+    // A background catch-up (proactiveCatchUpSweep, socket reconnect) was the
+    // only path that could bring a conversation up to date without ever
+    // giving its pending_decrypt queue a chance -- the user had to open the
+    // conversation by hand for replayPendingDecrypts to run. Guarded on
+    // READY (i.e. this device has local group state): replaying against a
+    // conversation with none throws the *transient* 'MLS group not ready',
+    // which burns pendingRepo's single retry budget (replayPendingDecrypts:
+    // attempts >= 1 => permanent) and would turn recoverable messages into
+    // "[Encrypted]" on the next session's sweep. Deliberately NOT done inside
+    // trackCommitOutcome (which also wraps a single live commit from the
+    // socket): a live commit can leave the group at an intermediate epoch,
+    // where a pending message from a later epoch decrypts to a permanent
+    // error instead of the transient one it would get once fully caught up.
+    // A completed catch-up batch cannot do that: any message this device
+    // already received was sent after its own epoch's commit was posted, so
+    // the batch necessarily covers it.
+    if (this.isConversationReady(convId)) {
+      await this.replayPendingDecrypts(convId, user, device);
+    }
   }
 
   // ── Provisioning ──────────────────────────────────────────────────────────
@@ -617,10 +637,14 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       'injectRestoredGroupStates: groupStates must be an object');
 
     const operationId = crypto.randomUUID();
-    await this.mlsSvc.injectRestoredGroupStates(groupStates, user, device);
+    // Only the conversationIds MlsService actually injected -- it can refuse
+    // a candidate whose epoch would regress below what this device already
+    // reached (see MlsService.injectRestoredGroupStates), and marking those
+    // READY here would paper over that refusal.
+    const injectedIds = await this.mlsSvc.injectRestoredGroupStates(groupStates, user, device);
 
-    // Mark all restored conversations as READY, bypassing normal transition rules.
-    for (const convId of Object.keys(groupStates)) {
+    // Mark restored conversations as READY, bypassing normal transition rules.
+    for (const convId of injectedIds) {
       const from = this.states.get(convId) ?? ConversationMlsState.Empty;
       this.states.set(convId, ConversationMlsState.Ready);
       if (!this.readyTimestamps.has(convId)) {
@@ -631,7 +655,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     }
 
     this._restoreCompleted$$.next({
-      conversationCount: Object.keys(groupStates).length,
+      conversationCount: injectedIds.length,
       operationId,
     });
   }
@@ -744,6 +768,15 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     console.log('[MLS:observability] recoverFromFailed invoked', { conversationId: convId, attempt: attempts });
 
     this.transitionState(convId, ConversationMlsState.Empty);
+    // EMPTY -> READY is not a legal transition (MlsStateTransitionGuard) --
+    // without this intermediate step, fetchAndProcessPendingWelcome()'s own
+    // transitionState(Ready) below throws even after a genuinely successful
+    // join (the new group state is already written in MlsService by then),
+    // which this method's outer catch turns into a FAILED retry; the next
+    // attempt finds the Welcome already consumed and destroys the group
+    // state it had just correctly repaired. JOINING -> READY and
+    // JOINING -> FAILED are both legal, so this only adds a bookkeeping step.
+    this.transitionState(convId, ConversationMlsState.Joining);
 
     try {
       const ok = await this.fetchAndProcessPendingWelcome(convId, user, device);
@@ -765,6 +798,46 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       // leaving EMPTY after a failed automatic recovery silently hid that
       // button exactly when it was the only way left to unblock the user.
       if (!environment.production) console.warn('[MLS:coordinator] recoverFromFailed: no pending welcome found, clearing local group state to trigger reset', convId);
+
+      // Before giving up on the non-destructive explanation entirely: the
+      // FAILED->EMPTY->JOINING reset above is coordinator bookkeeping only --
+      // MlsService's actual group state is still intact at this point, only
+      // destroyed by clearConversationGroup() below. Maybe this device simply
+      // missed some commits and never needed a Welcome at all. Called on
+      // MlsService directly (not the coordinator wrapper) to read the
+      // applied-commit count -- the wrapper's own state machine is inert
+      // here anyway (state is JOINING, not Ready, so trackCommitOutcome's
+      // wasReady-gated bookkeeping wouldn't fire either way.
+      let appliedCommits = 0;
+      try {
+        appliedCommits = await this.mlsSvc.catchUpMissedCommits(convId, user, device);
+      } catch (err) {
+        // Never let this reach the outer catch: that would skip the
+        // destructive clear below AND consume a backoff attempt, so a few
+        // flaky-network retries would leave the conversation FAILED with its
+        // broken state never actually reset. Fall through to the pre-existing
+        // clear path unchanged. A partially-applied batch also lands here
+        // (the partial count is discarded by catchUpMissedCommits itself) --
+        // correct: mid-chain failure means a forked state, not a recovery.
+        console.warn('[MLS:coordinator] recoverFromFailed: catch-up attempt failed', convId, err);
+        appliedCommits = 0;
+      }
+
+      if (appliedCommits > 0) {
+        // Those commits verified against our local state (processPublicMessage
+        // checks the confirmation tag), so our chain is a valid prefix of the
+        // group's and we are now current -- a genuine recovery, not a guess.
+        // 0 commits proves nothing on its own (a forked device sitting at an
+        // epoch >= the server's also gets 0 without throwing), so that case
+        // still falls through to the clear + FAILED escalation below.
+        console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'healed_via_catchup', appliedCommits });
+        this.commitFailureCounts.delete(convId);
+        this.transitionState(convId, ConversationMlsState.Ready);
+        this.failedRecovery.delete(convId);
+        void this.replayPendingDecrypts(convId, user, device);
+        return;
+      }
+
       console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'no_welcome_clearing_group_state', caller: 'recoverFromFailed' });
       await this.mlsSvc.clearConversationGroup(convId, user, device);
       this.transitionState(convId, ConversationMlsState.Failed);
