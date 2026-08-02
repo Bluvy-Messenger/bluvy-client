@@ -195,16 +195,9 @@ export class ConversationPage implements OnDestroy {
         }
       }
 
-      // A conversation that simply hasn't been established yet (fresh, or
-      // freshly recreated -- see AUDIT_02/04/05 Root Cause #3 fallback) is
-      // NOT the same as one that's genuinely broken: it will establish
-      // transparently on first send via the normal ensureGroupReady path.
-      // Only show the "restore encryption" affordance when explicitly FAILED,
-      // not merely "not yet confirmed ready" -- otherwise every brand-new or
-      // just-recreated conversation misleadingly looks broken.
-      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId);
-
       await this.loadHistory();
+      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId) &&
+        (this.coordinator.isConversationReady(this.conversationId) || this.displayMessages.length === 0);
       this.markReadIfVisible();
     } catch {
       this.error = 'Could not load conversation.';

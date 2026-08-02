@@ -272,7 +272,12 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<boolean> {
-    return this.mlsSvc.fetchAndProcessPendingWelcome(convId, user, device);
+    const ok = await this.mlsSvc.fetchAndProcessPendingWelcome(convId, user, device);
+    if (ok) {
+      this.transitionState(convId, ConversationMlsState.Ready);
+      void this.replayPendingDecrypts(convId, user, device);
+    }
+    return ok;
   }
 
   // ── Group readiness ────────────────────────────────────────────────────────
@@ -414,12 +419,17 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
       try {
         const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
+        console.log('[MLS:coordinator] decryptMessage success for', messageId, 'length:', plaintext.length);
         this.states.set(convId, ConversationMlsState.Ready);
         this.decryptionFailures.set(convId, 0);
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
         const classified = this.classifyError(err, convId);
-        console.error('[MLS:coordinator] decryptMessage error for', messageId, '->', classified.kind, ':', err);
+        if (classified instanceof TransientMlsError) {
+          console.warn('[MLS:coordinator] decryptMessage transient error for', messageId, '->', classified.kind, ':', err instanceof Error ? err.message : err);
+        } else {
+          console.error('[MLS:coordinator] decryptMessage error for', messageId, '->', classified.kind, ':', err);
+        }
 
         if (classified instanceof TransientMlsError) {
           await this.pendingRepo.enqueue({
