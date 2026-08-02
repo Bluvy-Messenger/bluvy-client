@@ -1,8 +1,10 @@
 import { TestBed, fakeAsync, tick, flush } from '@angular/core/testing';
+import { of } from 'rxjs';
 import { MlsCoordinatorService } from './mls-coordinator.service';
 import { ConversationMlsState } from './mls-coordinator.types';
 import { MlsService } from '../mls.service';
 import { MessageCacheService } from '../../conversation/message-cache.service';
+import { ConversationsService } from '../../conversation/conversations.service';
 import { PendingDecryptRepository } from '../repositories/pending-decrypt.repository';
 import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
 import type { UserProfile } from '../../auth/auth.types';
@@ -12,6 +14,7 @@ describe('MlsCoordinatorService', () => {
   let service: MlsCoordinatorService;
   let mockMlsSvc: jasmine.SpyObj<MlsService>;
   let mockMessageCacheSvc: jasmine.SpyObj<MessageCacheService>;
+  let mockConvSvc: jasmine.SpyObj<ConversationsService>;
   let mockPendingRepo: jasmine.SpyObj<PendingDecryptRepository>;
   let mockWatchdog: jasmine.SpyObj<MlsWatchdogService>;
 
@@ -29,7 +32,8 @@ describe('MlsCoordinatorService', () => {
       'fetchAndProcessPendingWelcome',
       'clearConversationGroup',
     ]);
-    mockMessageCacheSvc = jasmine.createSpyObj<MessageCacheService>('MessageCacheService', ['store', 'exists']);
+    mockMessageCacheSvc = jasmine.createSpyObj<MessageCacheService>('MessageCacheService', ['store', 'exists', 'getAllIds']);
+    mockConvSvc = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getMessages']);
     mockPendingRepo = jasmine.createSpyObj<PendingDecryptRepository>('PendingDecryptRepository', ['enqueue', 'remove', 'markAttempt', 'getAll']);
     mockWatchdog = jasmine.createSpyObj<MlsWatchdogService>('MlsWatchdogService', ['watch', 'unwatch']);
 
@@ -39,12 +43,17 @@ describe('MlsCoordinatorService', () => {
     mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(0));
     mockPendingRepo.getAll.and.returnValue(Promise.resolve([]));
     mockMessageCacheSvc.exists.and.returnValue(Promise.resolve(false));
+    mockMessageCacheSvc.getAllIds.and.returnValue(Promise.resolve(new Set<string>()));
+    // recoverMissingHistoryBeforeClear (runs inside clearConversationGroup) sees an
+    // empty server page by default -- nothing to recover, nothing to fail on.
+    mockConvSvc.getMessages.and.returnValue(of({ data: [], cursor: null, hasMore: false }));
 
     TestBed.configureTestingModule({
       providers: [
         MlsCoordinatorService,
         { provide: MlsService, useValue: mockMlsSvc },
         { provide: MessageCacheService, useValue: mockMessageCacheSvc },
+        { provide: ConversationsService, useValue: mockConvSvc },
         { provide: PendingDecryptRepository, useValue: mockPendingRepo },
         { provide: MlsWatchdogService, useValue: mockWatchdog },
       ]
