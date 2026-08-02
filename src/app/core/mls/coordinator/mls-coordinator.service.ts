@@ -1,10 +1,11 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, Subject }   from 'rxjs';
+import { Observable, Subject, firstValueFrom }   from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { MlsService }            from '../mls.service';
 import { UserProfile }      from '../../auth/auth.types';
 import { DeviceInfo }       from '../../device/device.types';
 import { MessageCacheService } from '../../conversation/message-cache.service';
+import { ConversationsService } from '../../conversation/conversations.service';
 import type { CachedMessage } from '../../conversation/conversation.types';
 import { InitializationBarrier }    from '../state-machine/initialization-barrier';
 import { MlsStateTransitionGuard, TRANSITION_REASON_RESTORE } from '../state-machine/state-transition-guard';
@@ -26,6 +27,7 @@ import {
   type ConversationFailedEvent,
   type PendingDecryptQueuedEvent,
   type RestoreCompletedEvent,
+  type HistoryRecoveryCompletedEvent,
 } from './mls-coordinator.events';
 import { MlsCoordinatorBase } from './mls-coordinator.base';
 
@@ -37,6 +39,12 @@ type BackupEnqueuerLike = {
     createdAt:      number;
     senderDid:      string;
   }): void;
+  // SyncService can't be injected directly here -- it already injects
+  // MlsCoordinatorService (for injectRestoredGroupStates), so the reverse
+  // dependency would be circular. Structural typing through this same
+  // registered-reference mechanism (setBackupService) avoids that entirely.
+  isMbkAvailable(): boolean;
+  restore(): Promise<unknown>;
 };
 
 // Error message fragments from ts-mls that indicate transient vs permanent failures.
@@ -66,6 +74,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly messageCacheSvc = inject(MessageCacheService);
   private readonly pendingRepo     = inject(PendingDecryptRepository);
   private readonly watchdog        = inject(MlsWatchdogService);
+  private readonly convSvc         = inject(ConversationsService);
 
   private currentUserProfile: UserProfile | null = null;
   private currentSessionDevice: DeviceInfo | null = null;
@@ -112,6 +121,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly _pendingDecryptQueued$$ = new Subject<PendingDecryptQueuedEvent>();
   private readonly _pendingDecryptReplayed$$ = new Subject<ReplayedDecryptEvent>();
   private readonly _restoreCompleted$$     = new Subject<RestoreCompletedEvent>();
+  private readonly _historyRecoveryCompleted$$ = new Subject<HistoryRecoveryCompletedEvent>();
 
   // ── Public Observables (MlsCoordinatorBase contract) ──────────────────────
   override readonly conversationReady$      = this._conversationReady$$.asObservable();
@@ -121,6 +131,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   override readonly pendingDecryptQueued$   = this._pendingDecryptQueued$$.asObservable();
   override readonly pendingDecryptReplayed$ = this._pendingDecryptReplayed$$.asObservable();
   override readonly restoreCompleted$       = this._restoreCompleted$$.asObservable();
+  override readonly historyRecoveryCompleted$ = this._historyRecoveryCompleted$$.asObservable();
 
   // Called by BackupService at construction time to avoid a circular DI cycle.
   setBackupService(svc: BackupEnqueuerLike): void {
@@ -330,12 +341,126 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     await this.replayPendingDecrypts(convId, user, device);
   }
 
+  // Two-tier recovery of everything this device can still reach before
+  // clearConversationGroup() destroys its only copy of this conversation's
+  // MLS keys:
+  //
+  // 1. Cloud backup (MBK-encrypted, account-wide) -- doesn't depend on this
+  //    conversation's MLS state at all, so it can still recover a message
+  //    even if THIS device's local MLS state is already degraded (often
+  //    exactly why we're in this recovery path). Only recovers messages
+  //    this account has successfully decrypted+backed-up at some point, on
+  //    any of its own devices -- never the other participant's copy. Kept
+  //    best-effort (own try/catch): a cloud outage must not stop the MLS
+  //    sweep below, which is an independent recovery path.
+  // 2. Fetches the full server-side message list for convId and, for
+  //    anything still not in the local cache after (1), attempts decryption
+  //    with the group state that's about to be destroyed. Calls
+  //    MlsService.decryptMessage() directly rather than this class's own
+  //    decryptMessage() -- that method's state-machine side effects (failure
+  //    counters, transitionState(Failed), scheduleFailedRecovery) are meant
+  //    for live decryption while chatting, not a best-effort sweep while
+  //    we're already mid-recovery and about to clear regardless.
+  //
+  // A message still undecryptable after both is stored as an explicit
+  // undecryptable placeholder -- same reasoning as the pendingRepo-to-
+  // placeholder conversion below: a message the recipient genuinely
+  // received should show as "[Encrypted]", not vanish with no trace once
+  // the keys are gone.
+  //
+  // Unlike the cloud-restore substep, a failure to even ENUMERATE what
+  // exists (server pagination, local cache read) is NOT swallowed here --
+  // it propagates to clearConversationGroup(), which must not destroy keys
+  // while it's not known whether every recoverable message was tried. Both
+  // callers already handle a thrown clearConversationGroup() safely:
+  // recoverFromFailed()'s own catch reschedules a retry with backoff, and
+  // reestablishEncryption()'s Option A falls through to the Option B
+  // recreate fallback exactly as it does for any other failure today.
+  private async recoverMissingHistoryBeforeClear(
+    convId: string,
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<void> {
+    if (this.backupSvcRef?.isMbkAvailable()) {
+      try {
+        await this.backupSvcRef.restore();
+      } catch (err) {
+        console.warn('[MLS:coordinator] recoverMissingHistoryBeforeClear: cloud restore failed', convId, err);
+      }
+    }
+
+    const localIds = await this.messageCacheSvc.getAllIds(convId);
+    let cursor: string | undefined;
+    let hasMore = true;
+    let recovered = 0;
+    let stillUndecryptable = 0;
+
+    while (hasMore) {
+      const page = await firstValueFrom(this.convSvc.getMessages(convId, cursor, 100));
+
+      for (const msg of page.data) {
+        if (localIds.has(msg.id)) continue;
+        const isMine = msg.senderDid === user.did;
+
+        try {
+          const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, msg.ciphertext);
+          await this.messageCacheSvc.store({
+            id:                msg.id,
+            conversationId:    convId,
+            senderDeviceId:    msg.senderDeviceId,
+            senderDid:         msg.senderDid,
+            plaintext,
+            isMine,
+            undecryptable:     false,
+            cacheVersion:      1,
+            encryptionVersion: 1,
+            deletedAt:         null,
+            createdAt:         msg.createdAt,
+            cachedAt:          Date.now(),
+          });
+          recovered++;
+        } catch {
+          await this.messageCacheSvc.store({
+            id:                msg.id,
+            conversationId:    convId,
+            senderDeviceId:    msg.senderDeviceId,
+            senderDid:         msg.senderDid,
+            plaintext:         '',
+            isMine,
+            undecryptable:     true,
+            cacheVersion:      1,
+            encryptionVersion: 1,
+            deletedAt:         null,
+            createdAt:         msg.createdAt,
+            cachedAt:          Date.now(),
+          });
+          stillUndecryptable++;
+        }
+      }
+
+      cursor  = page.cursor ?? undefined;
+      hasMore = page.hasMore;
+    }
+
+    console.log('[MLS:observability] recoverMissingHistoryBeforeClear', { conversationId: convId, recovered, stillUndecryptable });
+    this._historyRecoveryCompleted$$.next({ conversationId: convId, recovered, stillUndecryptable });
+  }
+
   override async clearConversationGroup(
     convId: string,
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<void> {
     console.log('[MLS:observability] clearConversationGroup', { conversationId: convId, caller: 'coordinator.clearConversationGroup' });
+
+    // Before destroying the only copy of this device's decryption keys for
+    // this conversation, make sure every message they could still decrypt
+    // has actually been tried -- otherwise messages never even locally known
+    // about (not in cache, not in pendingRepo -- e.g. this device never
+    // fetched them at all) would be lost the moment the keys are gone,
+    // instead of just the ones that happened to already be queued.
+    await this.recoverMissingHistoryBeforeClear(convId, user, device);
+
     await this.mlsSvc.clearConversationGroup(convId, user, device);
 
     // Messages still queued here were never written anywhere visible (see
@@ -362,6 +487,49 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
     await this.pendingRepo.clear(convId);
     this.transitionState(convId, ConversationMlsState.Empty);
+  }
+
+  // Heals messages left as undecryptable placeholders by
+  // recoverMissingHistoryBeforeClear() because the MBK wasn't unlocked yet
+  // at the time -- cloud restore is a upsert by id (storeMany), so re-running
+  // it once the MBK becomes available can turn a placeholder back into
+  // plaintext. Returns how many of THIS conversation's placeholders were
+  // actually healed by this call, 0 if the MBK still isn't available or
+  // there was nothing to retry.
+  override async retryUndecryptableViaCloudBackup(
+    convId: string,
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<number> {
+    if (!this.backupSvcRef?.isMbkAvailable()) return 0;
+
+    const undecryptableIds: string[] = [];
+    let cursor: number | undefined;
+    for (;;) {
+      const page = await this.messageCacheSvc.getMessagesPage(convId, cursor ?? 0, 500);
+      if (page.length === 0) break;
+      for (const msg of page) {
+        if (msg.undecryptable) undecryptableIds.push(msg.id);
+      }
+      cursor = page[page.length - 1]!.createdAt;
+      if (page.length < 500) break;
+    }
+
+    if (undecryptableIds.length === 0) return 0;
+
+    try {
+      await this.backupSvcRef.restore();
+    } catch (err) {
+      console.warn('[MLS:coordinator] retryUndecryptableViaCloudBackup: cloud restore failed', convId, err);
+      return 0;
+    }
+
+    let healed = 0;
+    for (const id of undecryptableIds) {
+      const msg = await this.messageCacheSvc.getById(id);
+      if (msg && !msg.undecryptable) healed++;
+    }
+    return healed;
   }
 
   override async prepareConversation(
@@ -530,7 +698,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     convId: string,
     user:   UserProfile,
     device: DeviceInfo,
-    op:     () => Promise<void>,
+    op:     () => Promise<unknown>,
   ): Promise<void> {
     const wasReady = (await this.getOrDeriveState(convId, user, device)) === ConversationMlsState.Ready;
     if (wasReady) this.transitionState(convId, ConversationMlsState.ApplyingCommit);
@@ -569,10 +737,30 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<void> {
-    return this.trackCommitOutcome(
+    await this.trackCommitOutcome(
       convId, user, device,
       () => this.mlsSvc.catchUpMissedCommits(convId, user, device),
     );
+
+    // A background catch-up (proactiveCatchUpSweep, socket reconnect) was the
+    // only path that could bring a conversation up to date without ever
+    // giving its pending_decrypt queue a chance -- the user had to open the
+    // conversation by hand for replayPendingDecrypts to run. Guarded on
+    // READY (i.e. this device has local group state): replaying against a
+    // conversation with none throws the *transient* 'MLS group not ready',
+    // which burns pendingRepo's single retry budget (replayPendingDecrypts:
+    // attempts >= 1 => permanent) and would turn recoverable messages into
+    // "[Encrypted]" on the next session's sweep. Deliberately NOT done inside
+    // trackCommitOutcome (which also wraps a single live commit from the
+    // socket): a live commit can leave the group at an intermediate epoch,
+    // where a pending message from a later epoch decrypts to a permanent
+    // error instead of the transient one it would get once fully caught up.
+    // A completed catch-up batch cannot do that: any message this device
+    // already received was sent after its own epoch's commit was posted, so
+    // the batch necessarily covers it.
+    if (this.isConversationReady(convId)) {
+      await this.replayPendingDecrypts(convId, user, device);
+    }
   }
 
   // ── Provisioning ──────────────────────────────────────────────────────────
@@ -617,10 +805,14 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       'injectRestoredGroupStates: groupStates must be an object');
 
     const operationId = crypto.randomUUID();
-    await this.mlsSvc.injectRestoredGroupStates(groupStates, user, device);
+    // Only the conversationIds MlsService actually injected -- it can refuse
+    // a candidate whose epoch would regress below what this device already
+    // reached (see MlsService.injectRestoredGroupStates), and marking those
+    // READY here would paper over that refusal.
+    const injectedIds = await this.mlsSvc.injectRestoredGroupStates(groupStates, user, device);
 
-    // Mark all restored conversations as READY, bypassing normal transition rules.
-    for (const convId of Object.keys(groupStates)) {
+    // Mark restored conversations as READY, bypassing normal transition rules.
+    for (const convId of injectedIds) {
       const from = this.states.get(convId) ?? ConversationMlsState.Empty;
       this.states.set(convId, ConversationMlsState.Ready);
       if (!this.readyTimestamps.has(convId)) {
@@ -631,7 +823,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     }
 
     this._restoreCompleted$$.next({
-      conversationCount: Object.keys(groupStates).length,
+      conversationCount: injectedIds.length,
       operationId,
     });
   }
@@ -744,6 +936,15 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     console.log('[MLS:observability] recoverFromFailed invoked', { conversationId: convId, attempt: attempts });
 
     this.transitionState(convId, ConversationMlsState.Empty);
+    // EMPTY -> READY is not a legal transition (MlsStateTransitionGuard) --
+    // without this intermediate step, fetchAndProcessPendingWelcome()'s own
+    // transitionState(Ready) below throws even after a genuinely successful
+    // join (the new group state is already written in MlsService by then),
+    // which this method's outer catch turns into a FAILED retry; the next
+    // attempt finds the Welcome already consumed and destroys the group
+    // state it had just correctly repaired. JOINING -> READY and
+    // JOINING -> FAILED are both legal, so this only adds a bookkeeping step.
+    this.transitionState(convId, ConversationMlsState.Joining);
 
     try {
       const ok = await this.fetchAndProcessPendingWelcome(convId, user, device);
@@ -765,8 +966,56 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       // leaving EMPTY after a failed automatic recovery silently hid that
       // button exactly when it was the only way left to unblock the user.
       if (!environment.production) console.warn('[MLS:coordinator] recoverFromFailed: no pending welcome found, clearing local group state to trigger reset', convId);
+
+      // Before giving up on the non-destructive explanation entirely: the
+      // FAILED->EMPTY->JOINING reset above is coordinator bookkeeping only --
+      // MlsService's actual group state is still intact at this point, only
+      // destroyed by clearConversationGroup() below. Maybe this device simply
+      // missed some commits and never needed a Welcome at all. Called on
+      // MlsService directly (not the coordinator wrapper) to read the
+      // applied-commit count -- the wrapper's own state machine is inert
+      // here anyway (state is JOINING, not Ready, so trackCommitOutcome's
+      // wasReady-gated bookkeeping wouldn't fire either way.
+      let appliedCommits = 0;
+      try {
+        appliedCommits = await this.mlsSvc.catchUpMissedCommits(convId, user, device);
+      } catch (err) {
+        // Never let this reach the outer catch: that would skip the
+        // destructive clear below AND consume a backoff attempt, so a few
+        // flaky-network retries would leave the conversation FAILED with its
+        // broken state never actually reset. Fall through to the pre-existing
+        // clear path unchanged. A partially-applied batch also lands here
+        // (the partial count is discarded by catchUpMissedCommits itself) --
+        // correct: mid-chain failure means a forked state, not a recovery.
+        console.warn('[MLS:coordinator] recoverFromFailed: catch-up attempt failed', convId, err);
+        appliedCommits = 0;
+      }
+
+      if (appliedCommits > 0) {
+        // Those commits verified against our local state (processPublicMessage
+        // checks the confirmation tag), so our chain is a valid prefix of the
+        // group's and we are now current -- a genuine recovery, not a guess.
+        // 0 commits proves nothing on its own (a forked device sitting at an
+        // epoch >= the server's also gets 0 without throwing), so that case
+        // still falls through to the clear + FAILED escalation below.
+        console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'healed_via_catchup', appliedCommits });
+        this.commitFailureCounts.delete(convId);
+        this.transitionState(convId, ConversationMlsState.Ready);
+        this.failedRecovery.delete(convId);
+        void this.replayPendingDecrypts(convId, user, device);
+        return;
+      }
+
       console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'no_welcome_clearing_group_state', caller: 'recoverFromFailed' });
-      await this.mlsSvc.clearConversationGroup(convId, user, device);
+      // clearConversationGroup() (the coordinator's own method, which also
+      // runs recoverMissingHistoryBeforeClear() and the pendingRepo ->
+      // placeholder conversion) ends by resetting to EMPTY -- legal from
+      // FAILED, not from JOINING (the state this function set earlier).
+      // Transition to FAILED first so that reset lands on a legal edge;
+      // the line right after puts it back to FAILED regardless, so the
+      // net outcome is unchanged.
+      this.transitionState(convId, ConversationMlsState.Failed);
+      await this.clearConversationGroup(convId, user, device);
       this.transitionState(convId, ConversationMlsState.Failed);
     } catch (err) {
       console.warn('[MLS:coordinator] recoverFromFailed attempt', attempts, 'for', convId, ':', err);

@@ -38,3 +38,14 @@ export interface RestoreCompletedEvent {
   readonly conversationCount: number;
   readonly operationId:       string;
 }
+
+// Emitted after recoverMissingHistoryBeforeClear() completes a confirmed-
+// complete sweep (cloud backup + MLS decrypt) right before a conversation's
+// group state is destroyed (recreate fallback, or recoverFromFailed's
+// automatic reset). stillUndecryptable > 0 means some messages could not be
+// recovered by any means and are now permanently "[Encrypted]" placeholders.
+export interface HistoryRecoveryCompletedEvent {
+  readonly conversationId:     string;
+  readonly recovered:          number;
+  readonly stillUndecryptable: number;
+}

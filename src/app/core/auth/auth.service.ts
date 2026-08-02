@@ -65,6 +65,14 @@ export class AuthService {
   private _refreshing         = false;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // In-flight restoreSession(), shared across concurrent callers. Without
+  // this, rootGuard/authGuard (or a notification-driven navigation racing
+  // the router's own default initial navigation on cold start) can each
+  // independently call restoreSession(), duplicating the HTTP session
+  // fetch + MLS bootstrap + socket connect + sync init pipeline at the
+  // worst possible time (right after app cold start).
+  private restoreSessionPromise: Promise<boolean> | null = null;
+
   // Decodes the (unverified — verification is the server's job, this is only
   // used to schedule a client-side timer) `exp` claim of a JWT access token.
   private decodeJwtExp(token: string): number | null {
@@ -375,6 +383,14 @@ export class AuthService {
   }
 
   async restoreSession(): Promise<boolean> {
+    if (this.restoreSessionPromise) return this.restoreSessionPromise;
+    this.restoreSessionPromise = this.doRestoreSession().finally(() => {
+      this.restoreSessionPromise = null;
+    });
+    return this.restoreSessionPromise;
+  }
+
+  private async doRestoreSession(): Promise<boolean> {
     if (sessionStorage.getItem('add_account_mode') === 'true') {
       return false;
     }

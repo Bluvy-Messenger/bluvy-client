@@ -1,4 +1,4 @@
-import type { MbkBlob, SyncSettings } from './sync.types';
+import type { MbkBlob, MbkRotateResult, SyncSettings } from './sync.types';
 import type { SyncDataPage, SyncDataIdsPage } from './sync.repository';
 import { isObject } from '../infrastructure/validation.util';
 
@@ -12,6 +12,13 @@ export function validateSyncSettings(data: SyncSettings): SyncSettings {
   if (data['lastSyncAt'] !== null && typeof data['lastSyncAt'] !== 'number') {
     throw new Error('SyncSettings.lastSyncAt: expected number or null');
   }
+  if (typeof data['keyGeneration'] !== 'number') throw new Error('SyncSettings.keyGeneration: expected number');
+  return data;
+}
+
+export function validateMbkRotateResult(data: MbkRotateResult): MbkRotateResult {
+  if (!isObject(data)) throw new Error('MbkRotateResult: expected object');
+  if (typeof data['keyGeneration'] !== 'number') throw new Error('MbkRotateResult.keyGeneration: expected number');
   return data;
 }
 

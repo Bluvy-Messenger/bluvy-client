@@ -1,4 +1,13 @@
 import './app/core/infrastructure/webcrypto-polyfill';
+import { startConsoleCapture } from './app/core/journal/journal.service';
+
+// Must run before anything else in the app can log -- including
+// checkAndClearCache() below, the hash-parsing block right after this, and
+// Angular's own bootstrap/APP_INITIALIZER/OAuth init -- so no boot-time log
+// is lost just because JournalService (constructed later, inside
+// AppComponent) doesn't exist yet. Entries are buffered in memory until
+// JournalService's IndexedDB is ready to persist them.
+startConsoleCapture();
 
 if (typeof window !== 'undefined' && window.location.hash) {
   const hash = window.location.hash;
