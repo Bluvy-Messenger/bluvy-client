@@ -96,3 +96,7 @@ export interface MlsRefillKeyPackagesPayload {
 export interface DeviceRevokedPayload {
   deviceId: string;
 }
+
+export interface MbkRotatedPayload {
+  keyGeneration: number;
+}

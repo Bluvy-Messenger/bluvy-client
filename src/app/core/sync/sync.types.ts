@@ -36,6 +36,13 @@ export interface SyncSettings {
   hasLegacyBackup: boolean;
   setupAt:         number | null;
   lastSyncAt:      number | null;
+  keyGeneration:   number;
+}
+
+// ── MBK rotation (POST /v1/sync/mbk/rotate) ───────────────────────────────────
+
+export interface MbkRotateResult {
+  keyGeneration: number;
 }
 
 // ── Encrypted sync payload ────────────────────────────────────────────────────

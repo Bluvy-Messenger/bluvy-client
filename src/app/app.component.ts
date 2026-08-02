@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform, ToastController } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
@@ -39,6 +39,8 @@ import { NotificationService } from './core/notification/notification.service';
 import { PushNotificationService } from './core/notification/push-notification.service';
 import { AccountBadgeService } from './core/notification/account-badge.service';
 import { MessageCacheService } from './core/conversation/message-cache.service';
+import { TranslationService } from './core/i18n/translation.service';
+import { SyncService } from './core/sync/sync.service';
 import { ROUTES } from './core/routes';
 
 @Component({
@@ -57,8 +59,11 @@ export class AppComponent implements OnInit, OnDestroy {
   private pushNotificationSvc = inject(PushNotificationService);
   private badgeSvc = inject(AccountBadgeService);
   private msgCacheSvc = inject(MessageCacheService);
+  private syncSvc = inject(SyncService);
   private router = inject(Router);
   private platform = inject(Platform);
+  private toastCtrl = inject(ToastController);
+  private i18n = inject(TranslationService);
   readonly connectivitySvc = inject(ConnectivityService);
 
   @ViewChild(IonRouterOutlet) private routerOutlet?: IonRouterOutlet;
@@ -166,6 +171,40 @@ export class AppComponent implements OnInit, OnDestroy {
         if (currentUrl.startsWith(ROUTES.conversation(payload.oldConversationId))) {
           void this.router.navigateByUrl(ROUTES.conversation(payload.newConversationId), { replaceUrl: true });
         }
+      }),
+    );
+
+    // Global, not scoped to conversation.page.ts -- recovery can also happen
+    // in the background (recoverFromFailed) while the user isn't viewing the
+    // affected conversation. Only surfaced when something couldn't be saved.
+    this.subs.add(
+      this.coordinator.historyRecoveryCompleted$.subscribe(async event => {
+        if (!environment.production) console.log('[AppComponent] historyRecoveryCompleted', event);
+        if (event.stillUndecryptable <= 0) return;
+        try {
+          const toast = await this.toastCtrl.create({
+            message:  this.i18n.t('conversation.history_partially_recovered', { count: String(event.stillUndecryptable) }),
+            duration: 4500,
+            position: 'bottom',
+            color:    'medium',
+          });
+          await toast.present();
+        } catch {
+          // Non-critical -- ignore.
+        }
+      }),
+    );
+
+    // Another of this account's devices rotated the MBK (see devices.page.ts
+    // revoke flow) -- drop the now-stale local copy so this device can't
+    // keep silently encrypting new data under a key that no longer matches
+    // the backend. No forced navigation: the existing "MBK not unlocked yet"
+    // path (onGroupNotReady) already prompts for the PIN the next time sync
+    // genuinely needs it, same as any brand-new device.
+    this.subs.add(
+      this.socketSvc.mbkRotated$.subscribe(payload => {
+        if (!environment.production) console.log('[AppComponent] mbk:rotated', payload);
+        this.syncSvc.handleRemoteRotation(payload.keyGeneration);
       }),
     );
 
