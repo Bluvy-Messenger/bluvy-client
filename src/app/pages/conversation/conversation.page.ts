@@ -132,6 +132,13 @@ export class ConversationPage implements OnDestroy {
     // THIS visit isn't immediately clobbered back to true by loadHistory().
     this.mlsGroupReady = true;
 
+    // Forensic audit finding F15: unsubscribe the previous instance first --
+    // two ionViewWillEnter calls without an intervening ionViewWillLeave
+    // (e.g. the supersession early-return below, which skips
+    // ionViewWillLeave entirely) used to drop the old Subscription object
+    // without closing it, leaving its socket handlers (welcomeNew$,
+    // messageNew$, ...) live and duplicated alongside the new ones.
+    this.subs.unsubscribe();
     this.subs = new Subscription();
     this.subscribeToSocket();
 

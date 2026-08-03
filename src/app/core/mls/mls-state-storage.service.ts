@@ -56,6 +56,10 @@ export class MlsStateStorageService {
     return JSON.parse(new TextDecoder().decode(plaintext)) as T;
   }
 
+  // How long an update() call may wait on a scope's lock before this service
+  // assumes it is stuck (see the STUCK_LOCK_WARNING_MS watchdog below).
+  private static readonly STUCK_LOCK_WARNING_MS = 10_000;
+
   // Atomically: acquires the per-scope lock → loads latest state → runs updater
   // → saves the result → releases the lock.
   //
@@ -66,17 +70,45 @@ export class MlsStateStorageService {
   // Network calls, Socket.IO, timeouts and long-running crypto MUST NOT appear
   // inside the updater; run them before calling update() and capture the results
   // in closed-over variables.
+  //
+  // A same-scope nested update() call (an updater calling storage.update() for
+  // its own scope again before returning) permanently deadlocks this lock --
+  // see forensic audit finding F1, where a network call's error handler called
+  // back into update() for the same scope while the outer updater was still
+  // awaiting it. That specific pattern can't be rejected synchronously: this
+  // service intentionally allows multiple *unrelated* callers to queue
+  // concurrent update() calls for the same scope (routine — e.g. an incoming
+  // commit for one conversation and an outgoing message for another share the
+  // same per-device scope) and JS's single-threaded async model gives no way
+  // to tell that apart from true nesting once an await has occurred in
+  // between. Instead of a reentrancy guard that would misfire on ordinary
+  // concurrent use, this is a watchdog: if a call hasn't completed within
+  // STUCK_LOCK_WARNING_MS, log loudly (with the call site's stack) instead of
+  // hanging silently until an app restart.
   async update<T>(
     scope:   string,
     updater: (state: T | null) => Promise<T | null>,
   ): Promise<void> {
-    await this.withLock(scope, async () => {
-      const current = await this.load<T>(scope);
-      const next    = await updater(current);
-      if (next !== null) {
-        await this.save(scope, next);
-      }
-    });
+    const callSite = new Error(`update() call site for scope "${scope}"`).stack;
+    const timer = setTimeout(() => {
+      console.error(
+        `[MLS:observability] MlsStateStorageService.update() has been waiting on the "${scope}" lock for over ${MlsStateStorageService.STUCK_LOCK_WARNING_MS}ms` +
+        ' -- this usually means a nested update() call for the same scope is deadlocked (an updater must not call storage.update() again for its own scope, directly or via a network error handler). Call site:',
+        callSite,
+      );
+    }, MlsStateStorageService.STUCK_LOCK_WARNING_MS);
+
+    try {
+      await this.withLock(scope, async () => {
+        const current = await this.load<T>(scope);
+        const next    = await updater(current);
+        if (next !== null) {
+          await this.save(scope, next);
+        }
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ── Lock implementation ────────────────────────────────────────────────────

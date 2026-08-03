@@ -12,6 +12,7 @@ import { MlsStateTransitionGuard, TRANSITION_REASON_RESTORE } from '../state-mac
 import { PendingDecryptRepository } from '../repositories/pending-decrypt.repository';
 import { TransientMlsError }        from '../errors/transient-mls-error';
 import { PermanentMlsError }        from '../errors/permanent-mls-error';
+import { EpochGapError }            from '../errors/epoch-gap-error';
 import { MlsWatchdogService }       from '../watchdog/mls-watchdog.service';
 import { assertMls }                from '../assertions/mls-assertions';
 import {
@@ -709,6 +710,46 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       if (wasReady) this.transitionState(convId, ConversationMlsState.Ready);
     } catch (err) {
       if (!wasReady) throw err;
+
+      // Forensic audit finding F8: a missed commit (not a fork) must not
+      // count toward MAX_COMMIT_FAILURES or classify as permanent -- ts-mls's
+      // error for this case is message-identical to a genuine crypto/fork
+      // failure (see EpochGapError's own comment), so MlsService signals it
+      // structurally instead. Catch up directly here, mirroring
+      // recoverFromFailed's use of mlsSvc.catchUpMissedCommits() (not the
+      // coordinator wrapper, to avoid re-entering this same state machine).
+      if (err instanceof EpochGapError) {
+        try {
+          await this.mlsSvc.catchUpMissedCommits(convId, user, device);
+          this.commitFailureCounts.delete(convId);
+          this.transitionState(convId, ConversationMlsState.Ready);
+          void this.replayPendingDecrypts(convId, user, device);
+          return;
+        } catch (catchUpErr) {
+          // The catch-up attempt itself failed (e.g. network down) -- still
+          // not evidence of a fork, so count it as an ordinary retryable
+          // failure rather than falling through to classifyError() below,
+          // which would classify the original EpochGapError's message as an
+          // unrecognized/permanent error and mark FAILED on the very first
+          // occurrence.
+          console.warn('[MLS:coordinator] trackCommitOutcome: catch-up after epoch gap failed for', convId, catchUpErr);
+          const gapFailures = (this.commitFailureCounts.get(convId) ?? 0) + 1;
+          this.commitFailureCounts.set(convId, gapFailures);
+          if (gapFailures >= MlsCoordinatorService.MAX_COMMIT_FAILURES) {
+            console.error(
+              '[MLS:coordinator]', gapFailures, 'consecutive commit failures for', convId,
+              '(catch-up after epoch gap kept failing) — marking FAILED.',
+            );
+            this.transitionState(convId, ConversationMlsState.Failed);
+            this._conversationFailed$$.next({ conversationId: convId });
+            this.scheduleFailedRecovery(convId, user, device);
+          } else {
+            this.transitionState(convId, ConversationMlsState.Ready);
+          }
+          throw err;
+        }
+      }
+
       const failures = (this.commitFailureCounts.get(convId) ?? 0) + 1;
       this.commitFailureCounts.set(convId, failures);
 

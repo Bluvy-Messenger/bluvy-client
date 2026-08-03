@@ -20,6 +20,10 @@ export class DeviceIdentityService {
     return this.repo.clear(userDid);
   }
 
+  async persist(userDid: string, deviceId: string): Promise<void> {
+    return this.repo.persist(userDid, deviceId);
+  }
+
   async getDeviceMetadata(): Promise<{ name: string; platform: string }> {
     return this.repo.getDeviceMetadata();
   }

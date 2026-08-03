@@ -38,6 +38,7 @@ import { makeKeyPackageRef } from 'ts-mls/keyPackage.js';
 import type { UserProfile } from '../auth/auth.types';
 import { MlsStateStorageService } from './mls-state-storage.service';
 import { MlsRepository } from './mls.repository';
+import { EpochGapError } from './errors/epoch-gap-error';
 import type {
   SerializedPrivateKeyPackage,
   StoredKeyPackageRecord,
@@ -581,10 +582,13 @@ export class MlsService {
         console.log(`[MLS:trace:8] FINAL  Welcome expected refs: ${_welcomeRefs.join(' | ')}`);
         console.log(`[MLS:trace:8] FINAL  No local KP matched. All tried refs above.`);
       }
-      if (welcomeId) {
-        console.warn('[MLS] processWelcomeForConversation: no matching KP for Welcome', welcomeId, '— ACKing stale');
-        this.ackWelcome(welcomeId);
-      }
+      // Do NOT ACK here (forensic audit finding F7): this row is the only
+      // copy of this device's group secrets. A transient cause (KP pool not
+      // yet refilled, a device-identity scope mismatch) must not be turned
+      // into a permanent loss by destroying the row server-side before we've
+      // actually joined. Leaving it pending lets the existing durable-retry
+      // design (see ackWelcomeWithRetry's rationale below) re-serve it on the
+      // next getPendingWelcomes poll instead.
       throw new Error(`No matching key package found for Welcome (tried ${preState.keyPackages.length})`);
     }
 
@@ -915,6 +919,17 @@ export class MlsService {
       );
       await this.storage.update<StoredMlsState>(scope, async (s) => {
         if (!s) return null;
+        // Compare-and-swap: only roll back if our own optimistic write is
+        // still the current value. If something else (e.g. a concurrent
+        // incoming commit for this conversation) already moved the state
+        // forward, leave it alone -- the processIncomingCommit() call below
+        // reconciles correctly against whatever's actually there instead of
+        // clobbering it with our stale previous snapshot (forensic audit
+        // finding F10).
+        if (s.groupStates[conversationId] !== newStateB64pd) {
+          console.log('[MLS:observability] provisionDevice lost-race rollback skipped (concurrent write detected)', { conversationId, deviceId: device.id });
+          return null;
+        }
         if (previousStateB64pd === undefined) delete s.groupStates[conversationId];
         else s.groupStates[conversationId] = previousStateB64pd;
         s.updatedAt = Date.now();
@@ -1101,6 +1116,13 @@ export class MlsService {
       );
       await this.storage.update<StoredMlsState>(scope, async (s) => {
         if (!s) return null;
+        // Compare-and-swap: only roll back if our own optimistic write is
+        // still the current value -- see provisionDevice's identical rollback
+        // for the full rationale (forensic audit finding F10).
+        if (s.groupStates[conversationId] !== newStateB64pd) {
+          console.log('[MLS:observability] reprovisionLostStateDevice lost-race rollback skipped (concurrent write detected)', { conversationId, deviceId: device.id });
+          return null;
+        }
         if (previousStateB64pd === undefined) delete s.groupStates[conversationId];
         else s.groupStates[conversationId] = previousStateB64pd;
         s.updatedAt = Date.now();
@@ -1249,6 +1271,20 @@ export class MlsService {
           conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'skipped_already_applied',
         });
         return null; // already applied
+      }
+
+      // Forensic audit finding F8: epoch > currentEpoch means this device
+      // missed one or more commits before this one -- not a fork, just
+      // behind. ts-mls's processPublicMessage would reject it with
+      // CryptoVerificationError "Could not verify membership" (empirically
+      // captured), a message indistinguishable from a genuine crypto/fork
+      // failure, so detect the gap here structurally instead of letting it
+      // throw and trying to classify the message afterward.
+      if (epoch > currentEpoch) {
+        console.log('[MLS:observability] applyCommit', {
+          conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'epoch_gap',
+        });
+        throw new EpochGapError(conversationId, currentEpoch, epoch);
       }
 
       try {
@@ -1477,9 +1513,26 @@ export class MlsService {
         console.warn('[MLS] removeRevokedDevice: failed to acquire commit lock for conv', convId, '— proceeding without it', err);
       }
 
-      let currentEpoch: number;
+      // Build the Remove commit inside the storage lock, but perform no
+      // network I/O here (see mls-state-storage.service.ts's updater
+      // contract: "Network calls ... MUST NOT appear inside the updater").
+      // postCommit() and the 409 handler's clearConversationGroup() run
+      // after the lock has released, below, mirroring provisionDevice()'s
+      // shape (:842-931) — doing them inside this same-scope updater used
+      // to deadlock, since clearConversationGroup() itself calls
+      // storage.update() on the same scope while the outer updater was
+      // still awaiting it (see forensic audit finding F1).
+      let shouldSkip            = false;
+      let currentEpoch:         number | undefined;
+      let commitB64             = '';
+      let previousStateB64rrd:  string | undefined;
+      let newStateB64rrd        = '';
+
       await this.storage.update<StoredMlsState>(scope, async (current) => {
-        if (!current || !current.groupStates || !current.groupStates[convId]) return null;
+        if (!current || !current.groupStates || !current.groupStates[convId]) {
+          shouldSkip = true;
+          return null;
+        }
 
         const encoded = current.groupStates[convId];
         const clientState = this.restoreClientState(encoded);
@@ -1495,7 +1548,10 @@ export class MlsService {
           dec.decode(m.credential.identity).endsWith(`#${revokedDeviceId}`)
         );
 
-        if (leafIndex === -1) return null;
+        if (leafIndex === -1) {
+          shouldSkip = true;
+          return null;
+        }
 
         if (!environment.production) console.warn('[MLS] removeRevokedDevice: found device to remove in conv', convId, revokedDeviceId, 'at leaf', leafIndex);
 
@@ -1510,42 +1566,59 @@ export class MlsService {
           { extraProposals: [removeProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
         );
 
-        const serializedCommit = this.bytesToBase64(encodeMlsMessage(commit));
+        commitB64            = this.bytesToBase64(encodeMlsMessage(commit));
+        previousStateB64rrd  = current.groupStates[convId];
+        newStateB64rrd       = this.bytesToBase64(encodeGroupState(newState));
 
-        let stored;
-        try {
-          stored = await this.mlsRepo.postCommit(convId, serializedCommit, currentEpoch);
-        } catch (err) {
-          if (err instanceof HttpErrorResponse && err.status === 409) {
-            console.warn('[MLS] removeRevokedDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
-            console.log('[MLS:observability] clearConversationGroup caller', { conversationId: convId, caller: 'removeRevokedDeviceFromAllGroups 409 handler' });
-            await this.clearConversationGroup(convId, user, device);
-            this.epochConflict$.next({ conversationId: convId });
-          }
-          console.error('[MLS] removeRevokedDevice: failed to post Remove commit for conv', convId, err);
-          return null;
-        }
-
-        // Another device may have posted a commit for the same epoch first (e.g.
-        // another recipient of the same device:revoked event racing to remove the
-        // same device). Detect it the same way provisionDevice() does: if the
-        // stored commit isn't ours, don't write our optimistic state — resync onto
-        // the winning commit instead, so we don't fork.
-        if (stored.senderDeviceId !== device.id) {
-          console.warn(
-            '[MLS] removeRevokedDevice: lost commit race for conv', convId,
-            '— resyncing on winning commit from', stored.senderDeviceId,
-          );
-          void this.processIncomingCommit(convId, stored.commit, stored.epoch, user, device)
-            .catch(err => console.warn('[MLS] removeRevokedDevice: resync after lost race failed for conv', convId, err));
-          return null;
-        }
-
-        const serializedState = this.bytesToBase64(encodeGroupState(newState));
-        current.groupStates[convId] = serializedState;
+        current.groupStates[convId] = newStateB64rrd;
         current.updatedAt = Date.now();
         return current;
       });
+
+      if (shouldSkip) continue;
+
+      // Network: post the Remove commit (after the storage lock has released).
+      let stored;
+      try {
+        stored = await this.mlsRepo.postCommit(convId, commitB64, currentEpoch!);
+      } catch (err) {
+        if (err instanceof HttpErrorResponse && err.status === 409) {
+          console.warn('[MLS] removeRevokedDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
+          console.log('[MLS:observability] clearConversationGroup caller', { conversationId: convId, caller: 'removeRevokedDeviceFromAllGroups 409 handler' });
+          await this.clearConversationGroup(convId, user, device);
+          this.epochConflict$.next({ conversationId: convId });
+        }
+        console.error('[MLS] removeRevokedDevice: failed to post Remove commit for conv', convId, err);
+        continue;
+      }
+
+      // Another device may have posted a commit for the same epoch first (e.g.
+      // another recipient of the same device:revoked event racing to remove the
+      // same device). Detect it the same way provisionDevice() does: if the
+      // stored commit isn't ours, roll back our optimistic state and resync onto
+      // the winning commit instead, so we don't fork.
+      if (stored.senderDeviceId !== device.id) {
+        console.warn(
+          '[MLS] removeRevokedDevice: lost commit race for conv', convId,
+          '— resyncing on winning commit from', stored.senderDeviceId,
+        );
+        await this.storage.update<StoredMlsState>(scope, async (s) => {
+          if (!s) return null;
+          // Compare-and-swap: only roll back if our own optimistic write is
+          // still the current value -- see provisionDevice's identical
+          // rollback for the full rationale (forensic audit finding F10).
+          if (s.groupStates[convId] !== newStateB64rrd) {
+            console.log('[MLS:observability] removeRevokedDevice lost-race rollback skipped (concurrent write detected)', { conversationId: convId, deviceId: device.id });
+            return null;
+          }
+          if (previousStateB64rrd === undefined) delete s.groupStates[convId];
+          else s.groupStates[convId] = previousStateB64rrd;
+          s.updatedAt = Date.now();
+          return s;
+        });
+        void this.processIncomingCommit(convId, stored.commit, stored.epoch, user, device)
+          .catch(err => console.warn('[MLS] removeRevokedDevice: resync after lost race failed for conv', convId, err));
+      }
     }
   }
 }

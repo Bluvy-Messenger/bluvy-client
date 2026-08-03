@@ -95,3 +95,207 @@ describe('DeviceProvisioningService.proactiveCatchUpSweep', () => {
     expect(mockConvSvc.getConversations).toHaveBeenCalledTimes(2); // one call for archived=false + one for archived=true, first run only
   });
 });
+
+// ── Provisioning holes fix (forensic audit finding F4) ────────────────────
+// handleDeviceNew() and checkAndProvisionOnConnect() used to call
+// getConversations(undefined, 100) once each -- a single page, non-archived
+// only -- so any account with >100 conversations, or any archived
+// conversation, permanently excluded a new device from the remainder with no
+// retry or signal. Both now share proactiveCatchUpSweep's pagination +
+// archived-sweep helper (forEachConversation).
+
+describe('DeviceProvisioningService.handleDeviceNew — pagination + archived sweep (F4)', () => {
+  let service: DeviceProvisioningService;
+  let mockCoordinator: jasmine.SpyObj<MlsCoordinatorBase>;
+  let mockConvSvc: jasmine.SpyObj<ConversationsService>;
+
+  const USER:   UserProfile = { did: 'did:plc:alice', handle: 'alice.test', displayName: 'Alice', avatarUrl: null };
+  const DEVICE: DeviceInfo  = { id: 'device-a1', name: 'Phone', platform: 'android' };
+
+  function page(data: Array<{ id: string }>, hasMore: boolean, cursor: string | null): ConversationsPage {
+    return { data: data as ConversationsPage['data'], hasMore, cursor };
+  }
+
+  beforeEach(() => {
+    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'reprovisionLostStateDevice']);
+    mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        DeviceProvisioningService,
+        { provide: MlsCoordinatorBase, useValue: mockCoordinator },
+        { provide: ConversationsService, useValue: mockConvSvc },
+        { provide: SyncService, useValue: jasmine.createSpyObj<SyncService>('SyncService', ['flush']) },
+        { provide: DeviceRepository, useValue: jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getMyDevices']) },
+      ],
+    });
+    service = TestBed.inject(DeviceProvisioningService);
+    mockCoordinator.canProvision.and.returnValue(Promise.resolve(true));
+    mockCoordinator.provisionDevice.and.returnValue(Promise.resolve());
+  });
+
+  it('provisions a new device into a conversation beyond the first page', async () => {
+    mockConvSvc.getConversations.and.callFake((cursor?: string, _limit?: number, archived?: boolean) => {
+      if (archived) return of(page([], false, null));
+      if (!cursor)  return of(page([{ id: 'conv-1' }], true, 'cursor-1'));
+      return of(page([{ id: 'conv-101' }], false, null));
+    });
+
+    await service.handleDeviceNew('device-new', USER, DEVICE);
+
+    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-new', 'conv-1', USER, DEVICE);
+    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-new', 'conv-101', USER, DEVICE);
+  });
+
+  it('provisions a new device into an archived conversation', async () => {
+    mockConvSvc.getConversations.and.callFake((_cursor?: string, _limit?: number, archived?: boolean) =>
+      archived ? of(page([{ id: 'conv-archived' }], false, null)) : of(page([], false, null)));
+
+    await service.handleDeviceNew('device-new', USER, DEVICE);
+
+    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-new', 'conv-archived', USER, DEVICE);
+  });
+});
+
+describe('DeviceProvisioningService.checkAndProvisionOnConnect — pagination + archived sweep (F4)', () => {
+  let service: DeviceProvisioningService;
+  let mockCoordinator: jasmine.SpyObj<MlsCoordinatorBase>;
+  let mockConvSvc: jasmine.SpyObj<ConversationsService>;
+  let mockDeviceRepo: jasmine.SpyObj<DeviceRepository>;
+
+  const USER:   UserProfile = { did: 'did:plc:alice', handle: 'alice.test', displayName: 'Alice', avatarUrl: null };
+  const DEVICE: DeviceInfo  = { id: 'device-a1', name: 'Phone', platform: 'android' };
+
+  function page(data: Array<{ id: string }>, hasMore: boolean, cursor: string | null): ConversationsPage {
+    return { data: data as ConversationsPage['data'], hasMore, cursor };
+  }
+
+  beforeEach(() => {
+    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups']);
+    mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
+    mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getMyDevices', 'getRevokedDevices']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        DeviceProvisioningService,
+        { provide: MlsCoordinatorBase, useValue: mockCoordinator },
+        { provide: ConversationsService, useValue: mockConvSvc },
+        { provide: SyncService, useValue: jasmine.createSpyObj<SyncService>('SyncService', ['flush']) },
+        { provide: DeviceRepository, useValue: mockDeviceRepo },
+      ],
+    });
+    service = TestBed.inject(DeviceProvisioningService);
+    mockCoordinator.canProvision.and.returnValue(Promise.resolve(true));
+    mockCoordinator.provisionDevice.and.returnValue(Promise.resolve());
+    mockCoordinator.removeRevokedDeviceFromAllGroups.and.returnValue(Promise.resolve());
+    mockDeviceRepo.getMyDevices.and.returnValue(Promise.resolve({ data: [{ id: 'device-a2', name: 'Laptop', platform: 'web', lastSeen: Date.now(), createdAt: Date.now() }] }));
+    mockDeviceRepo.getRevokedDevices.and.returnValue(Promise.resolve({ data: [] }));
+  });
+
+  it('provisions another own device into a conversation beyond the first page and into archived conversations', async () => {
+    mockConvSvc.getConversations.and.callFake((cursor?: string, _limit?: number, archived?: boolean) => {
+      if (archived) return of(page([{ id: 'conv-archived' }], false, null));
+      if (!cursor)  return of(page([{ id: 'conv-1' }], true, 'cursor-1'));
+      return of(page([{ id: 'conv-101' }], false, null));
+    });
+
+    await service.checkAndProvisionOnConnect(USER, DEVICE);
+
+    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-a2', 'conv-1', USER, DEVICE);
+    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-a2', 'conv-101', USER, DEVICE);
+    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-a2', 'conv-archived', USER, DEVICE);
+  });
+});
+
+// ── Revoked-device leaf removal on reconnect (forensic audit finding F11) ──
+// device:revoked is an ephemeral socket event with no durable replay -- a
+// revocation that happens while every member is offline was otherwise never
+// retried, leaving the revoked device's MLS leaf in place indefinitely.
+// checkAndProvisionOnConnect() now also re-checks the backend's revoked-device
+// list on every reconnect and re-attempts removal, independent of whether the
+// account has any other own devices at all.
+describe('DeviceProvisioningService.checkAndProvisionOnConnect — revoked-device leaf removal (F11)', () => {
+  let service: DeviceProvisioningService;
+  let mockCoordinator: jasmine.SpyObj<MlsCoordinatorBase>;
+  let mockConvSvc: jasmine.SpyObj<ConversationsService>;
+  let mockDeviceRepo: jasmine.SpyObj<DeviceRepository>;
+
+  const USER:   UserProfile = { did: 'did:plc:alice', handle: 'alice.test', displayName: 'Alice', avatarUrl: null };
+  const DEVICE: DeviceInfo  = { id: 'device-a1', name: 'Phone', platform: 'android' };
+
+  beforeEach(() => {
+    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups']);
+    mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
+    mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getMyDevices', 'getRevokedDevices']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        DeviceProvisioningService,
+        { provide: MlsCoordinatorBase, useValue: mockCoordinator },
+        { provide: ConversationsService, useValue: mockConvSvc },
+        { provide: SyncService, useValue: jasmine.createSpyObj<SyncService>('SyncService', ['flush']) },
+        { provide: DeviceRepository, useValue: mockDeviceRepo },
+      ],
+    });
+    service = TestBed.inject(DeviceProvisioningService);
+    mockCoordinator.removeRevokedDeviceFromAllGroups.and.returnValue(Promise.resolve());
+    // Single-device account: no own devices to provision, but revoked-device
+    // reconciliation must still run (it's not gated on otherDeviceIds.length).
+    mockDeviceRepo.getMyDevices.and.returnValue(Promise.resolve({ data: [] }));
+  });
+
+  it('re-attempts leaf removal for a revoked conversation partner device even with no other own devices', async () => {
+    mockDeviceRepo.getRevokedDevices.and.returnValue(Promise.resolve({
+      data: [{ id: 'device-bob-old', userDid: 'did:plc:bob' }],
+    }));
+
+    await service.checkAndProvisionOnConnect(USER, DEVICE);
+
+    expect(mockCoordinator.removeRevokedDeviceFromAllGroups).toHaveBeenCalledWith('device-bob-old', USER, DEVICE);
+  });
+
+  it('attempts removal for every revoked device returned, continuing past one that fails', async () => {
+    mockDeviceRepo.getRevokedDevices.and.returnValue(Promise.resolve({
+      data: [
+        { id: 'device-bad', userDid: 'did:plc:bob' },
+        { id: 'device-ok',  userDid: 'did:plc:carol' },
+      ],
+    }));
+    mockCoordinator.removeRevokedDeviceFromAllGroups.and.callFake((id: string) =>
+      id === 'device-bad' ? Promise.reject(new Error('boom')) : Promise.resolve());
+
+    await service.checkAndProvisionOnConnect(USER, DEVICE);
+
+    expect(mockCoordinator.removeRevokedDeviceFromAllGroups).toHaveBeenCalledWith('device-ok', USER, DEVICE);
+  });
+
+  it('does not throw if the revoked-devices list fails to load', async () => {
+    mockDeviceRepo.getRevokedDevices.and.returnValue(Promise.reject(new Error('network down')));
+
+    await expectAsync(service.checkAndProvisionOnConnect(USER, DEVICE)).toBeResolved();
+    expect(mockCoordinator.removeRevokedDeviceFromAllGroups).not.toHaveBeenCalled();
+  });
+
+  // Regression test for a production incident: Socket.IO's default
+  // reconnection (1-5s backoff, unbounded attempts) re-triggers
+  // checkAndProvisionOnConnect on every reconnect. With a backlog of
+  // revoked devices whose removal keeps failing, each reconnect re-attempted
+  // ALL of them across every conversation, producing a burst of 60-80+
+  // requests every few seconds and tripping backend rate limits. The sweep
+  // must not repeat within its cooldown window.
+  it('does not re-sweep revoked devices on a second call within the cooldown window', async () => {
+    mockDeviceRepo.getRevokedDevices.and.returnValue(Promise.resolve({
+      data: [{ id: 'device-stuck', userDid: 'did:plc:bob' }],
+    }));
+
+    await service.checkAndProvisionOnConnect(USER, DEVICE);
+    expect(mockDeviceRepo.getRevokedDevices).toHaveBeenCalledTimes(1);
+    expect(mockCoordinator.removeRevokedDeviceFromAllGroups).toHaveBeenCalledWith('device-stuck', USER, DEVICE);
+
+    // Simulates a rapid reconnect immediately after (e.g. socket flapping).
+    await service.checkAndProvisionOnConnect(USER, DEVICE);
+
+    expect(mockDeviceRepo.getRevokedDevices).toHaveBeenCalledTimes(1);
+    expect(mockCoordinator.removeRevokedDeviceFromAllGroups).toHaveBeenCalledTimes(1);
+  });
+});

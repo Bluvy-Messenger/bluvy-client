@@ -232,6 +232,48 @@ describe('MlsCoordinatorService', () => {
       expect(mockWatchdog.watch).toHaveBeenCalledWith('conv-cold', ConversationMlsState.ApplyingCommit);
       expect(service.getConversationState('conv-cold')).toBe(ConversationMlsState.Ready);
     }));
+
+    // Forensic audit finding F8: a missed commit (EpochGapError) is not a
+    // fork and must not count toward the failure threshold or classify as
+    // permanent -- it should trigger a direct catch-up instead.
+    it('catches up directly on EpochGapError instead of counting it as a commit failure, and stays READY', fakeAsync(() => {
+      let failedEvent: { conversationId: string } | undefined;
+      service.conversationFailed$.subscribe(evt => { failedEvent = evt; });
+
+      const gapError = Object.assign(new Error('epoch gap'), { name: 'EpochGapError' });
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(2));
+
+      service.processIncomingCommit('conv-gap', 'commit-3', 3, mockUser, mockDevice).catch(() => {});
+      tick();
+
+      expect(mockMlsSvc.catchUpMissedCommits).toHaveBeenCalledWith('conv-gap', mockUser, mockDevice);
+      expect(service.getConversationState('conv-gap')).toBe(ConversationMlsState.Ready);
+      expect(failedEvent).toBeUndefined();
+
+      // Repeating it 3 more times must still never trip FAILED -- proves it
+      // isn't merely being tolerated below MAX_COMMIT_FAILURES by coincidence.
+      for (let i = 0; i < 3; i++) {
+        mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
+        service.processIncomingCommit('conv-gap', `commit-${4 + i}`, 4 + i, mockUser, mockDevice).catch(() => {});
+        tick();
+      }
+      expect(service.getConversationState('conv-gap')).toBe(ConversationMlsState.Ready);
+      expect(failedEvent).toBeUndefined();
+    }));
+
+    it('falls through to normal failure handling if the catch-up after an epoch gap itself fails', fakeAsync(() => {
+      const gapError = Object.assign(new Error('epoch gap'), { name: 'EpochGapError' });
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.reject(new Error('network down')));
+
+      service.processIncomingCommit('conv-gap-fail', 'commit-1', 1, mockUser, mockDevice).catch(() => {});
+      tick();
+
+      // Catch-up failed too -- falls through to the ordinary counter, not an
+      // immediate FAILED (the underlying error isn't recognized as permanent).
+      expect(service.getConversationState('conv-gap-fail')).toBe(ConversationMlsState.Ready);
+    }));
   });
 
   // ── FAILED -> EMPTY reset guard ────────────────────────────────────────────

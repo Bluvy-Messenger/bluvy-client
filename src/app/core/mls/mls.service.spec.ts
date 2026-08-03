@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   createGroup,
   createCommit,
@@ -121,8 +122,18 @@ async function commitAdd(stateB64: string, cs: Awaited<ReturnType<typeof getCs>>
 
 // In-memory stand-in for MlsStateStorageService — same load/update contract,
 // no IndexedDB/WebCrypto-at-rest involved (tested separately elsewhere).
+//
+// update() mirrors the real MlsStateStorageService.withLock()'s per-scope
+// promise chaining (load -> updater -> save, queued behind any in-flight
+// call for the same scope) rather than just doing load/updater/save inline.
+// This is required, not cosmetic: a same-scope re-entrant update() call
+// (e.g. one issued from inside another update()'s updater) queues behind
+// the outer call's own gate here exactly as it does in production, so a
+// test can actually reproduce (and pin the fix for) the deadlock in
+// removeRevokedDeviceFromAllGroups — see that describe block below.
 class FakeMlsStorage {
   private readonly store = new Map<string, StoredMlsState>();
+  private readonly locks = new Map<string, Promise<unknown>>();
 
   seed(scope: string, state: StoredMlsState): void {
     this.store.set(scope, JSON.parse(JSON.stringify(state)));
@@ -133,7 +144,21 @@ class FakeMlsStorage {
     return value ? (JSON.parse(JSON.stringify(value)) as T) : null;
   }
 
-  async update<T>(scope: string, updater: (state: T | null) => Promise<T | null>): Promise<void> {
+  update<T>(scope: string, updater: (state: T | null) => Promise<T | null>): Promise<void> {
+    const prev = this.locks.get(scope) ?? Promise.resolve<unknown>(undefined);
+    const current: Promise<void> = prev.then(
+      () => this.runUpdate(scope, updater),
+      () => this.runUpdate(scope, updater),
+    );
+    const gate: Promise<unknown> = current.then(() => undefined, () => undefined);
+    this.locks.set(scope, gate);
+    void gate.then(() => {
+      if (this.locks.get(scope) === gate) this.locks.delete(scope);
+    });
+    return current;
+  }
+
+  private async runUpdate<T>(scope: string, updater: (state: T | null) => Promise<T | null>): Promise<void> {
     const current = await this.load<T>(scope);
     const next = await updater(current);
     if (next !== null) this.store.set(scope, next as unknown as StoredMlsState);
@@ -280,6 +305,56 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
 
       expect(identities).toContain('did:plc:bob#device-winner');
       expect(identities).not.toContain('did:plc:bob#device-loser');
+    });
+
+    // Forensic audit finding F10: the lost-race rollback used to unconditionally
+    // overwrite groupStates[conversationId] with the pre-optimistic-write
+    // snapshot, discarding anything a genuinely different concurrent operation
+    // had already written in between. The fix is a compare-and-swap: only roll
+    // back if our own optimistic write is still the current value.
+    it('does not clobber a concurrent write when rolling back after a lost commit race', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: initialStateB64 }));
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
+      const loserKpB64 = await makeKeyPackageB64('did:plc:bob#device-loser', cs);
+      mockRepo.consumeOwnKeyPackage.and.returnValue(Promise.resolve({ keyPackage: loserKpB64, deviceId: 'device-loser' }));
+
+      const winner = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-winner');
+
+      // Simulate a genuinely different concurrent write landing on this
+      // conversation's state AFTER our optimistic write but BEFORE our
+      // rollback executes -- e.g. another in-flight operation applying a
+      // real commit for this same conversation. postCommit() is the only
+      // seam that runs after the storage lock releases (see R1), so faking
+      // its implementation to also touch storage is the realistic place to
+      // inject this.
+      const concurrent = await commitAdd(initialStateB64, cs, 'did:plc:carol#device-concurrent');
+      mockRepo.postCommit.and.callFake(async () => {
+        await fakeStorage.update<StoredMlsState>(SCOPE, async (s) => {
+          if (!s) return null;
+          s.groupStates[CONV_ID] = concurrent.newStateB64;
+          return s;
+        });
+        return {
+          id: 'commit-1', conversationId: CONV_ID, senderDeviceId: 'device-a2', // not us -- lost race
+          commit: winner.commitB64, epoch: winner.epoch, createdAt: Date.now(),
+        };
+      });
+
+      // Not under test here -- replaying winner's commit against the
+      // concurrent tree is a real crypto mismatch (they diverged from the
+      // same base); swallow it so it doesn't fail this test.
+      spyOn(service, 'processIncomingCommit').and.returnValue(Promise.resolve());
+
+      await service.provisionDevice('device-loser', CONV_ID, USER, DEVICE);
+
+      const finalState = await fakeStorage.load<StoredMlsState>(SCOPE);
+      // Must still reflect the concurrent write, NOT the stale
+      // pre-optimistic-write snapshot (initialStateB64) the old unconditional
+      // rollback would have clobbered it with.
+      expect(finalState!.groupStates[CONV_ID]).toBe(concurrent.newStateB64);
     });
 
     // Baseline pin-down (see Phase 8b / AUDIT_02 Root Cause #3): this guard is
@@ -517,6 +592,43 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
       const identities = memberIdentities(finalState!.groupStates[CONV_ID]!);
       expect(identities).not.toContain('did:plc:bob#device-revoked');
     });
+
+    // Regression test for the self-deadlock bug (forensic audit finding F1):
+    // the 409 handler below calls clearConversationGroup(), which itself
+    // calls storage.update() on the SAME scope. Before the fix, postCommit()
+    // and that 409 handler both ran INSIDE this method's own storage.update()
+    // updater, so the outer update()'s lock gate could never settle while
+    // clearConversationGroup()'s inner update() queued behind it -- this
+    // device's entire MLS storage lock would stay stuck until an app restart.
+    it('does not deadlock the storage lock when postCommit returns a 409 epoch conflict', async () => {
+      const identity = `${USER.did}#${DEVICE.id}`;
+      const { cs, stateB64: initialStateB64 } = await makeInitialGroup(CONV_ID, identity);
+      const added = await commitAdd(initialStateB64, cs, 'did:plc:bob#device-revoked');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
+
+      mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
+      mockRepo.postCommit.and.returnValue(Promise.reject(new HttpErrorResponse({ status: 409 })));
+
+      const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<T>((_, reject) => setTimeout(
+            () => reject(new Error(`timed out after ${ms}ms -- storage lock likely deadlocked`)), ms,
+          )),
+        ]);
+
+      await withTimeout(service.removeRevokedDeviceFromAllGroups('device-revoked', USER, DEVICE), 2000);
+
+      // A same-scope storage.update() issued right after must also complete
+      // promptly -- proves the lock was actually released, not just that the
+      // outer call happened to resolve on its own.
+      let ranAfter = false;
+      await withTimeout(
+        fakeStorage.update<StoredMlsState>(SCOPE, async (s) => { ranAfter = true; return s; }),
+        2000,
+      );
+      expect(ranAfter).toBe(true);
+    });
   });
 });
 
@@ -673,5 +785,152 @@ describe('MlsService — applyCommit epoch guard (Root Cause #1)', () => {
     await service.processIncomingCommit(CONV_ID, commit2B64, postedEpoch, USER, DEVICE);
     const afterRedelivery = await fakeStorage.load<StoredMlsState>(SCOPE);
     expect(afterRedelivery!.groupStates[CONV_ID]).toBe(afterFirstApply!.groupStates[CONV_ID]);
+  });
+
+  // Forensic audit finding F8, empirically validated: feeding ts-mls a commit
+  // built from an epoch AHEAD of the local state throws
+  // CryptoVerificationError "Could not verify membership" -- a message
+  // indistinguishable from a genuine crypto/fork failure. applyCommit must
+  // detect this gap (epoch > currentEpoch) itself and throw EpochGapError
+  // instead of ever reaching processPublicMessage with it.
+  it('throws EpochGapError instead of calling processPublicMessage when the incoming commit is ahead of the local epoch (a missed commit, not a fork)', async () => {
+    const cs = await getCs();
+    const identityA = 'did:plc:alice#device-a1';
+    const identityB = `${USER.did}#${DEVICE.id}`;
+    const identityC = 'did:plc:alice#device-a2';
+    const identityD = 'did:plc:alice#device-a3';
+
+    const credA = { credentialType: 'basic' as const, identity: new TextEncoder().encode(identityA) };
+    const kpA   = await generateKeyPackage(credA, defaultCapabilities(), defaultLifetime, [], cs);
+    const groupId = new TextEncoder().encode(CONV_ID);
+    const stateA0 = await createGroup(groupId, kpA.publicPackage, kpA.privatePackage, [], cs);
+
+    const credB = { credentialType: 'basic' as const, identity: new TextEncoder().encode(identityB) };
+    const kpB   = await generateKeyPackage(credB, defaultCapabilities(), defaultLifetime, [], cs);
+    const addB: ProposalAdd = { proposalType: 'add', add: { keyPackage: kpB.publicPackage } };
+    const commit1 = await createCommit(
+      { state: stateA0, cipherSuite: cs },
+      { extraProposals: [addB], wireAsPublicMessage: true, ratchetTreeExtension: true },
+    );
+    if (!commit1.welcome) throw new Error('test fixture: expected a welcome for the founding add');
+    const bStateAfterJoin = await joinGroup(commit1.welcome, kpB.publicPackage, kpB.privatePackage, emptyPskIndex, cs);
+    fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: bytesToBase64(encodeGroupState(bStateAfterJoin)) }));
+
+    // Commit#2 (epoch 1 -> 2): B never receives/applies this one -- simulates
+    // a missed commit (e.g. dropped socket event, brief disconnect).
+    const credC = { credentialType: 'basic' as const, identity: new TextEncoder().encode(identityC) };
+    const kpC   = await generateKeyPackage(credC, defaultCapabilities(), defaultLifetime, [], cs);
+    const addC: ProposalAdd = { proposalType: 'add', add: { keyPackage: kpC.publicPackage } };
+    const commit2 = await createCommit(
+      { state: commit1.newState, cipherSuite: cs },
+      { extraProposals: [addC], wireAsPublicMessage: true, ratchetTreeExtension: true },
+    );
+
+    // Commit#3 (epoch 2 -> 3): B receives THIS one directly, skipping commit#2
+    // entirely -- declared epoch (2) > B's local epoch (1).
+    const credD = { credentialType: 'basic' as const, identity: new TextEncoder().encode(identityD) };
+    const kpD   = await generateKeyPackage(credD, defaultCapabilities(), defaultLifetime, [], cs);
+    const addD: ProposalAdd = { proposalType: 'add', add: { keyPackage: kpD.publicPackage } };
+    const commit3 = await createCommit(
+      { state: commit2.newState, cipherSuite: cs },
+      { extraProposals: [addD], wireAsPublicMessage: true, ratchetTreeExtension: true },
+    );
+    const commit3B64 = bytesToBase64(encodeMlsMessage(commit3.commit));
+    const postedEpoch3 = Number(commit2.newState.groupContext.epoch); // == 2
+
+    await expectAsync(
+      service.processIncomingCommit(CONV_ID, commit3B64, postedEpoch3, USER, DEVICE),
+    ).toBeRejectedWith(jasmine.objectContaining({ name: 'EpochGapError' }));
+
+    // Local state must be untouched -- no partial/corrupt write from a failed processPublicMessage attempt.
+    const stateAfter = await fakeStorage.load<StoredMlsState>(SCOPE);
+    expect(Number(restoreClientState(stateAfter!.groupStates[CONV_ID]!).groupContext.epoch)).toBe(1);
+  });
+});
+
+// ── processWelcomeForConversation: no matching KeyPackage (forensic audit
+// finding F7) ─────────────────────────────────────────────────────────────
+//
+// Before the fix, an unmatched Welcome was ACKed (marking the server row
+// consumed) before throwing. That row is the only copy of this device's
+// group secrets -- ACKing it turned a transient cause (KP pool not yet
+// refilled, a device-identity scope mismatch) into a permanent loss, since
+// the durable-retry design (getPendingWelcomes re-serving unconsumed rows on
+// every poll) can't recover a row the server has already marked consumed.
+describe('MlsService — processWelcomeForConversation (no matching KeyPackage)', () => {
+  let service: MlsService;
+  let mockRepo: jasmine.SpyObj<MlsRepository>;
+  let fakeStorage: FakeMlsStorage;
+
+  const USER: UserProfile = { did: 'did:plc:carol', handle: 'carol.test', displayName: 'Carol', avatarUrl: null };
+  const DEVICE: DeviceInfo = { id: 'device-c1', name: 'Phone', platform: 'android' };
+  const CONV_ID = 'conv-welcome-nomatch';
+  const SCOPE = `mls:${USER.did}:${DEVICE.id}`;
+
+  function baseState(keyPackages: StoredMlsState['keyPackages']): StoredMlsState {
+    return {
+      version:            1,
+      userDid:            USER.did,
+      deviceId:           DEVICE.id,
+      deviceName:         DEVICE.name,
+      platform:           DEVICE.platform,
+      cipherSuiteName:    CIPHERSUITE_NAME,
+      credentialIdentity: `${USER.did}#${DEVICE.id}`,
+      keyPackages,
+      conversations:      {},
+      groupStates:        {},
+      initializedAt:      Date.now(),
+      updatedAt:          Date.now(),
+    };
+  }
+
+  beforeEach(() => {
+    mockRepo = jasmine.createSpyObj<MlsRepository>('MlsRepository', ['ackWelcome']);
+    fakeStorage = new FakeMlsStorage();
+
+    TestBed.configureTestingModule({
+      providers: [
+        MlsService,
+        { provide: MlsRepository, useValue: mockRepo },
+        { provide: MlsStateStorageService, useValue: fakeStorage },
+      ],
+    });
+    service = TestBed.inject(MlsService);
+  });
+
+  it('does NOT ack the Welcome when no local key package matches, so the durable retry can still recover it', async () => {
+    const cs = await getCs();
+    const founderIdentity = 'did:plc:alice#device-founder';
+    const kpFounder = await generateKeyPackage(
+      { credentialType: 'basic' as const, identity: new TextEncoder().encode(founderIdentity) },
+      defaultCapabilities(), defaultLifetime, [], cs,
+    );
+    const groupId = new TextEncoder().encode(CONV_ID);
+    const stateFounder = await createGroup(groupId, kpFounder.publicPackage, kpFounder.privatePackage, [], cs);
+
+    const joinerIdentity = `${USER.did}#${DEVICE.id}`;
+    const kpJoiner = await generateKeyPackage(
+      { credentialType: 'basic' as const, identity: new TextEncoder().encode(joinerIdentity) },
+      defaultCapabilities(), defaultLifetime, [], cs,
+    );
+    const addJoiner: ProposalAdd = { proposalType: 'add', add: { keyPackage: kpJoiner.publicPackage } };
+    const commit = await createCommit(
+      { state: stateFounder, cipherSuite: cs },
+      { extraProposals: [addJoiner], wireAsPublicMessage: true, ratchetTreeExtension: true },
+    );
+    if (!commit.welcome) throw new Error('test fixture: expected a welcome');
+
+    const welcomeB64 = bytesToBase64(encodeMlsMessage({ version: 'mls10', wireformat: 'mls_welcome', welcome: commit.welcome }));
+
+    // Local state has NO key packages at all -- guarantees the "no matching
+    // KP" branch deterministically, without needing to fabricate a specific
+    // ref mismatch against the real Welcome above.
+    fakeStorage.seed(SCOPE, baseState([]));
+
+    await expectAsync(
+      service.processWelcomeForConversation('welcome-1', welcomeB64, CONV_ID, USER, DEVICE),
+    ).toBeRejectedWithError(/No matching key package/);
+
+    expect(mockRepo.ackWelcome).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,13 @@ export interface IKeyStore {
 
 export interface IMessageStore {
   initialize(): Promise<void>;
+  // Closes any open connection this store is holding. Callers that are about
+  // to delete the underlying database (e.g. MessageCacheService.clearAllForUser)
+  // must call this first -- indexedDB.deleteDatabase() blocks indefinitely
+  // (fires onblocked, never onsuccess/onerror) while any connection to that
+  // database stays open, and this store keeps its own connection open for
+  // its entire lifetime (see WebMessageStore's private db field).
+  close(): Promise<void>;
   put(record: EncryptedCacheRecord): Promise<void>;
   putMany(records: EncryptedCacheRecord[]): Promise<void>;
   has(id: string): Promise<boolean>;
