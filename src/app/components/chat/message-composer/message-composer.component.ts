@@ -2,7 +2,8 @@ import {
   Component, Input, Output, EventEmitter,
   ChangeDetectionStrategy, inject, OnChanges, OnDestroy, SimpleChanges,
 } from '@angular/core';
-import { IonIcon } from '@ionic/angular/standalone';
+import { IonIcon, IonTextarea } from '@ionic/angular/standalone';
+import { Capacitor } from '@capacitor/core';
 import { TypingService } from '../../../core/typing/typing.service';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 
@@ -10,7 +11,7 @@ import { TranslatePipe } from '../../../core/i18n/translate.pipe';
   selector: 'app-message-composer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, TranslatePipe],
+  imports: [IonIcon, IonTextarea, TranslatePipe],
   templateUrl: './message-composer.component.html',
   styleUrls: ['./message-composer.component.scss'],
 })
@@ -35,12 +36,13 @@ export class MessageComposerComponent implements OnChanges, OnDestroy {
   private typingSvc = inject(TypingService);
 
   onInputChange(event: Event): void {
-    this.inputText = (event.target as HTMLInputElement).value;
+    this.inputText = (event as CustomEvent<{ value?: string | null }>).detail.value ?? '';
     if (this.inputText.length > 0) this.typingSvc.startTyping(this.conversationId);
     else this.typingSvc.stopTyping(this.conversationId);
   }
 
   onKeydown(event: KeyboardEvent): void {
+    if (Capacitor.isNativePlatform()) return;
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       this.onSend();

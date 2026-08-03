@@ -1,14 +1,15 @@
 <div class="composer">
-  <input
+  <ion-textarea
     class="composer__input"
-    type="text"
+    autoGrow="true"
+    rows="1"
     [placeholder]="'composer.placeholder' | translate"
     [attr.aria-label]="'composer.placeholder' | translate"
     [value]="inputText"
     [disabled]="disabled"
-    (input)="onInputChange($event)"
+    (ionInput)="onInputChange($event)"
     (keydown)="onKeydown($event)"
-  />
+  ></ion-textarea>
   <button
     class="composer__send"
     type="button"
