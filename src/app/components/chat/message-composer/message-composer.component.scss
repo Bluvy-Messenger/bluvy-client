@@ -26,6 +26,15 @@
 
   ion-icon { font-size: var(--icon-size-sm); }
   &:disabled { opacity: 0.35; cursor: default; }
+
+  // No dedicated "GIF" pictogram in Ionicons -- a text badge is clearer
+  // than any generic icon and matches how other chat apps label this action.
+  &--gif span {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.02em;
+  }
 }
 
 .composer__input {

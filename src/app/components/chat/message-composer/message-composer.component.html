@@ -1,4 +1,15 @@
+<app-composer-link-preview [text]="inputText"></app-composer-link-preview>
+
 <div class="composer">
+  <button
+    class="composer__attach composer__attach--gif"
+    type="button"
+    [disabled]="disabled"
+    (click)="openGifPicker()"
+    [attr.aria-label]="'composer.gif' | translate"
+  >
+    <span>GIF</span>
+  </button>
   <ion-textarea
     class="composer__input"
     autoGrow="true"
@@ -20,3 +31,9 @@
     <ion-icon name="send"></ion-icon>
   </button>
 </div>
+
+<app-gif-picker
+  [isOpen]="gifPickerOpen()"
+  (closed)="onGifPickerClosed()"
+  (gifSelected)="onGifSelected($event)"
+></app-gif-picker>

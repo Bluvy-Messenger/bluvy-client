@@ -1,0 +1,32 @@
+@if (bskyPostUrl) {
+  <app-bsky-post-card [sourceUrl]="bskyPostUrl" [isMine]="isMine"></app-bsky-post-card>
+}
+@if (popfeedReviewUrl) {
+  <app-popfeed-review-card [sourceUrl]="popfeedReviewUrl" [isMine]="isMine"></app-popfeed-review-card>
+}
+@if (embed) {
+  <app-message-embed [match]="embed.match" [sourceUrl]="embed.url" [isMine]="isMine"></app-message-embed>
+}
+@if (preview) {
+  <a class="embed-preview-block__link" [href]="preview.url" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+    <div class="embed-preview-block__thumb">
+      @if (previewImageSrc) {
+        <img [src]="previewImageSrc" alt="" />
+      } @else {
+        <ion-icon name="link-outline"></ion-icon>
+      }
+    </div>
+    <div class="embed-preview-block__body">
+      <span class="embed-preview-block__title">{{ preview.title || hostnameOf(preview.url) }}</span>
+      @if (preview.description) {
+        <span class="embed-preview-block__desc">{{ preview.description }}</span>
+      }
+      @if (preview.title) {
+        <span class="embed-preview-block__site">
+          <ion-icon name="globe-outline"></ion-icon>
+          {{ preview.siteName || hostnameOf(preview.url) }}
+        </span>
+      }
+    </div>
+  </a>
+}
