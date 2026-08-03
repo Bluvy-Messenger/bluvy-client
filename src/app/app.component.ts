@@ -20,7 +20,7 @@ import {
   documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
   chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
   // devices + security + settings
-  laptopOutline, trashOutline, syncOutline,
+  laptopOutline, trashOutline, syncOutline, swapHorizontalOutline,
   // language + beta + appearance
   globe, globeOutline, flaskOutline,
   colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
@@ -88,7 +88,7 @@ export class AppComponent implements OnInit, OnDestroy {
       checkmarkDoneOutline, checkmarkOutline, send,
       arrowForwardOutline, fingerPrintOutline, keyOutline, linkOutline,
       documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
-      laptopOutline, trashOutline, syncOutline,
+      laptopOutline, trashOutline, syncOutline, swapHorizontalOutline,
       globe, globeOutline, flaskOutline,
       colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
       chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
