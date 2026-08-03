@@ -3,17 +3,19 @@ import { Capacitor } from '@capacitor/core';
 import { EdgeToEdge } from '@capawesome/capacitor-android-edge-to-edge-support';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
-export type ThemePalette = 'bluesky' | 'mu';
+export type ThemePalette = 'bluesky' | 'mu' | 'blacksky';
 export type DarkThemeStyle = 'dim' | 'black';
-export type AccentColor = 'blue' | 'pink' | 'orange';
+export type AccentColor = 'blue' | 'pink' | 'orange' | 'green' | 'purple' | 'indigo';
 export type FontFamily = 'system' | 'theme';
 export type FontSize = 'small' | 'default' | 'large';
 
-const SURFACE_LIGHT_BSKY = '#FFFFFF';
-const SURFACE_DARK_BSKY  = '#151D28';
-const SURFACE_DARK_BLACK = '#000000';
-const SURFACE_LIGHT_MU   = '#F7F7F2';
-const SURFACE_DARK_MU    = '#1F1F1F';
+const SURFACE_LIGHT_BSKY     = '#FFFFFF';
+const SURFACE_DARK_BSKY      = '#151D28';
+const SURFACE_DARK_BLACK     = '#000000';
+const SURFACE_LIGHT_MU       = '#F7F7F2';
+const SURFACE_DARK_MU        = '#1F1F1F';
+const SURFACE_LIGHT_BLACKSKY = '#F8FAF9';
+const SURFACE_DARK_BLACKSKY  = '#161E27';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
@@ -119,7 +121,7 @@ export class ThemeService {
     if (mode === 'light') html.classList.add('theme-light');
 
     // Apply background palette (brand theme)
-    html.classList.remove('palette-bluesky', 'palette-mu');
+    html.classList.remove('palette-bluesky', 'palette-mu', 'palette-blacksky');
     html.classList.add(`palette-${palette}`);
 
     // Apply dark theme style class (theme-dark-black for OLED black)
@@ -131,7 +133,7 @@ export class ThemeService {
     }
 
     // Apply accent color class
-    html.classList.remove('accent-blue', 'accent-pink', 'accent-orange');
+    html.classList.remove('accent-blue', 'accent-pink', 'accent-orange', 'accent-green', 'accent-purple', 'accent-indigo');
     html.classList.add(`accent-${accent}`);
 
     // Apply font family class
@@ -151,10 +153,10 @@ export class ThemeService {
       if (darkStyle === 'black') {
         surfaceColor = SURFACE_DARK_BLACK;
       } else {
-        surfaceColor = palette === 'mu' ? SURFACE_DARK_MU : SURFACE_DARK_BSKY;
+        surfaceColor = palette === 'mu' ? SURFACE_DARK_MU : palette === 'blacksky' ? SURFACE_DARK_BLACKSKY : SURFACE_DARK_BSKY;
       }
     } else {
-      surfaceColor = palette === 'mu' ? SURFACE_LIGHT_MU : SURFACE_LIGHT_BSKY;
+      surfaceColor = palette === 'mu' ? SURFACE_LIGHT_MU : palette === 'blacksky' ? SURFACE_LIGHT_BLACKSKY : SURFACE_LIGHT_BSKY;
     }
     this.syncNativeStatusBar(surfaceColor);
   }

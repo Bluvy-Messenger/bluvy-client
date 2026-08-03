@@ -128,6 +128,9 @@ ion-content {
   &--blue { background: #0085ff; }
   &--pink { background: #DB4AA6; }
   &--orange { background: #F2571F; }
+  &--green { background: #0D8A4B; }
+  &--purple { background: #986DC4; }
+  &--indigo { background: #6060E9; }
 
   &--active {
     border-color: var(--color-text-primary);
