@@ -1,23 +1,26 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { IonContent, IonIcon } from '@ionic/angular/standalone';
+import { FormsModule } from '@angular/forms';
+import { IonContent, IonIcon, IonModal, IonCheckbox } from '@ionic/angular/standalone';
 import { DeviceRepository } from '../../core/device/device.repository';
 import { AuthService } from '../../core/auth/auth.service';
 import type { DeviceItem } from '../../core/device/device.repository';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { SyncService } from '../../core/sync/sync.service';
 import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'app-devices',
   standalone: true,
-  imports: [IonContent, IonIcon, TranslatePipe],
+  imports: [IonContent, IonIcon, IonModal, IonCheckbox, FormsModule, TranslatePipe],
   templateUrl: './devices.page.html',
   styleUrls: ['./devices.page.scss'],
 })
 export class DevicesPage implements OnInit {
   private deviceRepo = inject(DeviceRepository);
   private authSvc    = inject(AuthService);
+  private syncSvc    = inject(SyncService);
   private router     = inject(Router);
   private i18n       = inject(TranslationService);
 
@@ -29,6 +32,19 @@ export class DevicesPage implements OnInit {
   confirmRevokeId  = '';
   revokingAll      = false;
   confirmRevokeAll = false;
+
+  // ── MBK rotation (after a revoke succeeds) ─────────────────────────────────
+  // A revoked device may already have extracted the MBK -- rotating it so
+  // that device loses read access to future (and, once the background
+  // rebuild finishes, past) backups. See docs/CRYPTO.md.
+  rotationModalOpen  = false;
+  rotationStep        = 'pin' as 'pin' | 'key';
+  rotationPin         = '';
+  rotationWorking      = false;
+  rotationError        = '';
+  newRecoveryKey       = '';
+  newRecoveryChunks    = [] as string[];
+  rotationAcknowledged = false;
 
   async ngOnInit(): Promise<void> {
     this.currentDeviceId = this.authSvc.currentDevice()?.id ?? '';
@@ -67,6 +83,7 @@ export class DevicesPage implements OnInit {
     try {
       await this.deviceRepo.revokeDevice(device.id);
       this.devices = this.devices.filter(d => d.id !== device.id);
+      this.openRotationModal();
     } catch {
       this.error = this.i18n.t('devices.error.revoke');
     } finally {
@@ -89,11 +106,63 @@ export class DevicesPage implements OnInit {
     try {
       await this.deviceRepo.revokeAllDevices();
       this.devices = this.devices.filter(d => d.id === this.currentDeviceId);
+      this.openRotationModal();
     } catch {
       this.error = this.i18n.t('devices.error.revoke_all');
     } finally {
       this.revokingAll = false;
     }
+  }
+
+  // ── MBK rotation ───────────────────────────────────────────────────────────
+
+  private openRotationModal(): void {
+    this.rotationStep         = 'pin';
+    this.rotationPin          = '';
+    this.rotationError        = '';
+    this.rotationAcknowledged = false;
+    this.rotationModalOpen    = true;
+  }
+
+  // The device is already revoked by this point (see revoke()/revokeAll()) --
+  // rotation just closes the remaining window where an already-extracted MBK
+  // stays useful. Cancelling here leaves the revocation itself intact, just
+  // without rotation; no retry is offered, matching the plan's accepted v1 scope.
+  cancelRotation(): void {
+    this.rotationModalOpen = false;
+    this.rotationPin       = '';
+  }
+
+  async confirmRotationPin(): Promise<void> {
+    this.rotationError   = '';
+    this.rotationWorking = true;
+    try {
+      const result           = await this.syncSvc.rotateMbk(this.rotationPin);
+      this.newRecoveryKey    = result.recoveryKey;
+      this.newRecoveryChunks = this.chunk(result.recoveryKey, 8);
+      this.rotationPin       = '';
+      this.rotationStep      = 'key';
+    } catch (err) {
+      this.rotationError = err instanceof Error && err.message === 'Incorrect PIN'
+        ? this.i18n.t('devices.rotation.error.wrong_pin')
+        : this.i18n.t('devices.rotation.error.generic');
+    } finally {
+      this.rotationWorking = false;
+    }
+  }
+
+  async copyNewRecoveryKey(): Promise<void> {
+    try { await navigator.clipboard.writeText(this.newRecoveryKey); } catch { /* ignore */ }
+  }
+
+  finishRotation(): void {
+    this.rotationModalOpen = false;
+  }
+
+  private chunk(s: string, n: number): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n));
+    return out;
   }
 
   goBack(): void {

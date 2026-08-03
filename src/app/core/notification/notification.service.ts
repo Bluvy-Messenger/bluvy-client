@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, NgZone } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
-import { ToastController } from '@ionic/angular/standalone';
+import { ToastController, NavController } from '@ionic/angular/standalone';
 import { filter, firstValueFrom } from 'rxjs';
 import { SocketService, MessageNewPayload } from '../infrastructure/socket.service';
 import { AuthService } from '../auth/auth.service';
@@ -20,6 +20,7 @@ export class NotificationService {
   private readonly cacheSvc         = inject(MessageCacheService);
   private readonly coordinator      = inject(MlsCoordinatorBase);
   private readonly router           = inject(Router);
+  private readonly navCtrl          = inject(NavController);
   private readonly toastCtrl         = inject(ToastController);
   private readonly translationSvc   = inject(TranslationService);
   private readonly zone             = inject(NgZone);
@@ -203,7 +204,12 @@ export class NotificationService {
     const convId = this.toastConvId();
     if (convId) {
       this.zone.run(() => {
-        void this.router.navigate([ROUTES.conversation(convId)]);
+        // Seed the stack with the conversation list underneath, same as
+        // notification-tap navigation, so back-button behavior is
+        // consistent regardless of which page was showing when the toast
+        // was tapped.
+        void this.navCtrl.navigateRoot([ROUTES.conversations], { animated: false })
+          .then(() => this.navCtrl.navigateForward([ROUTES.conversation(convId)]));
       });
     }
     this.closeToast();

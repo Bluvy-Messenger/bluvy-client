@@ -13,6 +13,7 @@ import type {
   ConversationFailedEvent,
   PendingDecryptQueuedEvent,
   RestoreCompletedEvent,
+  HistoryRecoveryCompletedEvent,
 } from './mls-coordinator.events';
 
 // Abstract base class used as the Angular DI token for MlsCoordinatorService.
@@ -149,12 +150,21 @@ export abstract class MlsCoordinatorBase {
   // ── Replay ────────────────────────────────────────────────────────────────
   abstract replayPendingDecrypts(convId: string, user: UserProfile, device: DeviceInfo): Promise<ReplayResult>;
 
+  // Re-checks messages currently stored as undecryptable placeholders for
+  // convId against the cloud backup, in case the MBK wasn't unlocked yet at
+  // the time they were marked undecryptable (see clearConversationGroup's
+  // recoverMissingHistoryBeforeClear). Returns how many were actually
+  // recovered by this call -- 0 if the MBK still isn't available, or if
+  // there was nothing to retry.
+  abstract retryUndecryptableViaCloudBackup(convId: string, user: UserProfile, device: DeviceInfo): Promise<number>;
+
   // ── Domain events (Observable only — never Subject) ───────────────────────
-  abstract readonly conversationReady$:      Observable<ConversationReadyEvent>;
-  abstract readonly welcomeProcessed$:       Observable<WelcomeProcessedEvent>;
-  abstract readonly commitApplied$:          Observable<CommitAppliedEvent>;
-  abstract readonly conversationFailed$:     Observable<ConversationFailedEvent>;
-  abstract readonly pendingDecryptQueued$:   Observable<PendingDecryptQueuedEvent>;
-  abstract readonly pendingDecryptReplayed$: Observable<ReplayedDecryptEvent>;
-  abstract readonly restoreCompleted$:       Observable<RestoreCompletedEvent>;
+  abstract readonly conversationReady$:          Observable<ConversationReadyEvent>;
+  abstract readonly welcomeProcessed$:           Observable<WelcomeProcessedEvent>;
+  abstract readonly commitApplied$:              Observable<CommitAppliedEvent>;
+  abstract readonly conversationFailed$:         Observable<ConversationFailedEvent>;
+  abstract readonly pendingDecryptQueued$:       Observable<PendingDecryptQueuedEvent>;
+  abstract readonly pendingDecryptReplayed$:     Observable<ReplayedDecryptEvent>;
+  abstract readonly restoreCompleted$:           Observable<RestoreCompletedEvent>;
+  abstract readonly historyRecoveryCompleted$:   Observable<HistoryRecoveryCompletedEvent>;
 }

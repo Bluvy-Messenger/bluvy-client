@@ -67,6 +67,14 @@ export class AuthService {
   private _refreshing         = false;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // In-flight restoreSession(), shared across concurrent callers. Without
+  // this, rootGuard/authGuard (or a notification-driven navigation racing
+  // the router's own default initial navigation on cold start) can each
+  // independently call restoreSession(), duplicating the HTTP session
+  // fetch + MLS bootstrap + socket connect + sync init pipeline at the
+  // worst possible time (right after app cold start).
+  private restoreSessionPromise: Promise<boolean> | null = null;
+
   // Decodes the (unverified — verification is the server's job, this is only
   // used to schedule a client-side timer) `exp` claim of a JWT access token.
   private decodeJwtExp(token: string): number | null {
@@ -323,6 +331,8 @@ export class AuthService {
     await this.embedPrefsSvc.bootstrap();
     void this.embedPrefsSvc.refreshFromPds()
       .catch(err => { if (!environment.production) console.error('[AuthService] login: embed preferences refresh failed', err); });
+    void this.provisionSvc.checkAndProvisionOnConnect(response.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] login: checkAndProvisionOnConnect failed', err); });
 
     await this.syncSvc.initialize(response.user.did, response.device.id, response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: sync initialize failed', err); });
@@ -380,6 +390,14 @@ export class AuthService {
   }
 
   async restoreSession(): Promise<boolean> {
+    if (this.restoreSessionPromise) return this.restoreSessionPromise;
+    this.restoreSessionPromise = this.doRestoreSession().finally(() => {
+      this.restoreSessionPromise = null;
+    });
+    return this.restoreSessionPromise;
+  }
+
+  private async doRestoreSession(): Promise<boolean> {
     if (sessionStorage.getItem('add_account_mode') === 'true') {
       return false;
     }
@@ -463,6 +481,8 @@ export class AuthService {
     await this.embedPrefsSvc.bootstrap();
     void this.embedPrefsSvc.refreshFromPds()
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: embed preferences refresh failed', err); });
+    void this.provisionSvc.checkAndProvisionOnConnect(session.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: checkAndProvisionOnConnect failed', err); });
 
     await this.syncSvc.initialize(session.user.did, session.device.id, session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: sync initialize failed', err); });

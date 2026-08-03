@@ -1,4 +1,4 @@
-import type { SecureLocalStorage } from './secure-local-storage.interface';
+import type { SecureLocalStorage, StoredMbk } from './secure-local-storage.interface';
 
 const DB_NAME    = 'bluvy-secure';
 const DB_VERSION = 1;
@@ -9,6 +9,7 @@ interface MbkEntry {
   dwk:          CryptoKey;
   encryptedMbk: Uint8Array<ArrayBuffer>;
   iv:           Uint8Array<ArrayBuffer>;
+  keyGeneration: number;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -69,7 +70,7 @@ function idbDelete(db: IDBDatabase, userDid: string): Promise<void> {
  * Supported: Chrome 36+, Firefox 75+, Safari 15+.
  */
 export class WebSecureLocalStorage implements SecureLocalStorage {
-  async storeMbk(userDid: string, mbkBytes: Uint8Array): Promise<void> {
+  async storeMbk(userDid: string, mbkBytes: Uint8Array, keyGeneration: number): Promise<void> {
     const db  = await openDb();
     const existing = await idbGet(db, userDid);
 
@@ -91,10 +92,11 @@ export class WebSecureLocalStorage implements SecureLocalStorage {
       dwk,
       encryptedMbk: new Uint8Array(cipherBuffer),
       iv,
+      keyGeneration,
     });
   }
 
-  async loadMbk(userDid: string): Promise<Uint8Array | null> {
+  async loadMbk(userDid: string): Promise<StoredMbk | null> {
     const db    = await openDb();
     const entry = await idbGet(db, userDid);
     if (!entry) return null;
@@ -105,7 +107,10 @@ export class WebSecureLocalStorage implements SecureLocalStorage {
       entry.encryptedMbk as Uint8Array<ArrayBuffer>,
     );
 
-    return new Uint8Array(plainBuffer);
+    // Entries written before keyGeneration existed have no such field —
+    // treat them as generation 1 (the schema's own default for pre-rotation
+    // accounts), not as stale.
+    return { bytes: new Uint8Array(plainBuffer), keyGeneration: entry.keyGeneration ?? 1 };
   }
 
   async clearMbk(userDid: string): Promise<void> {

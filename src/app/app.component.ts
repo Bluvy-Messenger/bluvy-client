@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet, IonToast, IonIcon } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform, ToastController } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
@@ -16,7 +16,7 @@ import {
   eyeOutline, eyeOffOutline, lockClosedOutline, checkmarkDone,
   checkmarkDoneOutline, checkmarkOutline, send,
   // landing + legal + about
-  arrowForwardOutline, fingerPrintOutline, keyOutline,
+  arrowForwardOutline, fingerPrintOutline, keyOutline, linkOutline,
   documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
   chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
   // devices + security + settings
@@ -42,6 +42,8 @@ import { PushNotificationService } from './core/notification/push-notification.s
 import { AccountBadgeService } from './core/notification/account-badge.service';
 import { MessageCacheService } from './core/conversation/message-cache.service';
 import { EmbedPreferencesService } from './core/embed/embed-preferences.service';
+import { TranslationService } from './core/i18n/translation.service';
+import { SyncService } from './core/sync/sync.service';
 import { ROUTES } from './core/routes';
 
 @Component({
@@ -61,13 +63,19 @@ export class AppComponent implements OnInit, OnDestroy {
   private badgeSvc = inject(AccountBadgeService);
   private msgCacheSvc = inject(MessageCacheService);
   private embedPrefsSvc = inject(EmbedPreferencesService);
+  private syncSvc = inject(SyncService);
   private router = inject(Router);
+  private platform = inject(Platform);
+  private toastCtrl = inject(ToastController);
+  private i18n = inject(TranslationService);
   readonly connectivitySvc = inject(ConnectivityService);
+
+  @ViewChild(IonRouterOutlet) private routerOutlet?: IonRouterOutlet;
 
   constructor() {
     inject(ThemeService);
     inject(NavigationRedirectService);
-    inject(JournalService); // Start console interception at boot
+    inject(JournalService); // Console capture already started in main.ts; this wires up IndexedDB persistence
     addIcons({
       chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
       personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,
@@ -76,7 +84,7 @@ export class AppComponent implements OnInit, OnDestroy {
       sunny, contrastOutline, contrast, checkmarkCircleOutline, checkmarkCircle,
       eyeOutline, eyeOffOutline, lockClosedOutline, checkmarkDone,
       checkmarkDoneOutline, checkmarkOutline, send,
-      arrowForwardOutline, fingerPrintOutline, keyOutline,
+      arrowForwardOutline, fingerPrintOutline, keyOutline, linkOutline,
       documentTextOutline, businessOutline, shieldOutline, codeSlashOutline,
       laptopOutline, trashOutline, syncOutline,
       globe, globeOutline, flaskOutline,
@@ -171,6 +179,40 @@ export class AppComponent implements OnInit, OnDestroy {
       }),
     );
 
+    // Global, not scoped to conversation.page.ts -- recovery can also happen
+    // in the background (recoverFromFailed) while the user isn't viewing the
+    // affected conversation. Only surfaced when something couldn't be saved.
+    this.subs.add(
+      this.coordinator.historyRecoveryCompleted$.subscribe(async event => {
+        if (!environment.production) console.log('[AppComponent] historyRecoveryCompleted', event);
+        if (event.stillUndecryptable <= 0) return;
+        try {
+          const toast = await this.toastCtrl.create({
+            message:  this.i18n.t('conversation.history_partially_recovered', { count: String(event.stillUndecryptable) }),
+            duration: 4500,
+            position: 'bottom',
+            color:    'medium',
+          });
+          await toast.present();
+        } catch {
+          // Non-critical -- ignore.
+        }
+      }),
+    );
+
+    // Another of this account's devices rotated the MBK (see devices.page.ts
+    // revoke flow) -- drop the now-stale local copy so this device can't
+    // keep silently encrypting new data under a key that no longer matches
+    // the backend. No forced navigation: the existing "MBK not unlocked yet"
+    // path (onGroupNotReady) already prompts for the PIN the next time sync
+    // genuinely needs it, same as any brand-new device.
+    this.subs.add(
+      this.socketSvc.mbkRotated$.subscribe(payload => {
+        if (!environment.production) console.log('[AppComponent] mbk:rotated', payload);
+        this.syncSvc.handleRemoteRotation(payload.keyGeneration);
+      }),
+    );
+
     void App.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) return;
       const user   = this.authSvc.currentUser();
@@ -180,6 +222,33 @@ export class AppComponent implements OnInit, OnDestroy {
         .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
       void this.embedPrefsSvc.refreshFromPds()
         .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: embed preferences refresh failed', err); });
+    });
+
+    // This empty listener is required for Android hardware back to reach
+    // Ionic at all: Capacitor's native side only forwards the event into
+    // the 'backbutton' DOM event (which Platform.backButton below listens
+    // to) when at least one 'backButton' listener is registered -- with
+    // none registered, it silently replays the WebView's own history
+    // instead. The actual handling lives in Platform.backButton so it
+    // stays coordinated with Ionic's own default pop handler (priority 0)
+    // instead of running a second, uncoordinated navigation in parallel.
+    void App.addListener('backButton', () => {});
+
+    // Priority 1 runs before Ionic's own default handler (priority 0,
+    // which calls NavController.pop()). If the ion-router-outlet stack can
+    // still pop, defer to that default. Otherwise the stack is exhausted
+    // -- e.g. a cold start opened directly into a conversation from a
+    // notification tap -- and letting the event fall through would exit
+    // the app instead of landing somewhere sensible.
+    this.platform.backButton.subscribeWithPriority(1, (processNextHandler) => {
+      if (this.routerOutlet?.canGoBack()) {
+        processNextHandler();
+        return;
+      }
+      void this.router.navigate(
+        [this.authSvc.isAuthenticated() ? ROUTES.conversations : ROUTES.welcome],
+        { replaceUrl: true },
+      );
     });
   }
 
