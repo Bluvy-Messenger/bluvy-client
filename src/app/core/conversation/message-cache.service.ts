@@ -115,6 +115,7 @@ export class MessageCacheService {
     const key     = await this.keyStore.getOrCreateKey();
     const records = await Promise.all(messages.map(m => this.encryptMessage(m, key)));
     await this.msgStore.putMany(records);
+    for (const m of messages) this._stored.next(m);
   }
 
   async exists(messageId: string): Promise<boolean> {

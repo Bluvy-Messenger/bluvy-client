@@ -96,3 +96,87 @@
 
   </div>
 </ion-content>
+
+<ion-modal
+  [isOpen]="rotationModalOpen"
+  [backdropDismiss]="false"
+  initialBreakpoint="0.75"
+  [breakpoints]="[0, 0.75, 0.95]"
+  aria-labelledby="rotation-modal-title"
+>
+  <ng-template>
+    <div class="rotation-modal-content">
+      @if (rotationStep === 'pin') {
+        <h2 id="rotation-modal-title">{{ 'devices.rotation.pin.title' | translate }}</h2>
+        <p class="rotation-modal__desc">{{ 'devices.rotation.pin.desc' | translate }}</p>
+
+        <div class="form-field">
+          <label class="form-field__label" for="rotation-pin-input">{{ 'devices.rotation.pin.placeholder' | translate }}</label>
+          <input
+            id="rotation-pin-input"
+            class="form-field__input"
+            type="password"
+            inputmode="numeric"
+            autocomplete="current-password"
+            maxlength="8"
+            [value]="rotationPin"
+            (input)="rotationPin = $any($event.target).value"
+            [attr.aria-invalid]="rotationError ? 'true' : null"
+            [attr.aria-describedby]="rotationError ? 'rotation-pin-error' : null"
+          />
+        </div>
+
+        @if (rotationError) {
+          <p class="form-error" id="rotation-pin-error" role="alert">{{ rotationError }}</p>
+        }
+
+        <button
+          type="button"
+          class="primary-btn"
+          [disabled]="rotationWorking || !rotationPin"
+          (click)="confirmRotationPin()">
+          @if (rotationWorking) {
+            <div class="spinner spinner--sm"></div>
+          } @else {
+            {{ 'devices.rotation.pin.submit' | translate }}
+          }
+        </button>
+
+        <button type="button" class="btn-ghost-sm" [disabled]="rotationWorking" (click)="cancelRotation()">
+          {{ 'devices.rotation.skip' | translate }}
+        </button>
+      }
+
+      @if (rotationStep === 'key') {
+        <h2 id="rotation-modal-title">{{ 'devices.rotation.key.title' | translate }}</h2>
+        <p class="rotation-modal__desc">{{ 'devices.rotation.key.desc' | translate }}</p>
+
+        <div class="recovery-key-block">
+          @for (chunk of newRecoveryChunks; track $index) {
+            <span>{{ chunk }}</span>
+            @if ($index < newRecoveryChunks.length - 1) {
+              <span>&nbsp;</span>
+            }
+          }
+        </div>
+
+        <button type="button" class="secondary-btn" (click)="copyNewRecoveryKey()">
+          {{ 'setup_sync.key.copy' | translate }}
+        </button>
+
+        <label class="ack-row">
+          <ion-checkbox [(ngModel)]="rotationAcknowledged"></ion-checkbox>
+          <span class="ack-row__text">{{ 'setup_sync.key.saved' | translate }}</span>
+        </label>
+
+        <button
+          type="button"
+          class="primary-btn"
+          [disabled]="!rotationAcknowledged"
+          (click)="finishRotation()">
+          {{ 'devices.rotation.key.submit' | translate }}
+        </button>
+      }
+    </div>
+  </ng-template>
+</ion-modal>

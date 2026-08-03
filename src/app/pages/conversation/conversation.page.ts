@@ -24,6 +24,7 @@ import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.b
 import { SocketService } from '../../core/infrastructure/socket.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../core/infrastructure/socket.types';
 import { MessageCacheService } from '../../core/conversation/message-cache.service';
+import { OutboxRepository } from '../../core/conversation/outbox.repository';
 import type { CachedMessage, DisplayMessage } from '../../core/conversation/conversation.types';
 import { SyncService } from '../../core/sync/sync.service';
 import { TypingService } from '../../core/typing/typing.service';
@@ -64,6 +65,7 @@ export class ConversationPage implements OnDestroy {
   private socketSvc       = inject(SocketService);
   private cdr             = inject(ChangeDetectorRef);
   private messageCacheSvc = inject(MessageCacheService);
+  private outboxRepo      = inject(OutboxRepository);
   private syncSvc         = inject(SyncService);
   private typingSvc       = inject(TypingService);
   private receiptsSvc     = inject(ReceiptsService);
@@ -77,6 +79,10 @@ export class ConversationPage implements OnDestroy {
   loading          = false;
   sending          = false;
   error            = '';
+  // Recovered from the outbox on open -- see ionViewWillEnter -- when this
+  // device was killed after a send reached the network but before it was
+  // confirmed locally. Restored into the composer, never auto-resent.
+  draftText        = '';
   mlsGroupReady    = true;
   reestablishing   = false;
   typingUsers$!:   Observable<string[]>;
@@ -159,6 +165,17 @@ export class ConversationPage implements OnDestroy {
       if (user && device) {
         await this.messageCacheSvc.initialize(user.did, device.id);
 
+        try {
+          await this.outboxRepo.initialize(user.did, device.id);
+          const drafts = await this.outboxRepo.getByConversation(this.conversationId);
+          if (drafts.length > 0) {
+            this.draftText = drafts.map(d => d.plaintext).join('\n');
+            for (const d of drafts) await this.outboxRepo.remove(d.localId).catch(() => {});
+          }
+        } catch (err) {
+          if (!environment.production) console.warn('[Conversation] outbox draft restore failed:', err);
+        }
+
         // This device may have missed the recreation entirely: it wasn't
         // connected for the live 'conversation:superseded' event AND it
         // never navigated to the old conversation's URL (e.g. it opened this
@@ -195,16 +212,9 @@ export class ConversationPage implements OnDestroy {
         }
       }
 
-      // A conversation that simply hasn't been established yet (fresh, or
-      // freshly recreated -- see AUDIT_02/04/05 Root Cause #3 fallback) is
-      // NOT the same as one that's genuinely broken: it will establish
-      // transparently on first send via the normal ensureGroupReady path.
-      // Only show the "restore encryption" affordance when explicitly FAILED,
-      // not merely "not yet confirmed ready" -- otherwise every brand-new or
-      // just-recreated conversation misleadingly looks broken.
-      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId);
-
       await this.loadHistory();
+      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId) &&
+        (this.coordinator.isConversationReady(this.conversationId) || this.displayMessages.length === 0);
       this.markReadIfVisible();
     } catch {
       this.error = 'Could not load conversation.';
@@ -284,6 +294,20 @@ export class ConversationPage implements OnDestroy {
     });
     this.scrollToBottom();
 
+    // Durable local record of this send attempt, written BEFORE the network
+    // call -- the final MessageCacheService record can't be written yet
+    // (its primary key is the server-assigned message id, which doesn't
+    // exist until the socket ack below). Survives the app being killed
+    // between the network send and the local cache write; removed once that
+    // write succeeds. Best-effort: a failure here must not block sending.
+    const outboxLocalId = crypto.randomUUID();
+    try {
+      await this.outboxRepo.initialize(user.did, device.id);
+      await this.outboxRepo.add({ localId: outboxLocalId, conversationId: this.conversationId, plaintext: text, createdAt: now });
+    } catch (err) {
+      if (!environment.production) console.warn('[Conversation] sendMessage: outbox durable write failed:', err);
+    }
+
     try {
       if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
         this.ensureGroupAbort = new AbortController();
@@ -309,6 +333,7 @@ export class ConversationPage implements OnDestroy {
         cachedAt:          Date.now(),
       };
       await this.messageCacheSvc.store(cached);
+      await this.outboxRepo.remove(outboxLocalId).catch(() => {});
       this.syncSvc.enqueue({
         messageId:      serverMsg.id,
         conversationId: this.conversationId,
@@ -421,6 +446,18 @@ export class ConversationPage implements OnDestroy {
         this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
         this.scrollToBottom();
       }
+    }
+
+    // [4.6] Retry cloud-backup recovery for messages still marked
+    // undecryptable after [4.5] (MLS decrypt retry) -- covers placeholders
+    // written by recoverMissingHistoryBeforeClear() when the group's keys
+    // were already gone AND the MBK wasn't unlocked yet at that time. No-op
+    // (and cheap) if the MBK still isn't available now.
+    const healedCount = await this.coordinator.retryUndecryptableViaCloudBackup(this.conversationId, user, device);
+    if (healedCount > 0) {
+      const refreshed = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
+      this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
+      this.scrollToBottom();
     }
 
     // [5] Missing = on server but not in cache and not already being handled by socket.
