@@ -1,0 +1,75 @@
+@switch (state()) {
+  @case ('loading') {
+    <div class="popfeed-card popfeed-card--loading">
+      <div class="popfeed-card__skeleton-poster"></div>
+      <div class="popfeed-card__skeleton-lines">
+        <div class="popfeed-card__skeleton-line"></div>
+        <div class="popfeed-card__skeleton-line"></div>
+      </div>
+    </div>
+  }
+  @case ('error') {
+    <a class="popfeed-card popfeed-card--error" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+      <ion-icon name="cloud-offline-outline"></ion-icon>
+      <span>{{ 'popfeedReview.error.unavailable' | translate }}</span>
+    </a>
+  }
+  @case ('loaded') {
+    @if (review(); as r) {
+      <div class="popfeed-card">
+        @if (r.backdropUrl) {
+          <div class="popfeed-card__backdrop">
+            <img [src]="r.backdropUrl" alt="" loading="lazy" />
+          </div>
+        }
+
+        <div class="popfeed-card__main">
+          @if (r.posterUrl) {
+            <img class="popfeed-card__poster" [src]="r.posterUrl" [alt]="r.title" loading="lazy" />
+          }
+          <div class="popfeed-card__info">
+            <span class="popfeed-card__title">{{ r.title }}</span>
+            @if (r.genres.length) {
+              <div class="popfeed-card__genres">
+                @for (genre of r.genres.slice(0, 3); track genre) {
+                  <span class="popfeed-card__genre">{{ genre }}</span>
+                }
+              </div>
+            }
+            @if (r.isRevisit) {
+              <span class="popfeed-card__revisit">{{ 'popfeedReview.revisit' | translate }}</span>
+            }
+          </div>
+          @if (r.rating !== null) {
+            <span class="popfeed-card__rating">{{ r.rating }}/10</span>
+          }
+        </div>
+
+        @if (r.text) {
+          @if (r.containsSpoilers && !spoilerRevealed()) {
+            <button type="button" class="popfeed-card__spoiler" (click)="revealSpoiler()">
+              {{ 'popfeedReview.spoiler.reveal' | translate }}
+            </button>
+          } @else {
+            <p class="popfeed-card__text">{{ r.text }}</p>
+          }
+        }
+
+        <a class="popfeed-card__author" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+          <app-avatar [src]="r.author.avatarUrl" [handle]="r.author.handle" size="sm"></app-avatar>
+          <span class="popfeed-card__author-name">{{ r.author.displayName || r.author.handle }}</span>
+          <span class="popfeed-card__author-handle">&#64;{{ r.author.handle }}</span>
+        </a>
+
+        @if (r.crossPostUrl) {
+          <app-bsky-post-card [sourceUrl]="r.crossPostUrl" [isMine]="isMine" [compact]="true"></app-bsky-post-card>
+        } @else {
+          <a class="popfeed-card__open" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+            <ion-icon name="open-outline"></ion-icon>
+            <span>{{ 'popfeedReview.open' | translate }}</span>
+          </a>
+        }
+      </div>
+    }
+  }
+}

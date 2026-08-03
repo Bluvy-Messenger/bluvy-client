@@ -22,6 +22,7 @@ import { MessageCacheService } from '../conversation/message-cache.service';
 import { NotificationService } from '../notification/notification.service';
 import { PushNotificationService } from '../notification/push-notification.service';
 import { AccountBadgeService } from '../notification/account-badge.service';
+import { EmbedPreferencesService } from '../embed/embed-preferences.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
@@ -50,6 +51,7 @@ export class AuthService {
   private tokenRepo       = inject(TokenRepository);
   private secureStorage   = inject(SecureLocalStorageService);
   private msgCache        = inject(MessageCacheService);
+  private embedPrefsSvc   = inject(EmbedPreferencesService);
   private injector        = inject(Injector);
   // Lazy-resolved to break circular dependency (NotificationService -> AuthService -> NotificationService)
   private get notifSvc(): NotificationService     { return this.injector.get(NotificationService); }
@@ -64,6 +66,14 @@ export class AuthService {
   private _syncListenersBound = false;
   private _refreshing         = false;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // In-flight restoreSession(), shared across concurrent callers. Without
+  // this, rootGuard/authGuard (or a notification-driven navigation racing
+  // the router's own default initial navigation on cold start) can each
+  // independently call restoreSession(), duplicating the HTTP session
+  // fetch + MLS bootstrap + socket connect + sync init pipeline at the
+  // worst possible time (right after app cold start).
+  private restoreSessionPromise: Promise<boolean> | null = null;
 
   // Decodes the (unverified — verification is the server's job, this is only
   // used to schedule a client-side timer) `exp` claim of a JWT access token.
@@ -316,6 +326,14 @@ export class AuthService {
     void this.provisionSvc.proactiveCatchUpSweep(response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: proactiveCatchUpSweep failed', err); });
 
+    // Embed preference load order: local cache first (instant), then a
+    // background PDS refresh. Fire-and-forget -- must not delay navigation.
+    await this.embedPrefsSvc.bootstrap();
+    void this.embedPrefsSvc.refreshFromPds()
+      .catch(err => { if (!environment.production) console.error('[AuthService] login: embed preferences refresh failed', err); });
+    void this.provisionSvc.checkAndProvisionOnConnect(response.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] login: checkAndProvisionOnConnect failed', err); });
+
     await this.syncSvc.initialize(response.user.did, response.device.id, response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: sync initialize failed', err); });
 
@@ -372,6 +390,14 @@ export class AuthService {
   }
 
   async restoreSession(): Promise<boolean> {
+    if (this.restoreSessionPromise) return this.restoreSessionPromise;
+    this.restoreSessionPromise = this.doRestoreSession().finally(() => {
+      this.restoreSessionPromise = null;
+    });
+    return this.restoreSessionPromise;
+  }
+
+  private async doRestoreSession(): Promise<boolean> {
     if (sessionStorage.getItem('add_account_mode') === 'true') {
       return false;
     }
@@ -451,6 +477,12 @@ export class AuthService {
     // applyCommit/catch-up fixes shipped. Fire-and-forget.
     void this.provisionSvc.proactiveCatchUpSweep(session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: proactiveCatchUpSweep failed', err); });
+
+    await this.embedPrefsSvc.bootstrap();
+    void this.embedPrefsSvc.refreshFromPds()
+      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: embed preferences refresh failed', err); });
+    void this.provisionSvc.checkAndProvisionOnConnect(session.user, sessionDevice)
+      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: checkAndProvisionOnConnect failed', err); });
 
     await this.syncSvc.initialize(session.user.did, session.device.id, session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: sync initialize failed', err); });

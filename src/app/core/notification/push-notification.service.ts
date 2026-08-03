@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { NavController } from '@ionic/angular/standalone';
 import { ApiClientService } from '../infrastructure/api-client.service';
 import { TokenRepository } from '../infrastructure/token.repository';
 import { AuthService } from '../auth/auth.service';
@@ -14,7 +14,7 @@ export class PushNotificationService {
   private readonly apiClient = inject(ApiClientService);
   private readonly tokenRepo = inject(TokenRepository);
   private readonly authSvc   = inject(AuthService);
-  private readonly router    = inject(Router);
+  private readonly navCtrl   = inject(NavController);
   private readonly kpSvc     = inject(KeyPackageService);
 
   async initialize(): Promise<void> {
@@ -70,9 +70,25 @@ export class PushNotificationService {
       const data = notification.notification.data;
       const conversationId = data['conversationId'] as string | undefined;
       if (conversationId) {
-        void this.router.navigate([ROUTES.conversation(conversationId)]);
+        void this.openConversationFromNotification(conversationId);
       }
     });
+  }
+
+  // Notification taps can arrive on a cold start, racing the router's own
+  // default initial navigation (both hit rootGuard/authGuard's
+  // restoreSession() call — now deduped, see AuthService.restoreSession).
+  // Wait for auth before navigating, then always seed the stack with the
+  // conversation list underneath the opened conversation (navigateRoot +
+  // navigateForward instead of a single push) so back-button behavior is
+  // consistent regardless of whether the app was cold or already running.
+  private async openConversationFromNotification(conversationId: string): Promise<void> {
+    if (!this.authSvc.isAuthenticated()) {
+      const restored = await this.authSvc.restoreSession();
+      if (!restored) return;
+    }
+    await this.navCtrl.navigateRoot([ROUTES.conversations], { animated: false });
+    await this.navCtrl.navigateForward([ROUTES.conversation(conversationId)]);
   }
 
   /**

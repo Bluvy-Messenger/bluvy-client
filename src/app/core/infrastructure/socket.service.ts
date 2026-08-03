@@ -8,6 +8,7 @@ import type {
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
   ConversationNewPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
+  MbkRotatedPayload,
   SendAck,
 } from './socket.types';
 import { SOCKET_EVENTS } from './socket.constants';
@@ -26,6 +27,7 @@ import {
   validateConversationSupersededPayload,
   validateMlsRefillKeyPackagesPayload,
   validateDeviceRevokedPayload,
+  validateMbkRotatedPayload,
 } from './socket.validator';
 
 export type {
@@ -33,6 +35,7 @@ export type {
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
   ConversationNewPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
+  MbkRotatedPayload,
 } from './socket.types';
 
 @Injectable({ providedIn: 'root' })
@@ -59,6 +62,7 @@ export class SocketService {
   private readonly _connectError        = new Subject<Error>();
   private readonly _mlsRefillKeyPackages = new Subject<MlsRefillKeyPackagesPayload>();
   private readonly _deviceRevoked       = new Subject<DeviceRevokedPayload>();
+  private readonly _mbkRotated          = new Subject<MbkRotatedPayload>();
 
   readonly messageNew$: Observable<MessageNewPayload> = this._messageNew.asObservable().pipe(
     throttleTime(100, asyncScheduler, { leading: true, trailing: true }),
@@ -78,6 +82,7 @@ export class SocketService {
   readonly connectError$:        Observable<Error>                      = this._connectError.asObservable();
   readonly mlsRefillKeyPackages$: Observable<MlsRefillKeyPackagesPayload> = this._mlsRefillKeyPackages.asObservable();
   readonly deviceRevoked$:       Observable<DeviceRevokedPayload>       = this._deviceRevoked.asObservable();
+  readonly mbkRotated$:          Observable<MbkRotatedPayload>          = this._mbkRotated.asObservable();
 
   connect(): void {
     if (this.socket) return;
@@ -187,6 +192,12 @@ export class SocketService {
       let data: DeviceRevokedPayload;
       try { data = validateDeviceRevokedPayload(raw); } catch { return; }
       this.zone.run(() => this._deviceRevoked.next(data));
+    });
+
+    this.socket.on(SOCKET_EVENTS.MBK_ROTATED, (raw: MbkRotatedPayload) => {
+      let data: MbkRotatedPayload;
+      try { data = validateMbkRotatedPayload(raw); } catch { return; }
+      this.zone.run(() => this._mbkRotated.next(data));
     });
   }
 

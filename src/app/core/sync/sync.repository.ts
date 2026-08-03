@@ -1,9 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import type { EncryptedSyncPayload, MbkBlob, SyncDataInput, SyncSettings } from './sync.types';
+import type { EncryptedSyncPayload, MbkBlob, MbkRotateResult, SyncDataInput, SyncSettings } from './sync.types';
 import type { Paginated } from '../infrastructure/pagination.types';
 import { ApiClientService } from '../infrastructure/api-client.service';
 import {
   validateMbkBlob,
+  validateMbkRotateResult,
   validateSyncDataIdsPage,
   validateSyncDataPage,
   validateSyncSettings,
@@ -51,6 +52,11 @@ export class SyncRepository {
 
   putRecoveryMbk(blob: MbkBlob): Promise<unknown> {
     return this.apiClient.put(`${API}/recovery-mbk`, blob);
+  }
+
+  async rotateMbk(mbkBlob: MbkBlob, recoveryMbkBlob: MbkBlob): Promise<MbkRotateResult> {
+    const raw = await this.apiClient.post<MbkRotateResult>(`${API}/mbk/rotate`, { mbkBlob, recoveryMbkBlob });
+    return validateMbkRotateResult(raw);
   }
 
   async getData(params: Record<string, string>): Promise<SyncDataPage> {

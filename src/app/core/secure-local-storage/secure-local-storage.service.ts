@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
-import type { SecureLocalStorage } from './secure-local-storage.interface';
+import type { SecureLocalStorage, StoredMbk } from './secure-local-storage.interface';
 import { NativeSecureLocalStorage } from './native-secure-local-storage';
 import { WebSecureLocalStorage } from './web-secure-local-storage';
 
@@ -10,11 +10,11 @@ export class SecureLocalStorageService implements SecureLocalStorage {
     ? new NativeSecureLocalStorage()
     : new WebSecureLocalStorage();
 
-  storeMbk(userDid: string, mbkBytes: Uint8Array): Promise<void> {
-    return this.impl.storeMbk(userDid, mbkBytes);
+  storeMbk(userDid: string, mbkBytes: Uint8Array, keyGeneration: number): Promise<void> {
+    return this.impl.storeMbk(userDid, mbkBytes, keyGeneration);
   }
 
-  loadMbk(userDid: string): Promise<Uint8Array | null> {
+  loadMbk(userDid: string): Promise<StoredMbk | null> {
     return this.impl.loadMbk(userDid);
   }
 

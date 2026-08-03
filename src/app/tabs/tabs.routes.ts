@@ -60,6 +60,18 @@ export const routes: Routes = [
             .then(m => m.SettingsNotificationsPage),
       },
       {
+        path: 'settings/privacy',
+        loadComponent: () =>
+          import('../pages/settings-privacy/settings-privacy.page')
+            .then(m => m.SettingsPrivacyPage),
+      },
+      {
+        path: 'settings/privacy/embeds',
+        loadComponent: () =>
+          import('../pages/settings-embeds/settings-embeds.page')
+            .then(m => m.SettingsEmbedsPage),
+      },
+      {
         path: 'security',
         loadComponent: () =>
           import('../pages/security/security.page').then(m => m.SecurityPage),

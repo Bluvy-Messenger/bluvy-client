@@ -68,6 +68,47 @@ function serialize(args: unknown[]): { message: string; detail: string | null } 
   };
 }
 
+type CapturedEntry = Omit<JournalEntry, 'id'>;
+type Sink = (entry: CapturedEntry) => void;
+
+// Entries captured before a sink is attached (i.e. before JournalService's
+// IndexedDB is open) are queued here instead of dropped, then flushed once
+// the sink attaches — see startConsoleCapture()/JournalService.constructor.
+let sink: Sink | null = null;
+const buffer: CapturedEntry[] = [];
+let intercepted = false;
+
+// Patches console.log/warn/error to capture entries. Deliberately a plain
+// module-level function, not something wired up inside JournalService's
+// constructor: it must run as the very first statement in main.ts, before
+// Angular bootstraps (before checkAndClearCache(), APP_INITIALIZER/OAuth
+// init, AppComponent construction, etc.) so boot-time logs from those paths
+// aren't silently lost just because JournalService doesn't exist yet.
+export function startConsoleCapture(): void {
+  if (intercepted) return;
+  intercepted = true;
+
+  const original = {
+    log:   console.log.bind(console),
+    warn:  console.warn.bind(console),
+    error: console.error.bind(console),
+  };
+
+  const capture = (level: LogLevel) => (...args: unknown[]) => {
+    original[level](...args);
+    const { tag, rest } = parseTag(args);
+    const { message, detail } = serialize(rest);
+    if (!message) return;
+    const entry: CapturedEntry = { timestamp: Date.now(), level, tag, message, detail };
+    if (sink) sink(entry);
+    else buffer.push(entry);
+  };
+
+  console.log   = capture('log');
+  console.warn  = capture('warn');
+  console.error = capture('error');
+}
+
 @Injectable({ providedIn: 'root' })
 export class JournalService {
   private db: IDBDatabase | null = null;
@@ -76,7 +117,13 @@ export class JournalService {
   constructor() {
     this.open().then(() => {
       this.purge();
-      this.intercept();
+      // Attach as the persistence sink, then flush anything captured while
+      // the DB was still opening (including everything logged before this
+      // service was even constructed) -- each entry keeps its original
+      // capture timestamp, not the flush time.
+      sink = (entry) => this.write(entry);
+      const queued = buffer.splice(0, buffer.length);
+      for (const entry of queued) this.write(entry);
     });
   }
 
@@ -101,34 +148,12 @@ export class JournalService {
     });
   }
 
-  // ── Console intercept ─────────────────────────────────────────────────────
-
-  private intercept(): void {
-    const original = {
-      log:   console.log.bind(console),
-      warn:  console.warn.bind(console),
-      error: console.error.bind(console),
-    };
-
-    const capture = (level: LogLevel) => (...args: unknown[]) => {
-      original[level](...args);
-      const { tag, rest } = parseTag(args);
-      const { message, detail } = serialize(rest);
-      if (message) this.write({ level, tag, message, detail });
-    };
-
-    console.log   = capture('log');
-    console.warn  = capture('warn');
-    console.error = capture('error');
-  }
-
   // ── Write ─────────────────────────────────────────────────────────────────
 
-  private write(entry: Omit<JournalEntry, 'id' | 'timestamp'>): void {
+  private write(entry: CapturedEntry): void {
     if (!this.ready || !this.db) return;
     const full: JournalEntry = {
-      id:        crypto.randomUUID(),
-      timestamp: Date.now(),
+      id: crypto.randomUUID(),
       ...entry,
     };
     try {

@@ -94,6 +94,19 @@ ion-card {
   margin: var(--space-3) 0 !important;
 }
 
+// Overlays (action sheets, alerts) render into a document-level portal, so
+// they can't be themed from a component's own scoped stylesheet -- global is
+// the only place that reaches them.
+// !important is required here: ion-action-sheet's own shadow DOM declares
+// these as `:host { --background: ...; }` defaults, which have higher CSS
+// specificity than a plain `ion-action-sheet { }` type selector from outside.
+ion-action-sheet {
+  --background: var(--color-surface) !important;
+  --color: var(--color-text-primary) !important;
+  --button-color: var(--color-text-primary) !important;
+  --backdrop-opacity: 0.4 !important;
+}
+
 ion-list {
   background: var(--color-surface);
   border-radius: var(--radius-md);
