@@ -50,7 +50,9 @@ export class ComposerLinkPreviewComponent implements OnChanges {
 
   readonly cards = signal<ComposerPreviewCard[]>([]);
 
-  private lastKey = '';
+  // undefined (not '') so it never coincidentally matches a real, empty
+  // "no links found" key on the very first change.
+  private lastKey: string | undefined = undefined;
   private debounceHandle: ReturnType<typeof setTimeout> | null = null;
 
   ngOnChanges(changes: SimpleChanges): void {

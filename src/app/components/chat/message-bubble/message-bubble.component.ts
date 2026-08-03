@@ -49,19 +49,26 @@ export class MessageBubbleComponent implements OnChanges {
   // before the card is confirmed available.
   displayText = signal('');
 
-  private lastKey = '';
+  // undefined (not '') so it never coincidentally matches a real, empty
+  // "no links found" key on the very first change.
+  private lastKey: string | undefined = undefined;
   private pendingText = '';
 
   ngOnChanges(changes: SimpleChanges): void {
     if (!changes['text']) return;
+
+    // Unconditional, regardless of the lastKey guard below: displayText must
+    // always reflect the current text input. A no-links message always
+    // computes the same empty key, so gating this on the guard would (and
+    // did) leave displayText permanently blank for every plain-text message.
+    this.pendingText = this.text;
+    this.displayText.set(this.text);
 
     const extracted = extractAllUrls(this.text);
     const key = extracted.map(e => e.url).join('\n');
     if (key === this.lastKey) return;
     this.lastKey = key;
 
-    this.pendingText = this.text;
-    this.displayText.set(this.text);
     // Index prefix guarantees a unique @for track key even if the same URL
     // is pasted twice in one message.
     this.links.set(extracted.map((e, i) => ({ key: `${i}-${e.url}`, ...EMPTY_SLOT })));
