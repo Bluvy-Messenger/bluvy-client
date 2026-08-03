@@ -1,0 +1,123 @@
+:host { display: block; }
+
+// Compact, fixed-height row card (thumbnail + text) rather than a tall
+// top-image card: a consistent row height reads better than link-by-link
+// variable-height blocks, both in a scrolling chat log and above the composer.
+.embed-preview-block__link {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 6px;
+  max-width: 340px;
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--color-search-bg);
+  border: 1px solid var(--color-border);
+  transition: transform var(--duration-fast) ease, background var(--duration-fast) ease;
+
+  &:hover { background: var(--color-interactive-hover); }
+  &:active { transform: scale(0.98); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  :host(.embed-preview-block--mine) & {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.2);
+
+    &:hover { background: rgba(255, 255, 255, 0.2); }
+  }
+}
+
+.embed-preview-block__thumb {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 9px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(128, 128, 128, 0.18);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  ion-icon {
+    font-size: 20px;
+    opacity: 0.5;
+  }
+}
+
+.embed-preview-block__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 4px 2px 0;
+}
+
+.embed-preview-block__title {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.embed-preview-block__desc {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.embed-preview-block__site {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  ion-icon {
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 768px) {
+  .embed-preview-block__link {
+    max-width: 380px;
+    padding: 8px;
+    gap: 12px;
+  }
+
+  .embed-preview-block__thumb {
+    width: 68px;
+    height: 68px;
+  }
+
+  .embed-preview-block__title {
+    font-size: 13px;
+  }
+}

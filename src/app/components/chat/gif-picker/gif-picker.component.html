@@ -1,0 +1,47 @@
+<ion-modal class="gif-picker-modal" [isOpen]="isOpen" (didDismiss)="dismiss()">
+  <ng-template>
+    <div class="gif-picker">
+      <div class="gif-picker__header">
+        <div class="gif-picker__search">
+          <ion-icon name="search-outline"></ion-icon>
+          <input
+            type="text"
+            [value]="query()"
+            [placeholder]="'gifPicker.searchPlaceholder' | translate"
+            [attr.aria-label]="'gifPicker.searchPlaceholder' | translate"
+            (input)="onQueryInput($event)"
+          />
+        </div>
+        <button type="button" class="gif-picker__close" [attr.aria-label]="'common.close' | translate" (click)="dismiss()">
+          <ion-icon name="close"></ion-icon>
+        </button>
+      </div>
+
+      <div class="gif-picker__body">
+        @if (loading()) {
+          <div class="gif-picker__state">
+            <ion-spinner name="crescent"></ion-spinner>
+          </div>
+        } @else if (error()) {
+          <div class="gif-picker__state">
+            <span>{{ 'gifPicker.error' | translate }}</span>
+          </div>
+        } @else if (gifs().length === 0) {
+          <div class="gif-picker__state">
+            <span>{{ 'gifPicker.noResults' | translate }}</span>
+          </div>
+        } @else {
+          <div class="gif-picker__grid">
+            @for (gif of gifs(); track gif.id) {
+              <button type="button" class="gif-picker__item" (click)="selectGif(gif)">
+                <img [src]="gif.previewUrl" [alt]="gif.title" loading="lazy" />
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="gif-picker__attribution">Powered by GIPHY</div>
+    </div>
+  </ng-template>
+</ion-modal>
