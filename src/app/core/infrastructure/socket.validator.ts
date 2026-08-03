@@ -1,4 +1,4 @@
-import type { ConversationNewPayload, ConversationSupersededPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload } from './socket.types';
+import type { ConversationNewPayload, ConversationSupersededPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload, MbkRotatedPayload } from './socket.types';
 import { isObject } from './validation.util';
 
 export function validateMessageNewPayload(data: MessageNewPayload): MessageNewPayload {
@@ -125,5 +125,11 @@ export function validateMlsRefillKeyPackagesPayload(data: MlsRefillKeyPackagesPa
 export function validateDeviceRevokedPayload(data: DeviceRevokedPayload): DeviceRevokedPayload {
   if (!isObject(data)) throw new Error('DeviceRevokedPayload: expected object');
   if (typeof data['deviceId'] !== 'string') throw new Error('DeviceRevokedPayload.deviceId: expected string');
+  return data;
+}
+
+export function validateMbkRotatedPayload(data: MbkRotatedPayload): MbkRotatedPayload {
+  if (!isObject(data)) throw new Error('MbkRotatedPayload: expected object');
+  if (typeof data['keyGeneration'] !== 'number') throw new Error('MbkRotatedPayload.keyGeneration: expected number');
   return data;
 }

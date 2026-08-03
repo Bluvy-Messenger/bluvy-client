@@ -65,7 +65,22 @@ export class ApiClientService {
 
     try {
       return await this.send<T>(method, url, body, headers, options?.params);
-    } catch (err) {
+    } catch (initialErr) {
+      let err = initialErr;
+
+      // Transient transport failure (timeout, DNS/connection not yet
+      // stable — plausible seconds into an Android cold start): retry once
+      // after a short delay before falling into the 401/refresh handling
+      // below, which only knows how to deal with completed HTTP responses.
+      if (this.isTransient(err)) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+          return await this.send<T>(method, url, body, headers, options?.params);
+        } catch (retryErr) {
+          err = retryErr;
+        }
+      }
+
       if (options?.skipAuth || !this.is401(err)) throw err;
 
       const refreshed = await this.ensureRefresh();
@@ -74,6 +89,14 @@ export class ApiClientService {
       const retryHeaders = await this.buildHeaders(options);
       return this.send<T>(method, url, body, retryHeaders, options?.params);
     }
+  }
+
+  // HttpErrorResponse is only constructed here for a *completed* non-2xx
+  // response (see sendNative/sendWeb) — a genuine network/timeout/transport
+  // failure never produces one, so its absence (or a web status of 0) is a
+  // reliable signal that the request never actually reached the server.
+  private isTransient(err: unknown): boolean {
+    return !(err instanceof HttpErrorResponse) || err.status === 0;
   }
 
   private buildUrl(path: string): string {
