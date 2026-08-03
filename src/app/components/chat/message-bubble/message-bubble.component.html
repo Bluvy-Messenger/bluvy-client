@@ -9,26 +9,17 @@
     @if (displayText()) {
       <p class="bubble__text">{{ displayText() }}</p>
     }
-    @if (preview(); as p) {
-      <a class="bubble__preview" [href]="p.url" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
-        <div class="bubble__preview-thumb">
-          @if (previewImageSrc(); as img) {
-            <img [src]="img" alt="" />
-          } @else {
-            <ion-icon name="link-outline"></ion-icon>
-          }
-        </div>
-        <div class="bubble__preview-body">
-          <span class="bubble__preview-title">{{ p.title }}</span>
-          @if (p.description) {
-            <span class="bubble__preview-desc">{{ p.description }}</span>
-          }
-          <span class="bubble__preview-site">
-            <ion-icon name="globe-outline"></ion-icon>
-            {{ p.siteName || hostnameOf(p.url) }}
-          </span>
-        </div>
-      </a>
+    @for (link of links(); track link.key) {
+      @if (link.bskyPostUrl || link.popfeedReviewUrl || link.embed || link.preview) {
+        <app-embed-preview-block
+          [bskyPostUrl]="link.bskyPostUrl"
+          [popfeedReviewUrl]="link.popfeedReviewUrl"
+          [embed]="link.embed"
+          [preview]="link.preview"
+          [previewImageSrc]="link.previewImageSrc"
+          [isMine]="isMine"
+        ></app-embed-preview-block>
+      }
     }
     <div class="bubble__footer">
       <span class="bubble__time">{{ timestamp | date:'HH:mm' }}</span>

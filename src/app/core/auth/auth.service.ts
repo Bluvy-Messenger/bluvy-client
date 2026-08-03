@@ -22,6 +22,7 @@ import { MessageCacheService } from '../conversation/message-cache.service';
 import { NotificationService } from '../notification/notification.service';
 import { PushNotificationService } from '../notification/push-notification.service';
 import { AccountBadgeService } from '../notification/account-badge.service';
+import { EmbedPreferencesService } from '../embed/embed-preferences.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
@@ -50,6 +51,7 @@ export class AuthService {
   private tokenRepo       = inject(TokenRepository);
   private secureStorage   = inject(SecureLocalStorageService);
   private msgCache        = inject(MessageCacheService);
+  private embedPrefsSvc   = inject(EmbedPreferencesService);
   private injector        = inject(Injector);
   // Lazy-resolved to break circular dependency (NotificationService -> AuthService -> NotificationService)
   private get notifSvc(): NotificationService     { return this.injector.get(NotificationService); }
@@ -324,6 +326,11 @@ export class AuthService {
     void this.provisionSvc.proactiveCatchUpSweep(response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: proactiveCatchUpSweep failed', err); });
 
+    // Embed preference load order: local cache first (instant), then a
+    // background PDS refresh. Fire-and-forget -- must not delay navigation.
+    await this.embedPrefsSvc.bootstrap();
+    void this.embedPrefsSvc.refreshFromPds()
+      .catch(err => { if (!environment.production) console.error('[AuthService] login: embed preferences refresh failed', err); });
     void this.provisionSvc.checkAndProvisionOnConnect(response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: checkAndProvisionOnConnect failed', err); });
 
@@ -471,6 +478,9 @@ export class AuthService {
     void this.provisionSvc.proactiveCatchUpSweep(session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: proactiveCatchUpSweep failed', err); });
 
+    await this.embedPrefsSvc.bootstrap();
+    void this.embedPrefsSvc.refreshFromPds()
+      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: embed preferences refresh failed', err); });
     void this.provisionSvc.checkAndProvisionOnConnect(session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: checkAndProvisionOnConnect failed', err); });
 

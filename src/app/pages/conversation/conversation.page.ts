@@ -29,6 +29,7 @@ import type { CachedMessage, DisplayMessage } from '../../core/conversation/conv
 import { SyncService } from '../../core/sync/sync.service';
 import { TypingService } from '../../core/typing/typing.service';
 import { ReceiptsService } from '../../core/receipts/receipts.service';
+import { EmbedSessionOverrideService } from '../../core/embed/embed-session-override.service';
 import { environment } from '../../../environments/environment';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
@@ -69,6 +70,7 @@ export class ConversationPage implements OnDestroy {
   private syncSvc         = inject(SyncService);
   private typingSvc       = inject(TypingService);
   private receiptsSvc     = inject(ReceiptsService);
+  private embedSessionSvc = inject(EmbedSessionOverrideService);
   private toastCtrl       = inject(ToastController);
 
   readonly presenceSvc = inject(PresenceService);
@@ -233,6 +235,9 @@ export class ConversationPage implements OnDestroy {
     this.typingSvc.stopTyping(this.conversationId);
     this.markReadIfVisible();
     this.subs.unsubscribe();
+    // "Load once" embeds are for this visit only -- don't let them silently
+    // keep auto-loading if the user comes back to this conversation later.
+    this.embedSessionSvc.clear();
   }
 
   // Defensive: only reached if the page is truly destroyed (e.g. Ionic evicts

@@ -1,0 +1,183 @@
+// Outer placement (margins, full-bleed vs. inset) is owned by the parent
+// message-bubble stylesheet, which knows about sibling text/footer layout.
+:host { display: block; }
+
+// Default: a normal inset player card (YouTube, Spotify, Dailymotion,
+// Twitch) -- a fixed 16:9 player reads better with bubble chrome around it.
+.msg-embed__iframe {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  aspect-ratio: 16 / 9;
+  border: none;
+  border-radius: 14px;
+  background: rgba(128, 128, 128, 0.12);
+}
+
+@media (min-width: 768px) {
+  .msg-embed__iframe { max-width: 380px; }
+}
+
+// GIFs only: full-bleed, no frame of its own -- the bubble itself
+// (overflow: hidden + its own border-radius, see message-bubble.component.scss)
+// clips this to the bubble shape.
+:host([data-provider='gif']) .msg-embed__iframe {
+  max-width: none;
+  aspect-ratio: auto;
+  height: 220px;
+  border-radius: 0;
+}
+
+@media (min-width: 768px) {
+  :host([data-provider='gif']) .msg-embed__iframe { height: 260px; }
+}
+
+// A disabled provider gets a compact identity card (brand-colored icon +
+// name + domain) plus its own actions, distinct from the generic
+// message-bubble preview card but built from the same tokens.
+.msg-embed__fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 300px;
+}
+
+.msg-embed__fallback-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--color-search-bg);
+  border: 1px solid var(--color-border);
+  transition: background var(--duration-fast) ease;
+
+  &:hover { background: var(--color-interactive-hover); }
+
+  :host(.msg-embed--mine) & {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.2);
+    &:hover { background: rgba(255, 255, 255, 0.2); }
+  }
+}
+
+.msg-embed__fallback-icon {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon { font-size: 21px; color: #fff; }
+
+  &--thumb {
+    position: relative;
+    overflow: hidden;
+    background: rgba(128, 128, 128, 0.12); // shown briefly while the image loads
+  }
+}
+
+.msg-embed__fallback-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.msg-embed__fallback-badge {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-search-bg);
+
+  ion-icon { font-size: 10px; color: #fff; }
+
+  :host(.msg-embed--mine) & { border-color: rgba(255, 255, 255, 0.14); }
+}
+
+.msg-embed__fallback-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.msg-embed__fallback-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-embed__fallback-url {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-embed__fallback-open {
+  flex-shrink: 0;
+  font-size: 15px;
+  opacity: 0.4;
+}
+
+.msg-embed__fallback-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.msg-embed__btn {
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: none;
+  background: none;
+
+  &--primary {
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: var(--weight-semibold);
+    color: #fff;
+    border: 1px solid transparent; // color set inline per provider
+  }
+
+  &--ghost {
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    font-size: 12px;
+    font-weight: var(--weight-semibold);
+    color: #fff;
+    background: var(--color-primary);
+    text-align: center;
+
+    &:hover { background: var(--color-primary-hover); }
+
+    // The sent bubble's own background is var(--color-primary) -- invert so
+    // the button stays visible instead of blending into the bubble.
+    :host(.msg-embed--mine) & {
+      background: #fff;
+      color: var(--color-primary);
+
+      &:hover { background: rgba(255, 255, 255, 0.88); }
+    }
+  }
+}

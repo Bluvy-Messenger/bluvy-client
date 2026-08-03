@@ -1,0 +1,19 @@
+@if (cards().length > 0) {
+  <div class="composer-preview-list">
+    @for (c of cards(); track c.key) {
+      <div class="composer-preview">
+        <div class="composer-preview__thumb" [style.background]="c.accentColor">
+          @if (c.imageUrl) {
+            <img [src]="c.imageUrl" alt="" />
+          } @else {
+            <ion-icon [name]="c.icon" [style.color]="c.accentColor ? '#fff' : null"></ion-icon>
+          }
+        </div>
+        <div class="composer-preview__body">
+          <span class="composer-preview__title">{{ c.title }}</span>
+          <span class="composer-preview__hostname">{{ c.hostname }}</span>
+        </div>
+      </div>
+    }
+  </div>
+}

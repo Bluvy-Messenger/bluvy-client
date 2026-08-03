@@ -49,7 +49,7 @@ export class AtprotoRepository {
     return pdsService.serviceEndpoint;
   }
 
-  private async resolveHandleToDid(handle: string): Promise<string> {
+  async resolveHandleToDid(handle: string): Promise<string> {
     const url = `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`;
 
     let data: { did: string };

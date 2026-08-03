@@ -2,7 +2,7 @@
 
 .composer {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
@@ -26,25 +26,37 @@
 
   ion-icon { font-size: var(--icon-size-sm); }
   &:disabled { opacity: 0.35; cursor: default; }
+
+  // No dedicated "GIF" pictogram in Ionicons -- a text badge is clearer
+  // than any generic icon and matches how other chat apps label this action.
+  &--gif span {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.02em;
+  }
 }
 
 .composer__input {
   flex: 1;
-  border: none;
-  background: var(--color-bg);
-  color: var(--color-text-primary);
+  --background: var(--color-bg);
+  --color: var(--color-text-primary);
+  --placeholder-color: var(--color-text-secondary);
+  --padding-start: var(--space-4);
+  --padding-end: var(--space-4);
+  --padding-top: 9px;
+  --padding-bottom: 9px;
   font-family: var(--font-sans);
   font-size: var(--text-base);
-  padding: 9px var(--space-4);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-lg);
   min-height: 38px;
+  max-height: 120px;
+  overflow-y: auto;
   line-height: 1.4;
 
-  &::placeholder { color: var(--color-text-secondary); }
-  &:disabled { opacity: 0.5; }
+  &[disabled] { opacity: 0.5; }
 
-  &:focus-visible {
-    outline: none;
+  &:focus-within {
     box-shadow: var(--focus-ring);
   }
 }
