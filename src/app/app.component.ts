@@ -28,6 +28,8 @@ import {
   archiveOutline, folderOpenOutline, notificationsOutline, close,
   // embed provider fallback cards
   logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
+  // native Bluesky post card
+  heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -93,6 +95,7 @@ export class AppComponent implements OnInit, OnDestroy {
       ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
       archiveOutline, folderOpenOutline, notificationsOutline, close,
       logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
+      heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
     });
   }
 

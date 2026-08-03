@@ -20,11 +20,22 @@
         rel="noopener noreferrer"
         (click)="$event.stopPropagation()"
       >
-        <span class="msg-embed__fallback-icon" [style.background]="provider().accentColor">
-          <ion-icon [name]="provider().icon"></ion-icon>
+        <span
+          class="msg-embed__fallback-icon"
+          [class.msg-embed__fallback-icon--thumb]="previewImageSrc()"
+          [style.background]="previewImageSrc() ? null : provider().accentColor"
+        >
+          @if (previewImageSrc(); as thumb) {
+            <img [src]="thumb" alt="" class="msg-embed__fallback-thumb-img" loading="lazy" />
+            <span class="msg-embed__fallback-badge" [style.background]="provider().accentColor">
+              <ion-icon [name]="provider().icon"></ion-icon>
+            </span>
+          } @else {
+            <ion-icon [name]="provider().icon"></ion-icon>
+          }
         </span>
         <span class="msg-embed__fallback-body">
-          <span class="msg-embed__fallback-label">{{ provider().label }}</span>
+          <span class="msg-embed__fallback-label">{{ previewTitle() ?? provider().label }}</span>
           <span class="msg-embed__fallback-url">{{ hostnameOf(sourceUrl) }}</span>
         </span>
         <ion-icon name="open-outline" class="msg-embed__fallback-open"></ion-icon>

@@ -56,7 +56,7 @@
 
   &:hover { background: var(--color-interactive-hover); }
 
-  .bubble--mine & {
+  :host(.msg-embed--mine) & {
     background: rgba(255, 255, 255, 0.14);
     border-color: rgba(255, 255, 255, 0.2);
     &:hover { background: rgba(255, 255, 255, 0.2); }
@@ -73,6 +73,35 @@
   justify-content: center;
 
   ion-icon { font-size: 21px; color: #fff; }
+
+  &--thumb {
+    position: relative;
+    overflow: hidden;
+    background: rgba(128, 128, 128, 0.12); // shown briefly while the image loads
+  }
+}
+
+.msg-embed__fallback-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.msg-embed__fallback-badge {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-search-bg);
+
+  ion-icon { font-size: 10px; color: #fff; }
+
+  :host(.msg-embed--mine) & { border-color: rgba(255, 255, 255, 0.14); }
 }
 
 .msg-embed__fallback-body {
@@ -86,6 +115,9 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .msg-embed__fallback-url {
@@ -109,7 +141,7 @@
 .msg-embed__fallback-actions {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 
 .msg-embed__btn {
@@ -128,14 +160,24 @@
   }
 
   &--ghost {
-    padding: 2px 4px;
-    align-self: center;
-    font-size: 11px;
-    font-weight: var(--weight-medium);
-    color: var(--color-text-secondary);
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    font-size: 12px;
+    font-weight: var(--weight-semibold);
+    color: #fff;
+    background: var(--color-primary);
+    text-align: center;
 
-    &:hover { text-decoration: underline; }
+    &:hover { background: var(--color-primary-hover); }
 
-    .bubble--mine & { color: rgba(255, 255, 255, 0.75); }
+    // The sent bubble's own background is var(--color-primary) -- invert so
+    // the button stays visible instead of blending into the bubble.
+    :host(.msg-embed--mine) & {
+      background: #fff;
+      color: var(--color-primary);
+
+      &:hover { background: rgba(255, 255, 255, 0.88); }
+    }
   }
 }

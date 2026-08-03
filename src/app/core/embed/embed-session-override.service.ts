@@ -16,4 +16,10 @@ export class EmbedSessionOverrideService {
     next.add(sourceUrl);
     this.loadedOnce.set(next);
   }
+
+  // Called when leaving a conversation -- "load this once" means for the
+  // current visit, not for the rest of the app session.
+  clear(): void {
+    this.loadedOnce.set(new Set());
+  }
 }

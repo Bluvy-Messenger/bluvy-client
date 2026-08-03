@@ -6,9 +6,15 @@ import type { LinkPreviewMeta } from '../../../core/link-preview/link-preview.ty
 import { EmbedRegistry } from '../../../core/embed/embed-registry.service';
 import type { EmbedMatch } from '../../../core/embed/embed-provider.types';
 import { MessageEmbedComponent } from '../message-embed/message-embed.component';
+import { parseBskyPostUrl } from '../../../core/bsky-post/bsky-post-url.util';
+import { BskyPostCardComponent } from '../bsky-post-card/bsky-post-card.component';
 
 interface DetectedEmbed {
   match: EmbedMatch;
+  url: string;
+}
+
+interface DetectedBskyPost {
   url: string;
 }
 
@@ -21,7 +27,7 @@ const TRAILING_PUNCTUATION = /[)\].,!?'"]+$/;
   selector: 'app-message-bubble',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, IonIcon, MessageEmbedComponent],
+  imports: [DatePipe, IonIcon, MessageEmbedComponent, BskyPostCardComponent],
   templateUrl: './message-bubble.component.html',
   styleUrls: ['./message-bubble.component.scss'],
 })
@@ -39,6 +45,7 @@ export class MessageBubbleComponent implements OnChanges {
   preview         = signal<LinkPreviewMeta | null>(null);
   previewImageSrc = signal<string | null>(null);
   embed           = signal<DetectedEmbed | null>(null);
+  bskyPost        = signal<DetectedBskyPost | null>(null);
   // Full text until a preview actually resolves — only then is the raw URL
   // stripped, so there's no flash of text disappearing before the card is
   // confirmed available.
@@ -62,7 +69,19 @@ export class MessageBubbleComponent implements OnChanges {
     this.preview.set(null);
     this.previewImageSrc.set(null);
     this.embed.set(null);
+    this.bskyPost.set(null);
     if (!url) return;
+
+    // Bluesky post links (any AT-Proto web client host, e.g. bsky.app or
+    // mu.social) get a native rich card instead of any iframe embed or the
+    // generic OG-scraped preview -- never more than one of the three.
+    if (parseBskyPostUrl(url)) {
+      this.bskyPost.set({ url });
+      if (rawMatch) {
+        this.displayText.set(this.text.replace(rawMatch, '').trim());
+      }
+      return;
+    }
 
     // Provider-matched URLs (YouTube, Spotify, ...) get their own rich embed
     // instead of the generic OG-scraped preview card -- never both.
