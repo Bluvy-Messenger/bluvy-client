@@ -26,6 +26,10 @@ import {
   colorPaletteOutline, colorFilterOutline, radioButtonOffOutline,
   ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
   archiveOutline, folderOpenOutline, notificationsOutline, close,
+  // embed provider fallback cards
+  logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
+  // native Bluesky post card
+  heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -39,6 +43,7 @@ import { NotificationService } from './core/notification/notification.service';
 import { PushNotificationService } from './core/notification/push-notification.service';
 import { AccountBadgeService } from './core/notification/account-badge.service';
 import { MessageCacheService } from './core/conversation/message-cache.service';
+import { EmbedPreferencesService } from './core/embed/embed-preferences.service';
 import { TranslationService } from './core/i18n/translation.service';
 import { SyncService } from './core/sync/sync.service';
 import { ROUTES } from './core/routes';
@@ -59,6 +64,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private pushNotificationSvc = inject(PushNotificationService);
   private badgeSvc = inject(AccountBadgeService);
   private msgCacheSvc = inject(MessageCacheService);
+  private embedPrefsSvc = inject(EmbedPreferencesService);
   private syncSvc = inject(SyncService);
   private router = inject(Router);
   private platform = inject(Platform);
@@ -88,6 +94,8 @@ export class AppComponent implements OnInit, OnDestroy {
       chatbubbleEllipsesOutline, openOutline, reorderThreeOutline, copyOutline,
       ellipsisVerticalOutline, volumeMuteOutline, volumeHighOutline, banOutline,
       archiveOutline, folderOpenOutline, notificationsOutline, close,
+      logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
+      heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
     });
   }
 
@@ -215,6 +223,8 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!user || !device) return;
       void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
         .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
+      void this.embedPrefsSvc.refreshFromPds()
+        .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: embed preferences refresh failed', err); });
     });
 
     // This empty listener is required for Android hardware back to reach

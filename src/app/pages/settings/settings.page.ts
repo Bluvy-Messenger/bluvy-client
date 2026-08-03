@@ -32,6 +32,10 @@ export class SettingsPage {
     void this.router.navigate([ROUTES.settingsNotifications]);
   }
 
+  openPrivacy(): void {
+    void this.router.navigate([ROUTES.settingsPrivacy]);
+  }
+
   confirmingDelete = false;
 
   confirmDeleteAccount(): void {

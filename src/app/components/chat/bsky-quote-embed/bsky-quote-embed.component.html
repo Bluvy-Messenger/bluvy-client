@@ -1,0 +1,52 @@
+@switch (target.kind) {
+  @case ('post') {
+    <div class="quote">
+      <div class="quote__header">
+        <app-avatar [src]="target.post.author.avatarUrl" [handle]="target.post.author.handle" size="sm"></app-avatar>
+        <span class="quote__name">{{ target.post.author.displayName || target.post.author.handle }}</span>
+        <span class="quote__handle">&#64;{{ target.post.author.handle }}</span>
+      </div>
+      @if (target.post.text) {
+        <p class="quote__text">{{ target.post.text }}</p>
+      }
+      @if (target.post.embed; as embed) {
+        <div class="quote__media">
+          @switch (embed.kind) {
+            @case ('images') {
+              <div class="quote__images" [class.quote__images--single]="embed.images.length === 1">
+                @for (img of embed.images.slice(0, 4); track img.thumb) {
+                  <img [src]="img.thumb" [alt]="img.alt" loading="lazy" />
+                }
+              </div>
+            }
+            @case ('video') {
+              <div class="quote__video">
+                @if (embed.video.thumbnail) {
+                  <img [src]="embed.video.thumbnail" alt="" loading="lazy" />
+                }
+                <ion-icon name="play-circle" class="quote__video-play"></ion-icon>
+              </div>
+            }
+            @case ('external') {
+              <div class="quote__external">
+                @if (embed.external.thumb) {
+                  <img [src]="embed.external.thumb" alt="" loading="lazy" />
+                }
+                <span class="quote__external-title">{{ embed.external.title }}</span>
+              </div>
+            }
+          }
+        </div>
+      }
+    </div>
+  }
+  @case ('notFound') {
+    <div class="quote quote--unavailable">{{ 'bskyPost.quote.notFound' | translate }}</div>
+  }
+  @case ('blocked') {
+    <div class="quote quote--unavailable">{{ 'bskyPost.quote.blocked' | translate }}</div>
+  }
+  @case ('unavailable') {
+    <div class="quote quote--unavailable">{{ 'bskyPost.quote.unavailable' | translate }}</div>
+  }
+}
