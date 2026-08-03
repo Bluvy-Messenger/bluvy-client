@@ -1,96 +1,102 @@
 @switch (state()) {
   @case ('loading') {
-    <div class="bsky-card bsky-card--loading">
-      <div class="bsky-card__skeleton-avatar"></div>
-      <div class="bsky-card__skeleton-lines">
-        <div class="bsky-card__skeleton-line"></div>
-        <div class="bsky-card__skeleton-line"></div>
+    @if (!compact) {
+      <div class="bsky-card bsky-card--loading">
+        <div class="bsky-card__skeleton-avatar"></div>
+        <div class="bsky-card__skeleton-lines">
+          <div class="bsky-card__skeleton-line"></div>
+          <div class="bsky-card__skeleton-line"></div>
+        </div>
       </div>
-    </div>
+    }
   }
   @case ('error') {
-    <a class="bsky-card bsky-card--error" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
-      <ion-icon name="cloud-offline-outline"></ion-icon>
-      <span>{{ 'bskyPost.error.unavailable' | translate }}</span>
-    </a>
+    @if (!compact) {
+      <a class="bsky-card bsky-card--error" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+        <ion-icon name="cloud-offline-outline"></ion-icon>
+        <span>{{ 'bskyPost.error.unavailable' | translate }}</span>
+      </a>
+    }
   }
   @case ('loaded') {
     @if (post(); as p) {
-      <div class="bsky-card">
-        <a class="bsky-card__header" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
-          <app-avatar [src]="p.author.avatarUrl" [handle]="p.author.handle" size="md"></app-avatar>
-          <div class="bsky-card__author">
-            <span class="bsky-card__name">{{ p.author.displayName || p.author.handle }}</span>
-            <span class="bsky-card__handle">&#64;{{ p.author.handle }}</span>
-          </div>
-          <span class="bsky-card__date">{{ p.createdAt | date:'d MMM' }}</span>
-        </a>
+      <div class="bsky-card" [class.bsky-card--compact]="compact">
+        @if (!compact) {
+          <a class="bsky-card__header" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+            <app-avatar [src]="p.author.avatarUrl" [handle]="p.author.handle" size="md"></app-avatar>
+            <div class="bsky-card__author">
+              <span class="bsky-card__name">{{ p.author.displayName || p.author.handle }}</span>
+              <span class="bsky-card__handle">&#64;{{ p.author.handle }}</span>
+            </div>
+            <span class="bsky-card__date">{{ p.createdAt | date:'d MMM' }}</span>
+          </a>
 
-        @if (p.text) {
-          <p class="bsky-card__text">{{ p.text }}</p>
-        }
+          @if (p.text) {
+            <p class="bsky-card__text">{{ p.text }}</p>
+          }
 
-        @if (p.embed; as embed) {
-          <div class="bsky-card__embed">
-            @switch (embed.kind) {
-              @case ('images') {
-                <div class="bsky-card__images" [class.bsky-card__images--single]="embed.images.length === 1">
-                  @for (img of embed.images.slice(0, 4); track img.thumb) {
-                    <img [src]="img.thumb" [alt]="img.alt" loading="lazy" />
-                  }
-                </div>
-              }
-              @case ('video') {
-                <a class="bsky-card__video" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
-                  @if (embed.video.thumbnail) {
-                    <img [src]="embed.video.thumbnail" alt="" loading="lazy" />
-                  }
-                  <ion-icon name="play-circle" class="bsky-card__video-play"></ion-icon>
-                  <span class="bsky-card__video-label">{{ 'bskyPost.embed.video.openExternal' | translate }}</span>
-                </a>
-              }
-              @case ('external') {
-                <a class="bsky-card__external" [href]="embed.external.uri" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
-                  @if (embed.external.thumb) {
-                    <img [src]="embed.external.thumb" alt="" loading="lazy" />
-                  }
-                  <span class="bsky-card__external-title">{{ embed.external.title }}</span>
-                </a>
-              }
-              @case ('quote') {
-                <app-bsky-quote-embed [target]="embed.quote"></app-bsky-quote-embed>
-              }
-              @case ('quoteWithMedia') {
-                @switch (embed.media.kind) {
-                  @case ('images') {
-                    <div class="bsky-card__images" [class.bsky-card__images--single]="embed.media.images.length === 1">
-                      @for (img of embed.media.images.slice(0, 4); track img.thumb) {
-                        <img [src]="img.thumb" [alt]="img.alt" loading="lazy" />
-                      }
-                    </div>
-                  }
-                  @case ('video') {
-                    <a class="bsky-card__video" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
-                      @if (embed.media.video.thumbnail) {
-                        <img [src]="embed.media.video.thumbnail" alt="" loading="lazy" />
-                      }
-                      <ion-icon name="play-circle" class="bsky-card__video-play"></ion-icon>
-                      <span class="bsky-card__video-label">{{ 'bskyPost.embed.video.openExternal' | translate }}</span>
-                    </a>
-                  }
-                  @case ('external') {
-                    <a class="bsky-card__external" [href]="embed.media.external.uri" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
-                      @if (embed.media.external.thumb) {
-                        <img [src]="embed.media.external.thumb" alt="" loading="lazy" />
-                      }
-                      <span class="bsky-card__external-title">{{ embed.media.external.title }}</span>
-                    </a>
-                  }
+          @if (p.embed; as embed) {
+            <div class="bsky-card__embed">
+              @switch (embed.kind) {
+                @case ('images') {
+                  <div class="bsky-card__images" [class.bsky-card__images--single]="embed.images.length === 1">
+                    @for (img of embed.images.slice(0, 4); track img.thumb) {
+                      <img [src]="img.thumb" [alt]="img.alt" loading="lazy" />
+                    }
+                  </div>
                 }
-                <app-bsky-quote-embed [target]="embed.quote"></app-bsky-quote-embed>
+                @case ('video') {
+                  <a class="bsky-card__video" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+                    @if (embed.video.thumbnail) {
+                      <img [src]="embed.video.thumbnail" alt="" loading="lazy" />
+                    }
+                    <ion-icon name="play-circle" class="bsky-card__video-play"></ion-icon>
+                    <span class="bsky-card__video-label">{{ 'bskyPost.embed.video.openExternal' | translate }}</span>
+                  </a>
+                }
+                @case ('external') {
+                  <a class="bsky-card__external" [href]="embed.external.uri" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+                    @if (embed.external.thumb) {
+                      <img [src]="embed.external.thumb" alt="" loading="lazy" />
+                    }
+                    <span class="bsky-card__external-title">{{ embed.external.title }}</span>
+                  </a>
+                }
+                @case ('quote') {
+                  <app-bsky-quote-embed [target]="embed.quote"></app-bsky-quote-embed>
+                }
+                @case ('quoteWithMedia') {
+                  @switch (embed.media.kind) {
+                    @case ('images') {
+                      <div class="bsky-card__images" [class.bsky-card__images--single]="embed.media.images.length === 1">
+                        @for (img of embed.media.images.slice(0, 4); track img.thumb) {
+                          <img [src]="img.thumb" [alt]="img.alt" loading="lazy" />
+                        }
+                      </div>
+                    }
+                    @case ('video') {
+                      <a class="bsky-card__video" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+                        @if (embed.media.video.thumbnail) {
+                          <img [src]="embed.media.video.thumbnail" alt="" loading="lazy" />
+                        }
+                        <ion-icon name="play-circle" class="bsky-card__video-play"></ion-icon>
+                        <span class="bsky-card__video-label">{{ 'bskyPost.embed.video.openExternal' | translate }}</span>
+                      </a>
+                    }
+                    @case ('external') {
+                      <a class="bsky-card__external" [href]="embed.media.external.uri" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+                        @if (embed.media.external.thumb) {
+                          <img [src]="embed.media.external.thumb" alt="" loading="lazy" />
+                        }
+                        <span class="bsky-card__external-title">{{ embed.media.external.title }}</span>
+                      </a>
+                    }
+                  }
+                  <app-bsky-quote-embed [target]="embed.quote"></app-bsky-quote-embed>
+                }
               }
-            }
-          </div>
+            </div>
+          }
         }
 
         <div class="bsky-card__counts">

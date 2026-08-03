@@ -25,6 +25,11 @@ import type { BskyPostView } from '../../../core/bsky-post/bsky-post.types';
 export class BskyPostCardComponent implements OnInit {
   @Input({ required: true }) sourceUrl!: string;
   @Input() isMine = false;
+  // Used when nesting this card inside another provider's own rich card
+  // (e.g. a Popfeed review that already shows the same title/text via its
+  // Bluesky cross-post) -- shows only the counts + like/quote/open actions,
+  // never the avatar/text/embed, so content isn't duplicated.
+  @Input() compact = false;
 
   private postRepo       = inject(BskyPostRepository);
   private atprotoSvc     = inject(AtprotoRepoService);

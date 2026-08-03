@@ -12,6 +12,9 @@
     @if (bskyPost(); as bp) {
       <app-bsky-post-card [sourceUrl]="bp.url" [isMine]="isMine"></app-bsky-post-card>
     }
+    @if (popfeedReview(); as pr) {
+      <app-popfeed-review-card [sourceUrl]="pr.url" [isMine]="isMine"></app-popfeed-review-card>
+    }
     @if (embed(); as e) {
       <app-message-embed [match]="e.match" [sourceUrl]="e.url" [isMine]="isMine"></app-message-embed>
     }
@@ -25,14 +28,16 @@
           }
         </div>
         <div class="bubble__preview-body">
-          <span class="bubble__preview-title">{{ p.title }}</span>
+          <span class="bubble__preview-title">{{ p.title || hostnameOf(p.url) }}</span>
           @if (p.description) {
             <span class="bubble__preview-desc">{{ p.description }}</span>
           }
-          <span class="bubble__preview-site">
-            <ion-icon name="globe-outline"></ion-icon>
-            {{ p.siteName || hostnameOf(p.url) }}
-          </span>
+          @if (p.title) {
+            <span class="bubble__preview-site">
+              <ion-icon name="globe-outline"></ion-icon>
+              {{ p.siteName || hostnameOf(p.url) }}
+            </span>
+          }
         </div>
       </a>
     }

@@ -30,6 +30,17 @@
     font-size: var(--text-sm);
     opacity: 0.7;
   }
+
+  // Nested inside another provider's own card (e.g. Popfeed) -- no border/
+  // background of its own, just the counts + action row.
+  &--compact {
+    padding: 0;
+    border: none;
+    background: none;
+    gap: 6px;
+
+    :host(.bsky-post--mine) & { background: none; }
+  }
 }
 
 .bsky-card__skeleton-avatar {
