@@ -245,8 +245,14 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       }
 
       await this.loadHistory();
-      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId) &&
-        (this.coordinator.isConversationReady(this.conversationId) || this.displayMessages.length === 0);
+      // Only show the "Restore encryption" button when the conversation has
+      // explicitly transitioned to FAILED. An Empty state (e.g. a device that
+      // has just been switched / not yet provisioned and is waiting for its
+      // Welcome) is neither ready nor failed — the button must not appear for
+      // it, since encryption will establish transparently on first send.
+      // Conflating Empty with Failed here was the root cause of the button
+      // reappearing every time the active device changed (multi-device bug).
+      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId);
       this.markReadIfVisible();
     } catch {
       this.error = 'Could not load conversation.';
