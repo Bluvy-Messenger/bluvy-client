@@ -51,4 +51,9 @@ export class PresenceService implements OnDestroy {
   ngOnDestroy(): void {
     this.sub.unsubscribe();
   }
+
+  clear(): void {
+    this.statusMap.forEach(subject => subject.complete());
+    this.statusMap.clear();
+  }
 }

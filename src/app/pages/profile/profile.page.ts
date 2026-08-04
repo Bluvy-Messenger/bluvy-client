@@ -24,7 +24,7 @@ import {
   standalone: true,
   imports: [IonContent, IonIcon, IonModal, AvatarComponent, TranslatePipe],
 })
-export class ProfilePage implements OnInit {
+export class ProfilePage {
   readonly authSvc = inject(AuthService);
   private router   = inject(Router);
   private toastCtrl = inject(ToastController);
@@ -51,7 +51,7 @@ export class ProfilePage implements OnInit {
     });
   }
 
-  async ngOnInit(): Promise<void> {
+  async ionViewWillEnter(): Promise<void> {
     const user = this.authSvc.currentUser();
     if (!user) return;
 

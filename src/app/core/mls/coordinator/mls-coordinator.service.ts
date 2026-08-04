@@ -12,7 +12,9 @@ import { MlsStateTransitionGuard, TRANSITION_REASON_RESTORE } from '../state-mac
 import { PendingDecryptRepository } from '../repositories/pending-decrypt.repository';
 import { TransientMlsError }        from '../errors/transient-mls-error';
 import { PermanentMlsError }        from '../errors/permanent-mls-error';
+import { EpochGapError }            from '../errors/epoch-gap-error';
 import { MlsWatchdogService }       from '../watchdog/mls-watchdog.service';
+import { MlsBackupRegistry }        from '../mls-backup-registry.service';
 import { assertMls }                from '../assertions/mls-assertions';
 import {
   ConversationMlsState,
@@ -30,22 +32,6 @@ import {
   type HistoryRecoveryCompletedEvent,
 } from './mls-coordinator.events';
 import { MlsCoordinatorBase } from './mls-coordinator.base';
-
-type BackupEnqueuerLike = {
-  enqueue(item: {
-    messageId:      string;
-    conversationId: string;
-    plaintext:      string;
-    createdAt:      number;
-    senderDid:      string;
-  }): void;
-  // SyncService can't be injected directly here -- it already injects
-  // MlsCoordinatorService (for injectRestoredGroupStates), so the reverse
-  // dependency would be circular. Structural typing through this same
-  // registered-reference mechanism (setBackupService) avoids that entirely.
-  isMbkAvailable(): boolean;
-  restore(): Promise<unknown>;
-};
 
 // Error message fragments from ts-mls that indicate transient vs permanent failures.
 const TRANSIENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -75,6 +61,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly pendingRepo     = inject(PendingDecryptRepository);
   private readonly watchdog        = inject(MlsWatchdogService);
   private readonly convSvc         = inject(ConversationsService);
+  private readonly backupRegistry  = inject(MlsBackupRegistry);
 
   private currentUserProfile: UserProfile | null = null;
   private currentSessionDevice: DeviceInfo | null = null;
@@ -87,8 +74,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly pendingDerivations = new Map<string, Promise<ConversationMlsState>>();
   // Deduplicates concurrent decryptMessage calls for the same messageId.
   private readonly inFlightDecrypts = new Map<string, Promise<DecryptResult>>();
-
-  private backupSvcRef: BackupEnqueuerLike | null = null;
 
   // Auto-recovery state for FAILED conversations (backoff: 5s, 15s, 45s).
   private readonly failedRecovery = new Map<string, { attempts: number; timerId: ReturnType<typeof setTimeout> | undefined }>();
@@ -132,11 +117,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   override readonly pendingDecryptReplayed$ = this._pendingDecryptReplayed$$.asObservable();
   override readonly restoreCompleted$       = this._restoreCompleted$$.asObservable();
   override readonly historyRecoveryCompleted$ = this._historyRecoveryCompleted$$.asObservable();
-
-  // Called by BackupService at construction time to avoid a circular DI cycle.
-  setBackupService(svc: BackupEnqueuerLike): void {
-    this.backupSvcRef = svc;
-  }
 
   constructor() {
     super();
@@ -381,9 +361,9 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<void> {
-    if (this.backupSvcRef?.isMbkAvailable()) {
+    if (this.backupRegistry.backupService?.isMbkAvailable()) {
       try {
-        await this.backupSvcRef.restore();
+        await this.backupRegistry.backupService.restore();
       } catch (err) {
         console.warn('[MLS:coordinator] recoverMissingHistoryBeforeClear: cloud restore failed', convId, err);
       }
@@ -501,7 +481,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<number> {
-    if (!this.backupSvcRef?.isMbkAvailable()) return 0;
+    if (!this.backupRegistry.backupService?.isMbkAvailable()) return 0;
 
     const undecryptableIds: string[] = [];
     let cursor: number | undefined;
@@ -518,7 +498,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     if (undecryptableIds.length === 0) return 0;
 
     try {
-      await this.backupSvcRef.restore();
+      await this.backupRegistry.backupService.restore();
     } catch (err) {
       console.warn('[MLS:coordinator] retryUndecryptableViaCloudBackup: cloud restore failed', convId, err);
       return 0;
@@ -588,7 +568,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       try {
         const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
         console.log('[MLS:coordinator] decryptMessage success for', messageId, 'length:', plaintext.length);
-        this.states.set(convId, ConversationMlsState.Ready);
+        this.transitionState(convId, ConversationMlsState.Ready);
         this.decryptionFailures.set(convId, 0);
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
@@ -709,6 +689,46 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       if (wasReady) this.transitionState(convId, ConversationMlsState.Ready);
     } catch (err) {
       if (!wasReady) throw err;
+
+      // Forensic audit finding F8: a missed commit (not a fork) must not
+      // count toward MAX_COMMIT_FAILURES or classify as permanent -- ts-mls's
+      // error for this case is message-identical to a genuine crypto/fork
+      // failure (see EpochGapError's own comment), so MlsService signals it
+      // structurally instead. Catch up directly here, mirroring
+      // recoverFromFailed's use of mlsSvc.catchUpMissedCommits() (not the
+      // coordinator wrapper, to avoid re-entering this same state machine).
+      if (err instanceof EpochGapError) {
+        try {
+          await this.mlsSvc.catchUpMissedCommits(convId, user, device);
+          this.commitFailureCounts.delete(convId);
+          this.transitionState(convId, ConversationMlsState.Ready);
+          void this.replayPendingDecrypts(convId, user, device);
+          return;
+        } catch (catchUpErr) {
+          // The catch-up attempt itself failed (e.g. network down) -- still
+          // not evidence of a fork, so count it as an ordinary retryable
+          // failure rather than falling through to classifyError() below,
+          // which would classify the original EpochGapError's message as an
+          // unrecognized/permanent error and mark FAILED on the very first
+          // occurrence.
+          console.warn('[MLS:coordinator] trackCommitOutcome: catch-up after epoch gap failed for', convId, catchUpErr);
+          const gapFailures = (this.commitFailureCounts.get(convId) ?? 0) + 1;
+          this.commitFailureCounts.set(convId, gapFailures);
+          if (gapFailures >= MlsCoordinatorService.MAX_COMMIT_FAILURES) {
+            console.error(
+              '[MLS:coordinator]', gapFailures, 'consecutive commit failures for', convId,
+              '(catch-up after epoch gap kept failing) — marking FAILED.',
+            );
+            this.transitionState(convId, ConversationMlsState.Failed);
+            this._conversationFailed$$.next({ conversationId: convId });
+            this.scheduleFailedRecovery(convId, user, device);
+          } else {
+            this.transitionState(convId, ConversationMlsState.Ready);
+          }
+          throw err;
+        }
+      }
+
       const failures = (this.commitFailureCounts.get(convId) ?? 0) + 1;
       this.commitFailureCounts.set(convId, failures);
 
@@ -814,7 +834,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     // Mark restored conversations as READY, bypassing normal transition rules.
     for (const convId of injectedIds) {
       const from = this.states.get(convId) ?? ConversationMlsState.Empty;
-      this.states.set(convId, ConversationMlsState.Ready);
+      this.transitionState(convId, ConversationMlsState.Ready, TRANSITION_REASON_RESTORE);
       if (!this.readyTimestamps.has(convId)) {
         this.readyTimestamps.set(convId, Date.now());
       }
@@ -856,7 +876,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         const cached    = this.buildCached(entry, plaintext, false);
         await this.messageCacheSvc.store(cached);
         await this.pendingRepo.remove(entry.messageId);
-        this.backupSvcRef?.enqueue({
+        this.backupRegistry.backupService?.enqueue({
           messageId:      entry.messageId,
           conversationId: convId,
           plaintext,
@@ -1131,5 +1151,22 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       createdAt:         entry.createdAt,
       cachedAt:          Date.now(),
     };
+  }
+
+  override clear(): void {
+    // Clear failed recovery timers if any are pending
+    this.failedRecovery.forEach(entry => {
+      if (entry.timerId !== undefined) {
+        clearTimeout(entry.timerId);
+      }
+    });
+    this.failedRecovery.clear();
+
+    this.states.clear();
+    this.pendingDerivations.clear();
+    this.inFlightDecrypts.clear();
+    this.commitFailureCounts.clear();
+    this.decryptionFailures.clear();
+    this.readyTimestamps.clear();
   }
 }

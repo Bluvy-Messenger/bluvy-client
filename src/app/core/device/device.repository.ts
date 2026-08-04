@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { ApiClientService } from '../infrastructure/api-client.service';
-import { validateDeviceItemsResponse } from './device.validator';
+import { validateDeviceItemsResponse, validateRevokedDeviceItemsResponse } from './device.validator';
 
 export interface DeviceItem {
   id:        string;
@@ -8,6 +8,11 @@ export interface DeviceItem {
   platform:  string;
   lastSeen:  number;
   createdAt: number;
+}
+
+export interface RevokedDeviceItem {
+  id:      string;
+  userDid: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -25,5 +30,13 @@ export class DeviceRepository {
 
   async revokeAllDevices(): Promise<{ revokedCount: number }> {
     return this.apiClient.delete<{ revokedCount: number }>('/v1/devices');
+  }
+
+  // Every revoked device belonging to anyone the caller shares a conversation
+  // with (self included) -- see the backend's getRevokedDevicesInMyConversations
+  // for why (forensic audit finding F11).
+  async getRevokedDevices(): Promise<{ data: RevokedDeviceItem[] }> {
+    const raw = await this.apiClient.get<{ data: RevokedDeviceItem[] }>('/v1/devices/revoked');
+    return validateRevokedDeviceItemsResponse(raw);
   }
 }

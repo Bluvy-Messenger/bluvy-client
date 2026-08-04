@@ -167,4 +167,6 @@ export abstract class MlsCoordinatorBase {
   abstract readonly pendingDecryptReplayed$:     Observable<ReplayedDecryptEvent>;
   abstract readonly restoreCompleted$:           Observable<RestoreCompletedEvent>;
   abstract readonly historyRecoveryCompleted$:   Observable<HistoryRecoveryCompletedEvent>;
+
+  abstract clear(): void;
 }

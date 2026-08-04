@@ -54,13 +54,28 @@ export class PendingDecryptRepository {
   // Uses the same `cache:{userDid}:{deviceId}` scope as MessageCacheService's
   // key store, so both resolve to the same underlying key without introducing
   // a second key hierarchy.
+  //
+  // The IndexedDB itself is scoped by BOTH userDid and deviceId (forensic
+  // audit finding F14) -- it used to be DID-only while MLS state
+  // (mls-state-storage.service.ts) is device-scoped. After a device-identity
+  // change (e.g. a revoked-then-re-logged-in device minting a fresh id, see
+  // finding F2), entries queued under the OLD device were replayed against
+  // the NEW device's MLS state, burned their single retry
+  // (mls-coordinator.service.ts's replayPendingDecrypts: attempts >= 1 =>
+  // permanent), and became permanently "[Encrypted]".
   async initialize(userDid: string, deviceId: string): Promise<void> {
     const scope = `cache:${userDid}:${deviceId}`;
+    this.dbName = this.buildDbName(userDid, deviceId);
     const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
-    this.dbName = `skychat-pending-decrypts-${sanitizedDid}`;
     this.keyStore = Capacitor.isNativePlatform() ? new NativeKeyStore() : new WebKeyStore(sanitizedDid);
     await this.keyStore.initialize(scope);
     this.db = null; // Reset database connection
+  }
+
+  private buildDbName(userDid: string, deviceId: string): string {
+    const sanitizedDid    = userDid.replace(/[^a-zA-Z0-9]/g, '_');
+    const sanitizedDevice = deviceId.replace(/[^a-zA-Z0-9]/g, '_');
+    return `skychat-pending-decrypts-${sanitizedDid}-${sanitizedDevice}`;
   }
 
   async enqueue(entry: PendingDecryptEntry): Promise<void> {
@@ -306,15 +321,14 @@ export class PendingDecryptRepository {
     });
   }
 
-  async clearAllForUser(userDid: string): Promise<void> {
-    const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
-    const dbName = `skychat-pending-decrypts-${sanitizedDid}`;
-    
+  async clearAllForUser(userDid: string, deviceId: string): Promise<void> {
+    const dbName = this.buildDbName(userDid, deviceId);
+
     if (this.db && this.dbName === dbName) {
       this.db.close();
       this.db = null;
     }
-    
+
     await new Promise<void>((resolve) => {
       const req = indexedDB.deleteDatabase(dbName);
       req.onsuccess = () => resolve();

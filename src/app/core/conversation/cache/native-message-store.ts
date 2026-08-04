@@ -226,6 +226,16 @@ export class NativeMessageStore implements IMessageStore {
     );
   }
 
+  // MessageCacheService.clearAllForUser()'s native branch manages its own
+  // SQLiteConnection lookup/deletion directly (not through this store), so
+  // this isn't on that path today -- provided for IMessageStore completeness
+  // and so a future caller can safely close this store's own connection.
+  async close(): Promise<void> {
+    if (!this.db) return;
+    await this.sqlite.closeConnection(this.dbName, false).catch(() => {});
+    this.db = null;
+  }
+
   // ── Private ────────────────────────────────────────────────────────────────
 
   private toValues(r: EncryptedCacheRecord): unknown[] {

@@ -6,8 +6,8 @@ import { FailedSyncBatchRepository } from './failed-sync-batch.repository';
 import { KeyPackageService } from '../mls/key-package/key-package.service';
 import { ConversationsService } from '../conversation/conversations.service';
 import { MessageCacheService } from '../conversation/message-cache.service';
-import { MlsService } from '../mls/mls.service';
 import { MlsCoordinatorService } from '../mls/coordinator/mls-coordinator.service';
+import { MlsBackupRegistry } from '../mls/mls-backup-registry.service';
 import { SecureLocalStorageService } from '../secure-local-storage/secure-local-storage.service';
 import { buildPinKdfParams, deriveMbkWrappingKeyFromPin, encryptMbk } from './sync.crypto';
 import type { MbkBlob, SyncSettings } from './sync.types';
@@ -19,8 +19,8 @@ describe('SyncService — MBK rotation', () => {
   let mockConvSvc:         jasmine.SpyObj<ConversationsService>;
   let mockMessageCacheSvc: jasmine.SpyObj<MessageCacheService>;
   let mockSecureStorage:   jasmine.SpyObj<SecureLocalStorageService>;
-  let mockMlsSvc:          jasmine.SpyObj<MlsService>;
   let mockCoordinatorSvc:  jasmine.SpyObj<MlsCoordinatorService>;
+  let backupRegistry:      MlsBackupRegistry;
 
   const USER_DID   = 'did:plc:alice';
   const DEVICE_ID  = 'device-1';
@@ -52,8 +52,7 @@ describe('SyncService — MBK rotation', () => {
     mockConvSvc         = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations', 'getConversationById', 'createOrGetDm']);
     mockMessageCacheSvc = jasmine.createSpyObj<MessageCacheService>('MessageCacheService', ['isInitialized', 'initialize', 'getMessagesPage', 'getAllIds', 'getHistoryClearedAt', 'storeMany']);
     mockSecureStorage    = jasmine.createSpyObj<SecureLocalStorageService>('SecureLocalStorageService', ['storeMbk', 'loadMbk', 'clearMbk', 'hasMbk']);
-    mockMlsSvc           = jasmine.createSpyObj<MlsService>('MlsService', ['setBackupService']);
-    mockCoordinatorSvc   = jasmine.createSpyObj<MlsCoordinatorService>('MlsCoordinatorService', ['setBackupService']);
+    mockCoordinatorSvc   = jasmine.createSpyObj<MlsCoordinatorService>('MlsCoordinatorService', []);
     // pendingDecryptQueued$ is a real Observable property (not a spy-able
     // method) -- the constructor subscribes to it directly.
     Object.defineProperty(mockCoordinatorSvc, 'pendingDecryptQueued$', { value: new Subject(), configurable: true });
@@ -76,13 +75,13 @@ describe('SyncService — MBK rotation', () => {
         { provide: KeyPackageService, useValue: jasmine.createSpyObj('KeyPackageService', ['ensureKeyPackagePool']) },
         { provide: ConversationsService, useValue: mockConvSvc },
         { provide: MessageCacheService, useValue: mockMessageCacheSvc },
-        { provide: MlsService, useValue: mockMlsSvc },
         { provide: MlsCoordinatorService, useValue: mockCoordinatorSvc },
         { provide: SecureLocalStorageService, useValue: mockSecureStorage },
       ],
     });
 
     service = TestBed.inject(SyncService);
+    backupRegistry = TestBed.inject(MlsBackupRegistry);
     // Sets this.userDid without going through the slow-path's setupRequired$/
     // pinRequired$ branching, which isn't what's under test here.
     await service.initialize(USER_DID, DEVICE_ID);

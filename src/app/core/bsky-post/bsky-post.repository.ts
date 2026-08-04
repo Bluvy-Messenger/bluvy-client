@@ -87,4 +87,8 @@ export class BskyPostRepository {
       return null;
     }
   }
+
+  clear(): void {
+    this.cache.clear();
+  }
 }

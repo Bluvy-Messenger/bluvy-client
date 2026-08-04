@@ -56,7 +56,7 @@
             [name]="conv.participant.displayName || conv.participant.handle"
             [preview]="getPreview(conv)"
             [time]="conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ''"
-            [unreadCount]="conv.unreadCount"
+            [unreadCount]="(receiptsSvc.unreadCount$(conv.id) | async) ?? 0"
             [online]="(presenceSvc.status$(conv.participant.did) | async) === 'online'"
             [class.conversation-item--selected]="selectedConvId() === conv.id"
             (open)="openConversation(conv)"

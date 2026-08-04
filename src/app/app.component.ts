@@ -47,6 +47,7 @@ import { EmbedPreferencesService } from './core/embed/embed-preferences.service'
 import { TranslationService } from './core/i18n/translation.service';
 import { SyncService } from './core/sync/sync.service';
 import { ROUTES } from './core/routes';
+import type { WelcomeNewPayload } from './core/infrastructure/socket.types';
 
 @Component({
   selector: 'app-root',
@@ -122,7 +123,27 @@ export class AppComponent implements OnInit, OnDestroy {
         if (!user || !device) return;
         void this.coordinator.processIncomingCommit(
           payload.conversationId, payload.commit, payload.epoch, user, device,
-        ).catch(err => { if (!environment.production) console.error('[AppComponent] mls:commit failed for conv', payload.conversationId, ':', err); });
+        ).catch(err => { console.error('[AppComponent] mls:commit failed for conv', payload.conversationId, ':', err); });
+      }),
+    );
+
+    // Global welcomeNew$ subscriber (forensic audit finding F6): before this,
+    // the only subscribers were conversation.page.ts (only while that
+    // conversation is open) and the dead conversation-panel.component.ts. A
+    // Welcome for a conversation not currently open was only picked up by the
+    // next REST poll (getPendingWelcomes), which itself requires already
+    // knowing the conversationId -- there is no "list all my pending
+    // welcomes" endpoint. processWelcome() is idempotent on an already-READY
+    // conversation (mls-coordinator.service.ts) and the Welcome digest guard
+    // (mls.service.ts) makes a double-fire with conversation.page.ts's own
+    // subscriber safe when the conversation happens to be open too.
+    this.subs.add(
+      this.socketSvc.welcomeNew$.subscribe((payload: WelcomeNewPayload) => {
+        const user   = this.authSvc.currentUser();
+        const device = this.authSvc.currentDevice();
+        if (!user || !device || !payload.conversationId) return;
+        void this.coordinator.processWelcome(payload.id, payload.welcome, payload.conversationId, user, device)
+          .catch(err => { console.error('[AppComponent] welcomeNew$ processWelcome failed for conv', payload.conversationId, ':', err); });
       }),
     );
 
@@ -133,7 +154,7 @@ export class AppComponent implements OnInit, OnDestroy {
         if (!user || !device) return;
         void this.provisionSvc.checkAndProvisionOnConnect(user, device);
         void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
-          .catch(err => { if (!environment.production) console.error('[AppComponent] reconnect: ensureKeyPackagePool failed', err); });
+          .catch(err => { console.error('[AppComponent] reconnect: ensureKeyPackagePool failed', err); });
       }),
     );
 
@@ -144,7 +165,7 @@ export class AppComponent implements OnInit, OnDestroy {
         if (!user || !device) return;
         if (!environment.production) console.warn('[AppComponent] mls:refill_key_packages received — ensuring key package pool');
         void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
-          .catch(err => { if (!environment.production) console.error('[AppComponent] refill: ensureKeyPackagePool failed', err); });
+          .catch(err => { console.error('[AppComponent] refill: ensureKeyPackagePool failed', err); });
       }),
     );
 
@@ -155,7 +176,7 @@ export class AppComponent implements OnInit, OnDestroy {
         if (!user || !device) return;
         if (!environment.production) console.warn('[AppComponent] device:revoked received for device:', payload.deviceId);
         void this.coordinator.removeRevokedDeviceFromAllGroups(payload.deviceId, user, device)
-          .catch(err => { if (!environment.production) console.error('[AppComponent] deviceRevoked: remove failed', err); });
+          .catch(err => { console.error('[AppComponent] deviceRevoked: remove failed', err); });
       }),
     );
 
@@ -172,7 +193,7 @@ export class AppComponent implements OnInit, OnDestroy {
         try {
           await this.msgCacheSvc.spliceHistory(payload.oldConversationId, payload.newConversationId);
         } catch (err) {
-          if (!environment.production) console.error('[AppComponent] conversation:superseded splice failed', err);
+          console.error('[AppComponent] conversation:superseded splice failed', err);
         }
 
         const currentUrl = this.router.url;
@@ -222,9 +243,9 @@ export class AppComponent implements OnInit, OnDestroy {
       const device = this.authSvc.currentDevice();
       if (!user || !device) return;
       void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
-        .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
+        .catch(err => { console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
       void this.embedPrefsSvc.refreshFromPds()
-        .catch(err => { if (!environment.production) console.error('[AppComponent] foreground: embed preferences refresh failed', err); });
+        .catch(err => { console.error('[AppComponent] foreground: embed preferences refresh failed', err); });
     });
 
     // This empty listener is required for Android hardware back to reach

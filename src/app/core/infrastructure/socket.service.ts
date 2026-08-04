@@ -223,7 +223,6 @@ export class SocketService {
     this.socket?.emit(SOCKET_EVENTS.MESSAGE_DELIVERED, { conversationId, messageId, senderDid });
   }
 
-  // Sends a message and returns the server-confirmed message via the ack.
   sendMessage(conversationId: string, ciphertext: string): Promise<MessageNewPayload> {
     return new Promise((resolve, reject) => {
       if (!this.socket?.connected) {
@@ -231,10 +230,15 @@ export class SocketService {
         return;
       }
 
+      const timeoutId = setTimeout(() => {
+        reject(new Error('SEND_TIMEOUT: Message send acknowledgement timed out'));
+      }, 15000);
+
       this.socket.emit(
         SOCKET_EVENTS.MESSAGE_SEND,
         { conversationId, ciphertext },
         (ack: SendAck) => {
+          clearTimeout(timeoutId);
           if (ack.ok) resolve(ack.message);
           else reject(new Error(`${ack.code}: ${ack.message}`));
         },

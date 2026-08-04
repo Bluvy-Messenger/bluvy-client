@@ -103,6 +103,11 @@ export class WebMessageStore implements IMessageStore {
     });
   }
 
+  async close(): Promise<void> {
+    this.db?.close();
+    this.db = null;
+  }
+
   async clearConversation(conversationId: string): Promise<void> {
     const db = await this.openDb();
     const ids = await this.queryAllIds(conversationId);
