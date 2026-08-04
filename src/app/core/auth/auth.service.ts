@@ -16,6 +16,7 @@ import { SyncService } from '../sync/sync.service';
 import { ContactsService } from '../contact/contacts.service';
 import { AuthRepository } from './auth.repository';
 import type { UserProfile, AuthSessionResponse } from './auth.types';
+import { ApiClientService } from '../infrastructure/api-client.service';
 import { TokenRepository } from '../infrastructure/token.repository';
 import { SecureLocalStorageService } from '../secure-local-storage/secure-local-storage.service';
 import { MessageCacheService } from '../conversation/message-cache.service';
@@ -23,6 +24,10 @@ import { NotificationService } from '../notification/notification.service';
 import { PushNotificationService } from '../notification/push-notification.service';
 import { AccountBadgeService } from '../notification/account-badge.service';
 import { EmbedPreferencesService } from '../embed/embed-preferences.service';
+import { ReceiptsService } from '../receipts/receipts.service';
+import { PresenceService } from '../presence/presence.service';
+import { BskyPostRepository } from '../bsky-post/bsky-post.repository';
+import { LinkPreviewService } from '../link-preview/link-preview.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
@@ -48,6 +53,7 @@ export class AuthService {
   private syncSvc         = inject(SyncService);
   private contactsSvc     = inject(ContactsService);
   private authRepo        = inject(AuthRepository);
+  private apiClient       = inject(ApiClientService);
   private tokenRepo       = inject(TokenRepository);
   private secureStorage   = inject(SecureLocalStorageService);
   private msgCache        = inject(MessageCacheService);
@@ -57,6 +63,10 @@ export class AuthService {
   private get notifSvc(): NotificationService     { return this.injector.get(NotificationService); }
   private get pushSvc():  PushNotificationService { return this.injector.get(PushNotificationService); }
   private get badgeSvc(): AccountBadgeService     { return this.injector.get(AccountBadgeService); }
+  private get receiptsSvc(): ReceiptsService       { return this.injector.get(ReceiptsService); }
+  private get presenceSvc(): PresenceService       { return this.injector.get(PresenceService); }
+  private get bskyPostRepo(): BskyPostRepository   { return this.injector.get(BskyPostRepository); }
+  private get linkPreviewSvc(): LinkPreviewService { return this.injector.get(LinkPreviewService); }
 
   readonly currentUser     = signal<UserProfile | null>(null);
   readonly currentDevice   = signal<DeviceInfo | null>(null);
@@ -67,13 +77,19 @@ export class AuthService {
   private _refreshing         = false;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // In-flight restoreSession(), shared across concurrent callers. Without
-  // this, rootGuard/authGuard (or a notification-driven navigation racing
-  // the router's own default initial navigation on cold start) can each
+  // In-flight restoreSession(), shared across concurrent callers, keyed by
+  // the active DID at call time (forensic audit finding F9). Without this,
+  // rootGuard/authGuard (or a notification-driven navigation racing the
+  // router's own default initial navigation on cold start) can each
   // independently call restoreSession(), duplicating the HTTP session
   // fetch + MLS bootstrap + socket connect + sync init pipeline at the
-  // worst possible time (right after app cold start).
-  private restoreSessionPromise: Promise<boolean> | null = null;
+  // worst possible time (right after app cold start). Keying by DID (rather
+  // than a single shared field) matters specifically for switchAccount():
+  // it sets the new active DID, then calls restoreSession() -- an unkeyed
+  // single field would hand that caller a still-in-flight restore for the
+  // PREVIOUS account instead of starting a fresh one for the new DID.
+  private restoreSessionPromises = new Map<string, Promise<boolean>>();
+  private refreshSecondaryPromises = new Map<string, Promise<string | null>>();
 
   // Decodes the (unverified — verification is the server's job, this is only
   // used to schedule a client-side timer) `exp` claim of a JWT access token.
@@ -211,6 +227,7 @@ export class AuthService {
     // 2. Clear in-memory active states + close any visible notification toast
     this.syncSvc.reset();
     this.contactsSvc.reset();
+    this.clearAllSingletonCaches();
     this.notifSvc.onAccountSwitch();
     this.badgeSvc.clearBadge(did); // Clear the unread badge for the account we're switching TO
     await this.pushSvc.onAccountSwitch();
@@ -294,6 +311,22 @@ export class AuthService {
       platform: response.device.platform,
     };
 
+    // The backend can return a different deviceId than requested (e.g. a
+    // revoked local id doesn't match its idempotent-reuse filter, so it
+    // mints a fresh one) -- persist it so the next login sends the real
+    // one instead of silently minting a new device row every time.
+    //
+    // Must never throw here: authRepo.login() has already succeeded and
+    // tokens are already saved above, so a failure in this best-effort
+    // reconciliation step must not abort the whole login.
+    if (response.device.id !== device.id) {
+      try {
+        await this.deviceSvc.persist(did, response.device.id);
+      } catch (err) {
+        console.warn('[AuthService] loginWithOAuthSession: device identity persist failed, continuing', err);
+      }
+    }
+
     this.currentUser.set(response.user);
     this.currentDevice.set(sessionDevice);
     this.isAuthenticated.set(true);
@@ -348,10 +381,23 @@ export class AuthService {
     }
   }
 
+  private clearAllSingletonCaches(): void {
+    try {
+      this.coordinator.clear();
+      this.receiptsSvc.clear();
+      this.presenceSvc.clear();
+      this.bskyPostRepo.clear();
+      this.linkPreviewSvc.clear();
+    } catch (err) {
+      console.warn('[AuthService] failed to clear singleton caches:', err);
+    }
+  }
+
   async logout(): Promise<void> {
     this.cancelProactiveRefresh();
     this.syncSvc.reset();
     this.contactsSvc.reset();
+    this.clearAllSingletonCaches();
 
     const did = this.currentUser()?.did ?? null;
 
@@ -365,7 +411,19 @@ export class AuthService {
     }
 
     if (did) {
-      await this.oauthSvc.logout(did).catch(() => {});
+      // .catch() alone doesn't protect against this hanging: oauthSvc.logout()
+      // calls the external OAuth provider's revoke endpoint (e.g.
+      // eurosky.social) with no timeout of its own. A promise that never
+      // settles (network stall, unresponsive provider) is not a rejection --
+      // .catch() does nothing for it, and it silently blocked every step
+      // after it here, including the navigate-to-login at the end (production
+      // incident: logout completed server-side (204) but the app never left
+      // the current page). Bound it explicitly so a slow/unreachable external
+      // provider can never stall local logout.
+      await Promise.race([
+        this.oauthSvc.logout(did).catch(() => {}),
+        new Promise<void>(resolve => setTimeout(resolve, 5000)),
+      ]);
       await this.removeAccount(did);
       await this.tokenRepo.clearTokens(did);
       await this.clearSessionForDid(did);
@@ -390,11 +448,22 @@ export class AuthService {
   }
 
   async restoreSession(): Promise<boolean> {
-    if (this.restoreSessionPromise) return this.restoreSessionPromise;
-    this.restoreSessionPromise = this.doRestoreSession().finally(() => {
-      this.restoreSessionPromise = null;
+    // Read the active DID synchronously off setActiveDid()'s own in-memory
+    // cache (TokenRepository), not a fresh Preferences round trip -- so a
+    // call made right after switchAccount() sets the new DID is guaranteed
+    // to key against that new DID, not race a stale read.
+    const key = (await this.tokenRepo.getActiveDid()) ?? '__no_active_did__';
+
+    const existing = this.restoreSessionPromises.get(key);
+    if (existing) return existing;
+
+    const promise = this.doRestoreSession().finally(() => {
+      if (this.restoreSessionPromises.get(key) === promise) {
+        this.restoreSessionPromises.delete(key);
+      }
     });
-    return this.restoreSessionPromise;
+    this.restoreSessionPromises.set(key, promise);
+    return promise;
   }
 
   private async doRestoreSession(): Promise<boolean> {
@@ -423,6 +492,27 @@ export class AuthService {
       name:     session.device.name,
       platform: session.device.platform,
     };
+
+    // Reconcile the locally stored deviceId with the server's session device
+    // -- restoreSession() never wrote to Preferences before, so a stale local
+    // id (e.g. left over from before this device was revoked and re-logged
+    // in) would otherwise persist forever and get resent on the next fresh
+    // login. See loginWithOAuthSession's identical reconciliation above.
+    //
+    // Must never throw: restoreSession() runs on every guard-protected
+    // navigation (including a plain page refresh) and its callers
+    // (auth.guard.ts / root.guard.ts) await it with no try/catch, expecting
+    // only true/false. A corrupt/unreadable local device-identity record
+    // (validateStoredDeviceIdentity throwing on an unexpected shape) used to
+    // only affect fresh logins; reading it here too means it must fail soft.
+    try {
+      const localDevice = await this.deviceSvc.get(session.user.did);
+      if (!localDevice || localDevice.id !== session.device.id) {
+        await this.deviceSvc.persist(session.user.did, session.device.id);
+      }
+    } catch (err) {
+      console.warn('[AuthService] restoreSession: device identity reconciliation failed, continuing', err);
+    }
 
     this.currentUser.set(session.user);
     this.currentDevice.set(sessionDevice);
@@ -510,15 +600,16 @@ export class AuthService {
 
   async clearSessionForDid(did: string): Promise<void> {
     await this.secureStorage.clearMbk(did).catch(() => {});
-    
+
     // Clear user-specific databases
     await this.msgCache.clearAllForUser(did).catch(() => {});
-    await this.pendingDecrypt.clearAllForUser(did).catch(() => {});
 
-    // Clear MLS states for all devices of this user
+    // pending-decrypt's IndexedDB is scoped by (did, deviceId) — see F14 — so
+    // clearing it needs this device's id, same as the MLS scope clear below.
     try {
       const device = await this.deviceSvc.get(did);
       if (device) {
+        await this.pendingDecrypt.clearAllForUser(did, device.id).catch(() => {});
         await this.mlsStateStorage.clearForScope(`mls:${did}:${device.id}`).catch(() => {});
       }
     } catch {
@@ -539,37 +630,75 @@ export class AuthService {
    * once it expires.
    */
   async refreshTokensForDid(did: string): Promise<string | null> {
-    const refreshToken = await this.tokenRepo.getRefreshToken(did);
-    if (!refreshToken) return null;
-
-    try {
-      const tokens = await this.authRepo.refresh(refreshToken);
-      await this.tokenRepo.setAccessToken(tokens.accessToken, did);
-      await this.tokenRepo.setRefreshToken(tokens.refreshToken, did);
-      return tokens.accessToken;
-    } catch {
-      return null;
+    // Nothing stops `did` here from being the CURRENTLY ACTIVE account --
+    // PushNotificationService/AccountBadgeService iterate "every linked
+    // account" without excluding it. If it is, route through the same
+    // shared refresh (ApiClientService.ensureRefresh(), via refreshTokens()
+    // above) instead of making an independent, undeduped /auth/refresh call:
+    // this method used to do its own thing entirely, so it could still race
+    // the unified path with the same one-time-use-token problem those fixes
+    // were for -- observed in production as 401s persisting even after that
+    // unification, traced to this call site.
+    const activeDid = await this.tokenRepo.getActiveDid();
+    if (did === activeDid) {
+      const refreshed = await this.refreshTokens();
+      return refreshed ? this.tokenRepo.getAccessToken(did) : null;
     }
+
+    const existing = this.refreshSecondaryPromises.get(did);
+    if (existing) return existing;
+
+    const promise = (async () => {
+      const refreshToken = await this.tokenRepo.getRefreshToken(did);
+      if (!refreshToken) return null;
+
+      try {
+        const tokens = await this.authRepo.refresh(refreshToken);
+        await this.tokenRepo.setAccessToken(tokens.accessToken, did);
+        await this.tokenRepo.setRefreshToken(tokens.refreshToken, did);
+        return tokens.accessToken;
+      } catch {
+        return null;
+      }
+    })().finally(() => {
+      this.refreshSecondaryPromises.delete(did);
+    });
+
+    this.refreshSecondaryPromises.set(did, promise);
+    return promise;
   }
 
+  // Delegates to ApiClientService.ensureRefresh() -- the single shared
+  // in-flight refresh promise for the WHOLE app, not just this class.
+  // refreshTokens() has two callers here (the proactive timer and the
+  // socket's connect_error UNAUTHORIZED handler below), but ApiClientService
+  // ALSO independently refreshes reactively whenever any REST call gets a
+  // 401. Refresh tokens are one-time-use/rotated on success, so any two of
+  // these three triggers racing on the same not-yet-rotated token isn't
+  // just wasted work: the loser is rejected "invalid or expired" by the
+  // backend (its token was already consumed by the winner) -- observed in
+  // production as a repeating refresh-then-401 loop. An earlier fix deduped
+  // only the two callers inside this class, which wasn't enough because it
+  // still raced independently against ApiClientService's own reactive path.
+  // Routing everything through one shared promise in one place is the only
+  // way to guarantee at most one /auth/refresh call in flight at a time.
   async refreshTokens(): Promise<boolean> {
-    const activeDid = await this.tokenRepo.getActiveDid();
-    const refreshToken = await this.tokenRepo.getRefreshToken(activeDid || undefined);
-    if (!refreshToken) return false;
+    const refreshed = await this.apiClient.ensureRefresh();
 
-    try {
-      const tokens = await this.authRepo.refresh(refreshToken);
-      await this.tokenRepo.setAccessToken(tokens.accessToken, activeDid || undefined);
-      await this.tokenRepo.setRefreshToken(tokens.refreshToken, activeDid || undefined);
-      this.scheduleProactiveRefresh(tokens.accessToken);
+    if (refreshed) {
+      const token = await this.tokenRepo.getAccessToken();
+      if (token) this.scheduleProactiveRefresh(token);
       return true;
-    } catch (err) {
-      const status = (err as Error & { status?: number }).status;
-      if (status !== undefined && status >= 400 && status < 500) {
-        await this.clearSession();
-      }
-      return false;
     }
+
+    // ApiClientService.ensureRefresh() already cleared tokens and navigated
+    // to /login on a genuine (non-transient) failure; run AuthService's own
+    // broader cleanup too (MLS state, message cache, MBK, ...), which
+    // ApiClientService has no knowledge of.
+    if (this.isAuthenticated()) {
+      await this.clearSession();
+    }
+    return false;
   }
 }
 

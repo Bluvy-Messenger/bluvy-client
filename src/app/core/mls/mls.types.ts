@@ -1,3 +1,9 @@
+export interface SessionDevice {
+  id:       string;
+  name:     string;
+  platform: string;
+}
+
 export interface UploadedKeyPackage {
   id:         string;
   deviceId:   string;

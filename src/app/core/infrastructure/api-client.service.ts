@@ -222,7 +222,16 @@ export class ApiClientService {
     return err instanceof HttpErrorResponse && err.status === 401;
   }
 
-  private ensureRefresh(): Promise<boolean> {
+  // Public: the single shared entry point for refreshing the active
+  // account's access token. AuthService.refreshTokens() (proactive timer,
+  // socket connect_error handler) delegates here too, instead of making its
+  // own independent /auth/refresh call -- refresh tokens are one-time-use, so
+  // two uncoordinated concurrent refreshes racing on the same token isn't
+  // just wasted work: the loser gets "invalid or expired" from the backend
+  // (its token was already consumed by the winner) and its failure cleanup
+  // wipes out the winner's freshly-saved valid tokens. This shared in-flight
+  // promise is the only thing in the app that makes the actual HTTP call.
+  ensureRefresh(): Promise<boolean> {
     if (this.refreshing) return this.refreshing;
     this.refreshing = this.doRefresh().finally(() => { this.refreshing = null; });
     return this.refreshing;
@@ -245,9 +254,18 @@ export class ApiClientService {
       await this.tokens.setAccessToken(resp.accessToken);
       await this.tokens.setRefreshToken(resp.refreshToken);
       return true;
-    } catch {
-      await this.tokens.clearTokens();
-      await this.router.navigate([ROUTES.login]);
+    } catch (err) {
+      // Only clear tokens and force a logout on a genuine rejection (the
+      // refresh token was actually invalid/expired/revoked). A transient
+      // failure (network blip, timeout) must not wipe otherwise-valid
+      // tokens -- this method is now the single shared refresh path for
+      // every trigger in the app (reactive 401, proactive timer, socket
+      // reconnect — see AuthService.refreshTokens()), so being wrong here
+      // affects all of them.
+      if (!this.isTransient(err)) {
+        await this.tokens.clearTokens();
+        await this.router.navigate([ROUTES.login]);
+      }
       return false;
     }
   }

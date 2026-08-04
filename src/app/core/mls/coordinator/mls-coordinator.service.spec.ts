@@ -1,5 +1,5 @@
 import { TestBed, fakeAsync, tick, flush } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { MlsCoordinatorService } from './mls-coordinator.service';
 import { ConversationMlsState } from './mls-coordinator.types';
 import { MlsService } from '../mls.service';
@@ -7,6 +7,7 @@ import { MessageCacheService } from '../../conversation/message-cache.service';
 import { ConversationsService } from '../../conversation/conversations.service';
 import { PendingDecryptRepository } from '../repositories/pending-decrypt.repository';
 import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
+import { MlsBackupRegistry } from '../mls-backup-registry.service';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
 
@@ -36,6 +37,10 @@ describe('MlsCoordinatorService', () => {
     mockConvSvc = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getMessages']);
     mockPendingRepo = jasmine.createSpyObj<PendingDecryptRepository>('PendingDecryptRepository', ['enqueue', 'remove', 'markAttempt', 'getAll']);
     mockWatchdog = jasmine.createSpyObj<MlsWatchdogService>('MlsWatchdogService', ['watch', 'unwatch']);
+    // epochConflict$ is a real Observable property (not a spy-able method) --
+    // the constructor subscribes to it directly, same as MlsCoordinatorService's
+    // own pendingDecryptQueued$ pattern seen in sync.service.spec.ts.
+    Object.defineProperty(mockMlsSvc, 'epochConflict$', { value: new Subject(), configurable: true });
 
     // Sane defaults so paths not under test (recovery timers, replay) don't blow up.
     mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(false));
@@ -231,6 +236,48 @@ describe('MlsCoordinatorService', () => {
       // dance, proving wasReady was correctly derived as true (not skipped).
       expect(mockWatchdog.watch).toHaveBeenCalledWith('conv-cold', ConversationMlsState.ApplyingCommit);
       expect(service.getConversationState('conv-cold')).toBe(ConversationMlsState.Ready);
+    }));
+
+    // Forensic audit finding F8: a missed commit (EpochGapError) is not a
+    // fork and must not count toward the failure threshold or classify as
+    // permanent -- it should trigger a direct catch-up instead.
+    it('catches up directly on EpochGapError instead of counting it as a commit failure, and stays READY', fakeAsync(() => {
+      let failedEvent: { conversationId: string } | undefined;
+      service.conversationFailed$.subscribe(evt => { failedEvent = evt; });
+
+      const gapError = Object.assign(new Error('epoch gap'), { name: 'EpochGapError' });
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(2));
+
+      service.processIncomingCommit('conv-gap', 'commit-3', 3, mockUser, mockDevice).catch(() => {});
+      tick();
+
+      expect(mockMlsSvc.catchUpMissedCommits).toHaveBeenCalledWith('conv-gap', mockUser, mockDevice);
+      expect(service.getConversationState('conv-gap')).toBe(ConversationMlsState.Ready);
+      expect(failedEvent).toBeUndefined();
+
+      // Repeating it 3 more times must still never trip FAILED -- proves it
+      // isn't merely being tolerated below MAX_COMMIT_FAILURES by coincidence.
+      for (let i = 0; i < 3; i++) {
+        mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
+        service.processIncomingCommit('conv-gap', `commit-${4 + i}`, 4 + i, mockUser, mockDevice).catch(() => {});
+        tick();
+      }
+      expect(service.getConversationState('conv-gap')).toBe(ConversationMlsState.Ready);
+      expect(failedEvent).toBeUndefined();
+    }));
+
+    it('falls through to normal failure handling if the catch-up after an epoch gap itself fails', fakeAsync(() => {
+      const gapError = Object.assign(new Error('epoch gap'), { name: 'EpochGapError' });
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.reject(new Error('network down')));
+
+      service.processIncomingCommit('conv-gap-fail', 'commit-1', 1, mockUser, mockDevice).catch(() => {});
+      tick();
+
+      // Catch-up failed too -- falls through to the ordinary counter, not an
+      // immediate FAILED (the underlying error isn't recognized as permanent).
+      expect(service.getConversationState('conv-gap-fail')).toBe(ConversationMlsState.Ready);
     }));
   });
 
@@ -465,7 +512,8 @@ describe('MlsCoordinatorService', () => {
 
     it('returns 0 without calling restore when the MBK is available but nothing is undecryptable', fakeAsync(() => {
       const restore = jasmine.createSpy('restore').and.returnValue(Promise.resolve());
-      service.setBackupService({
+      TestBed.inject(MlsBackupRegistry).setBackupService({
+        backupGroupState: () => {},
         enqueue: () => {},
         isMbkAvailable: () => true,
         restore,
@@ -482,7 +530,8 @@ describe('MlsCoordinatorService', () => {
 
     it('restores from the cloud and reports how many undecryptable placeholders were healed', fakeAsync(() => {
       const restore = jasmine.createSpy('restore').and.returnValue(Promise.resolve());
-      service.setBackupService({
+      TestBed.inject(MlsBackupRegistry).setBackupService({
+        backupGroupState: () => {},
         enqueue: () => {},
         isMbkAvailable: () => true,
         restore,

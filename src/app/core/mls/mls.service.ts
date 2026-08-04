@@ -1,10 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Subject } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
-  acceptAll,
-  createApplicationMessage,
   createCommit,
   createGroup,
   decodeGroupState,
@@ -17,41 +14,35 @@ import {
   defaultLifetime,
   defaultLifetimeConfig,
   defaultPaddingConfig,
-  emptyPskIndex,
   encodeMlsMessage,
   encodeGroupState,
   generateKeyPackage,
   getCiphersuiteFromName,
   getCiphersuiteImpl,
-  joinGroup,
-  processPrivateMessage,
-  processPublicMessage,
   type ClientConfig,
   type ClientState,
   type Credential,
   type KeyPackage,
-  type PrivateKeyPackage,
   type ProposalAdd,
 } from 'ts-mls';
-import { getGroupMembers }  from 'ts-mls/clientState.js';
-import { makeKeyPackageRef } from 'ts-mls/keyPackage.js';
 import type { UserProfile } from '../auth/auth.types';
 import { MlsStateStorageService } from './mls-state-storage.service';
 import { MlsRepository } from './mls.repository';
+import { MlsCryptoContextService } from './mls-crypto-context.service';
+import { MlsBackupRegistry } from './mls-backup-registry.service';
+import { MlsPendingCommitTracker } from './mls-pending-commit-tracker.service';
 import type {
   SerializedPrivateKeyPackage,
   StoredKeyPackageRecord,
   PreparedConversationState,
   StoredMlsState,
+  SessionDevice,
 } from './mls.types';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface SessionDevice {
-  id:       string;
-  name:     string;
-  platform: string;
-}
+import { MlsWelcomeService } from './mls-welcome.service';
+import { MlsCommitService } from './mls-commit.service';
+import { MlsEpochConflictBus } from './mls-epoch-conflict-bus.service';
+import { MlsMembershipService } from './mls-membership.service';
+import { MlsMessageCryptoService } from './mls-message-crypto.service';
 
 export type { UploadedKeyPackage } from './mls.types';
 
@@ -60,6 +51,7 @@ export type {
   StoredKeyPackageRecord,
   PreparedConversationState,
   StoredMlsState,
+  SessionDevice,
 } from './mls.types';
 
 export interface PreparedConversationInitialization {
@@ -74,29 +66,33 @@ export interface PreparedConversationInitialization {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
-type BackupServiceLike = { backupGroupState(conversationId: string, stateB64: string): void };
-
 @Injectable({ providedIn: 'root' })
 export class MlsService {
-  private readonly mlsRepo = inject(MlsRepository);
-  private readonly storage = inject(MlsStateStorageService);
+  private readonly mlsRepo            = inject(MlsRepository);
+  private readonly storage            = inject(MlsStateStorageService);
+  private readonly cryptoCtx          = inject(MlsCryptoContextService);
+  private readonly backupRegistry     = inject(MlsBackupRegistry);
+  private readonly pendingCommitTracker = inject(MlsPendingCommitTracker);
+  private readonly welcomeSvc         = inject(MlsWelcomeService);
+  private readonly commitSvc          = inject(MlsCommitService);
+  private readonly epochConflictBus   = inject(MlsEpochConflictBus);
+  private readonly membershipSvc      = inject(MlsMembershipService);
+  private readonly messageCryptoSvc   = inject(MlsMessageCryptoService);
 
-  private readonly cipherSuiteName = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519' as const;
+  // Thin delegate, kept so the many call sites below don't all need touching
+  // in this same step -- MlsCryptoContextService (mls-crypto-context.service.ts)
+  // is the real owner now. Call sites migrate to `this.cryptoCtx.X` directly
+  // as each method physically moves to its own sub-service in later steps.
+  private get cipherSuiteName(): typeof this.cryptoCtx.cipherSuiteName {
+    return this.cryptoCtx.cipherSuiteName;
+  }
 
-  // Per-conversation serialization queue for incoming Commit processing.
-  // processIncomingCommit() chains onto this promise and registers the new one
-  // synchronously (before any await) so that decryptMessage/encryptMessage can
-  // await it before entering the storage lock — eliminating the race between an
-  // arriving mls:commit event and the next message:new event.
-  private readonly pendingCommits = new Map<string, Promise<void>>();
-
-  // Registered by BackupService at construction time to avoid a circular DI cycle.
-  private backupSvcRef: BackupServiceLike | null = null;
-
-  readonly epochConflict$ = new Subject<{ conversationId: string }>();
-
-  setBackupService(svc: BackupServiceLike): void {
-    this.backupSvcRef = svc;
+  // Thin delegate to MlsEpochConflictBus (mls-epoch-conflict-bus.service.ts) --
+  // MlsCoordinatorService subscribes to this property directly, so it must
+  // stay on MlsService even though MlsMembershipService is the one that now
+  // detects and emits 409 conflicts.
+  get epochConflict$(): typeof this.epochConflictBus.epochConflict$ {
+    return this.epochConflictBus.epochConflict$;
   }
 
   // ── Session initialization ─────────────────────────────────────────────────
@@ -109,7 +105,7 @@ export class MlsService {
     // disconnects the socket before this runs and doesn't reconnect until after
     // it resolves, so no commit processing can genuinely be in flight here --
     // safe to drop unconditionally rather than track the previous scope.
-    this.pendingCommits.clear();
+    this.pendingCommitTracker.clear();
 
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state || state.userDid !== user.did || state.deviceId !== device.id) {
@@ -307,182 +303,60 @@ export class MlsService {
     });
 
     if (newStateB64eg !== previousStateB64eg) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64eg);
+      this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64eg);
     }
 
     void this.provisionAllOtherDevices(conversationId, user, device)
       .catch(err => { console.warn('[MLS] ensureGroupReady: provisionAllOtherDevices failed', err); });
   }
 
-  // Encrypts a plaintext string for the given conversation.
+  // Thin delegate to MlsMessageCryptoService (mls-message-crypto.service.ts),
+  // the real owner now -- kept on MlsService (same name) so the
+  // coordinator's contract (and its spec's mockMlsSvc-based mocking)
+  // doesn't need to change in this step.
   async encryptMessage(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
     text:           string,
   ): Promise<string> {
-    // Await any in-progress commit before entering the storage lock so that
-    // the outgoing message uses the epoch produced by the latest commit.
-    const pending = this.pendingCommits.get(conversationId);
-    if (pending) await pending;
-
-    const scope = this.makeScope(user.did, device.id);
-    const cs    = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    let ciphertextB64!: string;
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      const encoded = state.groupStates[conversationId];
-      if (!encoded) throw new Error('MLS group not ready for this conversation');
-
-      const clientState = this.restoreClientState(encoded);
-      const { newState, privateMessage } = await createApplicationMessage(
-        clientState,
-        new TextEncoder().encode(text),
-        cs,
-      );
-
-      ciphertextB64 = this.bytesToBase64(encodeMlsMessage({
-        version:        'mls10',
-        wireformat:     'mls_private_message',
-        privateMessage,
-      }));
-
-      state.groupStates[conversationId] = this.bytesToBase64(encodeGroupState(newState));
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    return ciphertextB64;
+    return this.messageCryptoSvc.encryptMessage(conversationId, user, device, text);
   }
 
-  // Decrypts a base64-encoded MLS private message for the given conversation.
   async decryptMessage(
     conversationId:   string,
     user:             UserProfile,
     device:           SessionDevice,
     ciphertextBase64: string,
   ): Promise<string> {
-    // Await any in-progress commit before entering the storage lock.
-    const pending = this.pendingCommits.get(conversationId);
-    if (pending) await pending;
-
-    const scope = this.makeScope(user.did, device.id);
-    const cs    = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    // Decode message bytes outside lock (no state dependency).
-    const msgBytes = this.base64ToBytes(ciphertextBase64);
-    const decoded  = decodeMlsMessage(msgBytes, 0)?.[0];
-    if (!decoded || decoded.wireformat !== 'mls_private_message') {
-      throw new Error('Invalid MLS message');
-    }
-
-    let plaintext!: string;
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      const encoded = state.groupStates[conversationId];
-      if (!encoded) throw new Error('MLS group not ready for this conversation');
-
-      const clientState = this.restoreClientState(encoded);
-      const result = await processPrivateMessage(
-        clientState,
-        decoded.privateMessage,
-        emptyPskIndex,
-        cs,
-        acceptAll,
-      );
-
-      if (result.kind !== 'applicationMessage') {
-        throw new Error('Expected application message, got handshake');
-      }
-
-      plaintext = new TextDecoder().decode(result.message);
-      state.groupStates[conversationId] = this.bytesToBase64(encodeGroupState(result.newState));
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    return plaintext;
+    return this.messageCryptoSvc.decryptMessage(conversationId, user, device, ciphertextBase64);
   }
 
-  // Fetches unconsumed Welcomes from the server and processes them.
+  // Thin delegate to MlsWelcomeService (mls-welcome.service.ts), the real
+  // owner now -- kept on MlsService so the coordinator's contract (and its
+  // spec's mockMlsSvc-based mocking) doesn't need to change in this step.
   async fetchAndProcessPendingWelcome(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<boolean> {
-    const response = await this.mlsRepo.getPendingWelcomes(conversationId);
-
-    if (response.data.length === 0) return false;
-
-    let processed = false;
-    for (const item of response.data) {
-      try {
-        await this.processWelcomeForConversation(item.id, item.welcome, conversationId, user, device);
-        processed = true;
-      } catch (err) {
-        console.warn('[MLS] fetchAndProcessPendingWelcome: failed to process Welcome', item.id, ':', err);
-      }
-    }
-    return processed;
+    return this.welcomeSvc.fetchAndProcessPendingWelcome(conversationId, user, device);
   }
 
-  // Fetches and applies any MLS commits missed while offline.
-  // Returns the number of commits actually applied -- the recovery signal
-  // consumed by MlsCoordinatorService.recoverFromFailed to distinguish "this
-  // device merely missed commits and is now caught up" (a sound basis for
-  // healing without a Welcome) from "nothing changed" (0, proves nothing on
-  // its own -- a forked device at an epoch >= the server's also gets 0
-  // without throwing).
+  // Thin delegate to MlsCommitService (mls-commit.service.ts), the real
+  // owner now -- kept on MlsService so the coordinator's contract (and its
+  // spec's mockMlsSvc-based mocking) doesn't need to change in this step.
   async catchUpMissedCommits(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<number> {
-    const scope = this.makeScope(user.did, device.id);
-
-    // Read-only pre-check to get the current epoch for the query parameter.
-    const state = await this.storage.load<StoredMlsState>(scope);
-    if (!state) return 0;
-    const encoded = state.groupStates[conversationId];
-    if (!encoded) return 0;
-
-    const clientState  = this.restoreClientState(encoded);
-    const currentEpoch = Number(clientState.groupContext.epoch);
-
-    const response = await this.mlsRepo.getMissedCommits(conversationId, currentEpoch);
-
-    console.log('[MLS:observability] catchUpMissedCommits', {
-      conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch, returnedCommits: response.data.length,
-    });
-
-    if (response.data.length === 0) return 0;
-
-    if (!environment.production) console.log('[MLS] catchUpMissedCommits: applying', response.data.length, 'missed commit(s) from epoch', currentEpoch, 'for conv', conversationId);
-    let appliedCommits = 0;
-    for (const item of response.data) {
-      try {
-        await this.processIncomingCommit(conversationId, item.commit, item.epoch, user, device);
-        appliedCommits++;
-      } catch (err) {
-        console.log('[MLS:observability] catchUpMissedCommits', {
-          conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch,
-          returnedCommits: response.data.length, appliedCommits, result: 'failed', failedAtEpoch: item.epoch,
-        });
-        throw err;
-      }
-    }
-    console.log('[MLS:observability] catchUpMissedCommits', {
-      conversationId, localEpoch: currentEpoch, requestedAfterEpoch: currentEpoch,
-      returnedCommits: response.data.length, appliedCommits, result: 'complete',
-    });
-    return appliedCommits;
+    return this.commitSvc.catchUpMissedCommits(conversationId, user, device);
   }
 
-  // Processes an incoming Welcome and joins the corresponding MLS group.
-  // The joinGroup crypto runs outside the storage lock; the state write is atomic.
+  // Thin delegate to MlsWelcomeService (mls-welcome.service.ts), the real
+  // owner now -- kept on MlsService so the coordinator's contract (and its
+  // spec's mockMlsSvc-based mocking) doesn't need to change in this step.
   async processWelcomeForConversation(
     welcomeId:      string | null,
     welcomeBase64:  string,
@@ -490,162 +364,7 @@ export class MlsService {
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
-    const scope = this.makeScope(user.did, device.id);
-
-    // Parse the Welcome outside the lock (no state dependency).
-    const welcomeBytes   = this.base64ToBytes(welcomeBase64);
-    const welcomeMessage = decodeMlsMessage(welcomeBytes, 0)?.[0];
-    if (!welcomeMessage || welcomeMessage.wireformat !== 'mls_welcome') {
-      throw new Error('Invalid Welcome message');
-    }
-
-    const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    // Pre-read to get the key package list for Welcome matching.
-    const preState = await this.storage.load<StoredMlsState>(scope);
-    if (!preState) throw new Error('MLS not initialized');
-
-    // Idempotence: keyed by content digest, not the server row id -- the
-    // backend UPSERTs a device's pending Welcome row on (targetDeviceId,
-    // conversationId) when re-provisioning (mls.schema.ts's
-    // device_welcomes_target_conv_unique), so a genuinely NEW Welcome can
-    // arrive under an id already seen. Treating the id as identity silently
-    // discarded and falsely ACKed that new Welcome, leaving the device
-    // stuck on a stale group state. The digest only answers "have I seen
-    // these exact bytes before" -- it never substitutes for joinGroup()'s
-    // cryptographic verification below.
-    const welcomeDigest = await this._sha256hex(welcomeBytes);
-    if (preState.processedWelcomeDigests?.includes(welcomeDigest)) {
-      if (!environment.production) console.log('[MLS] processWelcomeForConversation: Welcome already processed, ACKing:', welcomeId);
-      if (welcomeId) this.ackWelcome(welcomeId);
-      return;
-    }
-
-    const _toHex = (b: Uint8Array) =>
-      Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
-    const _welcomeRefs = welcomeMessage.welcome.secrets.map(s => _toHex(s.newMember));
-    if (!environment.production) {
-      console.log(`[MLS:trace:7] Welcome secrets count=${_welcomeRefs.length}  refs=${_welcomeRefs.join(' | ')}`);
-      console.log(`[MLS:trace:7] Local state keyPackages count=${preState.keyPackages.length}`);
-    }
-
-    // Try each key package OUTSIDE the lock (joinGroup is crypto-only).
-    let matchedKpB64: string | null = null;
-    let joinedGroupState: Awaited<ReturnType<typeof joinGroup>> | null = null;
-
-    let kpIndex = 0;
-    for (const kpRecord of preState.keyPackages) {
-      try {
-        const kpBytes   = this.base64ToBytes(kpRecord.serializedKeyPackage);
-        const kpDecoded = decodeMlsMessage(kpBytes, 0)?.[0];
-        if (!kpDecoded || kpDecoded.wireformat !== 'mls_key_package') {
-          kpIndex++; continue;
-        }
-
-        const _kpRef8     = _toHex(await makeKeyPackageRef(kpDecoded.keyPackage, cs.hash));
-        const _kpB64fp    = kpRecord.serializedKeyPackage.substring(0, 48);
-        const _kpSha256_8 = await this._sha256hex(kpBytes);
-        const _match8     = _welcomeRefs.some(r => r === _kpRef8);
-        if (!environment.production) console.log(`[MLS:trace:8]   KP index=${kpIndex}  sha256=${_kpSha256_8}  computedRef=${_kpRef8}  b64fp=${_kpB64fp}  matches=${_match8 ? 'YES ←' : 'no'}`);
-
-        const privateKeys: PrivateKeyPackage = {
-          initPrivateKey:      this.base64ToBytes(kpRecord.privatePackage.initPrivateKey),
-          hpkePrivateKey:      this.base64ToBytes(kpRecord.privatePackage.hpkePrivateKey),
-          signaturePrivateKey: this.base64ToBytes(kpRecord.privatePackage.signaturePrivateKey),
-        };
-
-        const groupState = await joinGroup(
-          welcomeMessage.welcome,
-          kpDecoded.keyPackage,
-          privateKeys,
-          emptyPskIndex,
-          cs,
-        );
-
-        matchedKpB64    = kpRecord.serializedKeyPackage;
-        joinedGroupState = groupState;
-        break;
-      } catch (err) {
-        console.warn('[MLS] joinGroup failed for KP index', kpIndex, ':', err);
-      }
-      kpIndex++;
-    }
-
-    if (matchedKpB64 === null || joinedGroupState === null) {
-      console.error(`[MLS:audit] ========================`);
-      console.error(`[MLS:audit] AUCUN KEYPACKAGE NE CORRESPOND`);
-      console.error(`[MLS:audit] Welcome refs (${_welcomeRefs.length}): ${_welcomeRefs.join(' | ')}`);
-      console.error(`[MLS:audit] Tried ${preState.keyPackages.length} local KPs — see trace:8 above`);
-      console.error(`[MLS:audit] ========================`);
-      if (!environment.production) {
-        console.log(`[MLS:trace:8] FINAL  Welcome expected refs: ${_welcomeRefs.join(' | ')}`);
-        console.log(`[MLS:trace:8] FINAL  No local KP matched. All tried refs above.`);
-      }
-      if (welcomeId) {
-        console.warn('[MLS] processWelcomeForConversation: no matching KP for Welcome', welcomeId, '— ACKing stale');
-        this.ackWelcome(welcomeId);
-      }
-      throw new Error(`No matching key package found for Welcome (tried ${preState.keyPackages.length})`);
-    }
-
-    // ── Atomic state write ────────────────────────────────────────────────────
-
-    const newStateB64wfc      = this.bytesToBase64(encodeGroupState(joinedGroupState));
-    const consumedKpB64       = matchedKpB64;
-    let   previousStateB64wfc: string | undefined;
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      previousStateB64wfc = state.groupStates[conversationId];
-      // Remove the consumed key package by identity (index-independent, idempotent).
-      state.keyPackages = state.keyPackages.filter(
-        kp => kp.serializedKeyPackage !== consumedKpB64,
-      );
-      state.groupStates[conversationId] = newStateB64wfc;
-      // Record processed Welcome digest for idempotent re-delivery handling (max 200, FIFO).
-      const digests = state.processedWelcomeDigests ?? [];
-      if (!digests.includes(welcomeDigest)) {
-        digests.push(welcomeDigest);
-        if (digests.length > 200) digests.splice(0, digests.length - 200);
-      }
-      state.processedWelcomeDigests = digests;
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    if (welcomeId) this.ackWelcome(welcomeId);
-    if (newStateB64wfc !== previousStateB64wfc) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64wfc);
-    }
-  }
-
-  // Marks a Welcome consumed on the server with up to 5 retries (backoff: 1s, 2s, 4s, 8s).
-  //
-  // Durability invariant: a permanently-failed ACK here is not a dead end.
-  // The row stays "pending" server-side, so the next getPendingWelcomes
-  // fetch (every conversation open, every ensureGroupReady() call) re-serves
-  // it, and processWelcomeForConversation()'s content-digest guard above
-  // recognizes it as already-processed and re-ACKs it. That opportunistic
-  // refetch IS the durable retry -- do not add a separate pending-ack store,
-  // it would just duplicate this existing mechanism with a second source of truth.
-  private ackWelcome(welcomeId: string): void {
-    void this.ackWelcomeWithRetry(welcomeId);
-  }
-
-  private async ackWelcomeWithRetry(welcomeId: string): Promise<void> {
-    const delaysMs = [1000, 2000, 4000, 8000];
-    for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
-      try {
-        await this.mlsRepo.ackWelcome(welcomeId);
-        return;
-      } catch (err) {
-        if (attempt < delaysMs.length) {
-          await new Promise<void>(r => setTimeout(r, delaysMs[attempt]));
-        } else {
-          console.warn('[MLS] ACK failed for Welcome', welcomeId, `after ${delaysMs.length + 1} attempts (will retry opportunistically on next pending-Welcome fetch):`, err);
-        }
-      }
-    }
+    return this.welcomeSvc.processWelcomeForConversation(welcomeId, welcomeBase64, conversationId, user, device);
   }
 
   // ── Conversation preparation ───────────────────────────────────────────────
@@ -749,435 +468,58 @@ export class MlsService {
     return injectedIds;
   }
 
-  // Provisions a single device into an existing MLS group.
-  // Network: consume KP (before lock) → post Welcome + Commit (after lock).
-  // Crypto + state write: inside the atomic update().
+  // Thin delegate to MlsMembershipService (mls-membership.service.ts), the
+  // real owner now -- kept on MlsService (same name) so both the
+  // coordinator's contract and this file's own internal call sites
+  // (provisionAllOtherDevices) don't need to change in this step.
   async provisionDevice(
     newDeviceId:    string,
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
-    // Wait for any in-progress incoming commit to finish applying first, so we
-    // never start building a proposal against an epoch that's about to be
-    // superseded (mirrors encryptMessage/decryptMessage below) — narrows the
-    // window for a wasted round trip + lost-race rollback.
-    const pendingIncoming = this.pendingCommits.get(conversationId);
-    if (pendingIncoming) await pendingIncoming;
-
-    const scope = this.makeScope(user.did, device.id);
-
-    // Pre-check: abort early if there is nothing to provision (read-only, no lock).
-    const preState = await this.storage.load<StoredMlsState>(scope);
-    if (!preState) throw new Error('MLS not initialized');
-    if (!preState.groupStates[conversationId]) {
-      if (!environment.production) console.log('[MLS] provisionDevice: no group state for', conversationId, '— skipping');
-      return;
-    }
-
-    // Pre-check: skip immediately if already a member -- read-only, no network,
-    // avoids wasting a KeyPackage consumption attempt on every reconnect for a
-    // device that doesn't need (re-)provisioning at all (this is called for
-    // every device x every conversation on each socket reconnect, see
-    // DeviceProvisioningService.checkAndProvisionOnConnect). The check inside
-    // the storage lock below stays as-is, as the TOCTOU safety net for two
-    // concurrent provisionDevice calls racing each other.
-    const preClientState = this.restoreClientState(preState.groupStates[conversationId]);
-    if (this.isDeviceMember(preClientState, newDeviceId)) {
-      if (!environment.production) console.log('[MLS] provisionDevice: device already member (pre-check), skipping', newDeviceId, conversationId);
-      return;
-    }
-
-    // Acquire the reusable server-side commit lock before doing any work. If
-    // another device already holds it (e.g. another of our devices reacting to
-    // the same device:new event), skip cleanly instead of racing: whichever
-    // device holds the lock accomplishes the same conversation-wide goal, and
-    // we'll pick up its commit through the normal catch-up path. A network
-    // failure asking for the lock is not treated as "denied" — proceed as
-    // before, relying on the after-the-fact race detection below as a fallback.
-    try {
-      const { acquired } = await this.mlsRepo.acquireCommitLock(conversationId);
-      if (!acquired) {
-        if (!environment.production) console.log('[MLS] provisionDevice: commit lock held by another device for conv', conversationId, '— skipping');
-        return;
-      }
-    } catch (err) {
-      console.warn('[MLS] provisionDevice: failed to acquire commit lock for conv', conversationId, '— proceeding without it', err);
-    }
-
-    // Network: consume key package (before the storage lock).
-    // The membership guard runs inside the lock (below) to prevent the TOCTOU race
-    // where two concurrent provisionDevice calls both pass this pre-check and then
-    // both create commits from the same epoch.
-    let consumed: { keyPackage: string; deviceId: string };
-    try {
-      consumed = await this.mlsRepo.consumeOwnKeyPackage(newDeviceId);
-    } catch (err) {
-      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
-        console.warn('[MLS] provisionDevice: no key packages for', newDeviceId, '— cannot provision conv', conversationId);
-      }
-      throw err;
-    }
-
-    const decodedKP = decodeMlsMessage(this.base64ToBytes(consumed.keyPackage), 0)?.[0];
-    if (!decodedKP || decodedKP.wireformat !== 'mls_key_package') {
-      throw new Error('Invalid key package received from server');
-    }
-
-    const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    const addProposal: ProposalAdd = {
-      proposalType: 'add',
-      add:          { keyPackage: decodedKP.keyPackage },
-    };
-
-    let currentEpoch: number;
-    let shouldSkip = false;
-    let welcomeB64 = '';
-    let commitB64  = '';
-    let newEpoch   = 0;
-    let previousStateB64pd: string | undefined;
-    let newStateB64pd      = '';
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      const encoded = state.groupStates[conversationId];
-      if (!encoded) {
-        // Group disappeared while we were fetching the key package.
-        shouldSkip = true;
-        return null;
-      }
-
-      const clientState = this.restoreClientState(encoded);
-      currentEpoch = Number(clientState.groupContext.epoch);
-
-      // Guard inside the lock: verify device is not already a member.
-      // This prevents the TOCTOU race where two concurrent provisionDevice calls
-      // both consumed a KP before entering this lock.
-      if (this.isDeviceMember(clientState, newDeviceId)) {
-        if (!environment.production) console.log('[MLS] provisionDevice: device already member (inside lock), skipping', newDeviceId, conversationId);
-        shouldSkip = true;
-        return null;
-      }
-
-      const { newState, welcome, commit } = await createCommit(
-        { state: clientState, cipherSuite: cs },
-        { extraProposals: [addProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
-      );
-
-      if (!welcome) throw new Error('createCommit returned no welcome for device provisioning');
-
-      welcomeB64 = this.bytesToBase64(encodeMlsMessage({
-        version:    'mls10',
-        wireformat: 'mls_welcome',
-        welcome,
-      }));
-      commitB64       = this.bytesToBase64(encodeMlsMessage(commit));
-      newEpoch        = Number(newState.groupContext.epoch);
-      previousStateB64pd = state.groupStates[conversationId];
-      newStateB64pd      = this.bytesToBase64(encodeGroupState(newState));
-
-      state.groupStates[conversationId] = newStateB64pd;
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    if (shouldSkip) return;
-
-    // Network: post Welcome and Commit atomically (after the storage lock).
-    let stored;
-    try {
-      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
-        targetDeviceId: newDeviceId,
-        welcome: welcomeB64,
-      });
-    } catch (err) {
-      if (err instanceof HttpErrorResponse && err.status === 409) {
-        console.warn('[MLS] provisionDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
-        console.log('[MLS:observability] clearConversationGroup caller', { conversationId, caller: 'provisionDevice 409 handler' });
-        await this.clearConversationGroup(conversationId, user, device);
-        this.epochConflict$.next({ conversationId });
-      }
-      throw err;
-    }
-
-    // The backend enforces UNIQUE(conversationId, epoch) and is idempotent on
-    // conflict: if another device (e.g. another of our own devices reacting
-    // to the same device:new event) posted a commit for this epoch first,
-    // `stored` is THEIR commit, not ours, even though the request returned
-    // 200. Applying our own optimistic local state in that case would fork
-    // this device onto a group state nobody else recognizes. Detect it and
-    // resync onto the winning commit instead of forking.
-    if (stored.senderDeviceId !== device.id) {
-      console.warn(
-        '[MLS] provisionDevice: lost commit race for epoch', newEpoch, 'on conv', conversationId,
-        '— rolling back optimistic state and applying the winning commit from', stored.senderDeviceId,
-      );
-      await this.storage.update<StoredMlsState>(scope, async (s) => {
-        if (!s) return null;
-        if (previousStateB64pd === undefined) delete s.groupStates[conversationId];
-        else s.groupStates[conversationId] = previousStateB64pd;
-        s.updatedAt = Date.now();
-        return s;
-      });
-      await this.processIncomingCommit(conversationId, stored.commit, stored.epoch, user, device);
-      return;
-    }
-
-    if (newStateB64pd !== previousStateB64pd) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64pd);
-    }
-    if (!environment.production) console.log('[MLS] provisionDevice: provisioned', newDeviceId, 'for', conversationId, 'epoch', newEpoch);
+    return this.membershipSvc.provisionDevice(newDeviceId, conversationId, user, device);
   }
 
-  // Re-provisions a device that already has a leaf in the MLS tree but lost
-  // its local state (see Phase 8b / AUDIT_02 Root Cause #3): claimInitiatorSlot
-  // nudges another of the account's devices via device:new{reason:'lost_state'}
-  // instead of letting the stale device unilaterally reset the group.
-  // provisionDevice() can't help here — its "already a member" guard always
-  // fires for this device, since it was never removed from the tree, and MLS
-  // has no operation to "resend a Welcome" to an existing leaf. This removes
-  // the stale leaf and re-adds it in the same commit, producing a fresh
-  // Welcome in one epoch bump.
+  // Thin delegate to MlsMembershipService (mls-membership.service.ts), the
+  // real owner now -- kept on MlsService (same name) so the coordinator's
+  // contract (and its spec's mockMlsSvc-based mocking) doesn't change.
   async reprovisionLostStateDevice(
     staleDeviceId:  string,
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
-    // Same rationale as provisionDevice(): don't race a proposal against an
-    // epoch that's about to be superseded by an in-flight incoming commit.
-    const pendingIncoming = this.pendingCommits.get(conversationId);
-    if (pendingIncoming) await pendingIncoming;
-
-    const scope = this.makeScope(user.did, device.id);
-
-    // Pre-check: abort early if there is nothing to fix (read-only, no lock).
-    const preState = await this.storage.load<StoredMlsState>(scope);
-    if (!preState) throw new Error('MLS not initialized');
-    if (!preState.groupStates[conversationId]) {
-      if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: no group state for', conversationId, '— skipping');
-      return;
-    }
-
-    // Same reusable server-side commit lock as provisionDevice(): if another
-    // of our own devices is already reacting to the same nudge, skip
-    // cleanly — whichever one succeeds accomplishes the same goal.
-    try {
-      const { acquired } = await this.mlsRepo.acquireCommitLock(conversationId);
-      if (!acquired) {
-        if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: commit lock held by another device for conv', conversationId, '— skipping');
-        return;
-      }
-    } catch (err) {
-      console.warn('[MLS] reprovisionLostStateDevice: failed to acquire commit lock for conv', conversationId, '— proceeding without it', err);
-    }
-
-    // Network: consume a fresh key package for the stale device (before the
-    // storage lock) so its re-added leaf gets new key material, not the
-    // (possibly compromised or simply stale) key material it originally
-    // joined with.
-    let consumed: { keyPackage: string; deviceId: string };
-    try {
-      consumed = await this.mlsRepo.consumeOwnKeyPackage(staleDeviceId);
-    } catch (err) {
-      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
-        console.warn('[MLS] reprovisionLostStateDevice: no key packages for', staleDeviceId, '— cannot reprovision conv', conversationId);
-      }
-      throw err;
-    }
-
-    const decodedKP = decodeMlsMessage(this.base64ToBytes(consumed.keyPackage), 0)?.[0];
-    if (!decodedKP || decodedKP.wireformat !== 'mls_key_package') {
-      throw new Error('Invalid key package received from server');
-    }
-
-    const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    const addProposal: ProposalAdd = {
-      proposalType: 'add',
-      add:          { keyPackage: decodedKP.keyPackage },
-    };
-
-    let currentEpoch: number;
-    let shouldSkip = false;
-    let welcomeB64 = '';
-    let commitB64  = '';
-    let newEpoch   = 0;
-    let previousStateB64pd: string | undefined;
-    let newStateB64pd      = '';
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      const encoded = state.groupStates[conversationId];
-      if (!encoded) {
-        // Group disappeared while we were fetching the key package.
-        shouldSkip = true;
-        return null;
-      }
-
-      const clientState = this.restoreClientState(encoded);
-      currentEpoch = Number(clientState.groupContext.epoch);
-
-      // Find the stale device's current leaf. If it's no longer a member,
-      // another device already fixed it (or it was never a member to begin
-      // with) — skip idempotently rather than attempt a Remove for a leaf
-      // that doesn't exist.
-      const members = getGroupMembers(clientState);
-      const dec = new TextDecoder();
-      const leafIndex = members.findIndex((m: ReturnType<typeof getGroupMembers>[number]) =>
-        m.credential.credentialType === 'basic' &&
-        dec.decode(m.credential.identity).endsWith(`#${staleDeviceId}`)
-      );
-
-      if (leafIndex === -1) {
-        if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: device not (or no longer) a member, nothing to fix', staleDeviceId, conversationId);
-        shouldSkip = true;
-        return null;
-      }
-
-      console.log('[MLS:observability] reprovisionLostStateDevice', {
-        conversationId, staleDeviceId, removedLeafIndex: leafIndex, actingDeviceId: device.id, currentEpoch,
-      });
-
-      // Remove the stale leaf and re-add the same identity fresh in a single
-      // commit. Order of extraProposals doesn't matter: ts-mls groups
-      // proposal application by type (update -> remove -> add) regardless of
-      // array order, and explicitly permits an Add for an identity already
-      // in the group when a matching Remove is in the same commit.
-      const removeProposal = {
-        proposalType: 'remove' as const,
-        remove:       { removed: leafIndex },
-      };
-
-      const { newState, welcome, commit } = await createCommit(
-        { state: clientState, cipherSuite: cs },
-        { extraProposals: [removeProposal, addProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
-      );
-
-      if (!welcome) throw new Error('createCommit returned no welcome for lost-state re-provisioning');
-
-      welcomeB64 = this.bytesToBase64(encodeMlsMessage({
-        version:    'mls10',
-        wireformat: 'mls_welcome',
-        welcome,
-      }));
-      commitB64       = this.bytesToBase64(encodeMlsMessage(commit));
-      newEpoch        = Number(newState.groupContext.epoch);
-      previousStateB64pd = state.groupStates[conversationId];
-      newStateB64pd      = this.bytesToBase64(encodeGroupState(newState));
-
-      state.groupStates[conversationId] = newStateB64pd;
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    if (shouldSkip) return;
-
-    // Network: post Welcome and Commit atomically (after the storage lock).
-    let stored;
-    try {
-      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
-        targetDeviceId: staleDeviceId,
-        welcome: welcomeB64,
-      });
-    } catch (err) {
-      if (err instanceof HttpErrorResponse && err.status === 409) {
-        console.warn('[MLS] reprovisionLostStateDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
-        console.log('[MLS:observability] clearConversationGroup caller', { conversationId, caller: 'reprovisionLostStateDevice 409 handler' });
-        await this.clearConversationGroup(conversationId, user, device);
-        this.epochConflict$.next({ conversationId });
-      }
-      throw err;
-    }
-
-    // Same lost-commit-race handling as provisionDevice(): if another of our
-    // own devices (reacting to the same nudge) posted a commit for this
-    // epoch first, resync onto its commit instead of forking.
-    if (stored.senderDeviceId !== device.id) {
-      console.warn(
-        '[MLS] reprovisionLostStateDevice: lost commit race for epoch', newEpoch, 'on conv', conversationId,
-        '— rolling back optimistic state and applying the winning commit from', stored.senderDeviceId,
-      );
-      await this.storage.update<StoredMlsState>(scope, async (s) => {
-        if (!s) return null;
-        if (previousStateB64pd === undefined) delete s.groupStates[conversationId];
-        else s.groupStates[conversationId] = previousStateB64pd;
-        s.updatedAt = Date.now();
-        return s;
-      });
-      await this.processIncomingCommit(conversationId, stored.commit, stored.epoch, user, device);
-      return;
-    }
-
-    if (newStateB64pd !== previousStateB64pd) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64pd);
-    }
-    if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: reprovisioned', staleDeviceId, 'for', conversationId, 'epoch', newEpoch);
+    return this.membershipSvc.reprovisionLostStateDevice(staleDeviceId, conversationId, user, device);
   }
 
-  // Provisions all other own devices into an existing MLS group.
+  // Thin delegate to MlsMembershipService (mls-membership.service.ts), the
+  // real owner now -- kept on MlsService (same name) since ensureGroupReady
+  // below still calls it internally.
   async provisionAllOtherDevices(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
-    let otherDevices: Array<{ id: string; name: string; platform: string }>;
-    try {
-      const resp = await this.mlsRepo.getMyDevices();
-      otherDevices = resp.data.filter(d => d.id !== device.id);
-    } catch (err) {
-      console.warn('[MLS] provisionAllOtherDevices: failed to get device list', err);
-      return;
-    }
-
-    for (const otherDevice of otherDevices) {
-      try {
-        await this.provisionDevice(otherDevice.id, conversationId, user, device);
-      } catch (err) {
-        console.warn('[MLS] provisionAllOtherDevices: failed to provision', otherDevice.id, 'for', conversationId, ':', err);
-      }
-    }
+    return this.membershipSvc.provisionAllOtherDevices(conversationId, user, device);
   }
 
-  // Clears the MLS group state for a single conversation.
+  // Thin delegate to MlsMembershipService (mls-membership.service.ts), the
+  // real owner now -- see that file's class comment for why this moved
+  // there instead of staying implemented here.
   async clearConversationGroup(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
-    console.log('[MLS:observability] clearConversationGroup', { conversationId, deviceId: device.id, caller: 'mlsService.clearConversationGroup' });
-    const scope = this.makeScope(user.did, device.id);
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) return null;
-
-      // Record a tombstone of the highest epoch this device is known to
-      // have reached, before deleting the only local record of it. Without
-      // this, a later automatic backup-restore (SyncService.onGroupNotReady)
-      // has nothing to compare against and can silently resurrect a stale
-      // snapshot -- see injectRestoredGroupStates()'s anti-regression check.
-      const encoded = state.groupStates[conversationId];
-      if (encoded) {
-        try {
-          const epoch = Number(this.restoreClientState(encoded).groupContext.epoch);
-          const epochs = state.lastKnownEpochs ?? {};
-          epochs[conversationId] = Math.max(epochs[conversationId] ?? -1, epoch);
-          state.lastKnownEpochs = epochs;
-        } catch (err) {
-          // A corrupt/undecodable group state must not block the clear.
-          console.warn('[MLS] clearConversationGroup: failed to record epoch tombstone for', conversationId, ':', err);
-        }
-      }
-
-      delete state.groupStates[conversationId];
-      state.updatedAt = Date.now();
-      return state;
-    });
+    return this.membershipSvc.clearConversationGroup(conversationId, user, device);
   }
 
-  // Applies an incoming MLS public-message Commit to the local group state.
-  // Commits for the same conversation are serialized via pendingCommits.
+  // Thin delegate to MlsCommitService (mls-commit.service.ts), the real
+  // owner now -- kept on MlsService (same name) so both the coordinator's
+  // contract and this file's own internal call sites (provisionDevice /
+  // reprovisionLostStateDevice / removeRevokedDeviceFromAllGroups, still
+  // living here until Step 3) don't need to change in this step.
   processIncomingCommit(
     conversationId: string,
     commitBase64:   string,
@@ -1185,367 +527,47 @@ export class MlsService {
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
-    const existing = this.pendingCommits.get(conversationId) ?? Promise.resolve();
-
-    const next: Promise<void> = existing.then(
-      () => this.applyCommit(conversationId, commitBase64, epoch, user, device),
-      () => this.applyCommit(conversationId, commitBase64, epoch, user, device),
-    );
-
-    // Store a safe (non-rejecting) version in the chain so that a bad commit
-    // does not block all subsequent commits for this conversation.
-    const safeNext = next.catch(err => {
-      console.error('[MLS] processIncomingCommit: epoch', epoch, 'failed for', conversationId, ':', err);
-    }) as Promise<void>;
-
-    this.pendingCommits.set(conversationId, safeNext);
-
-    void safeNext.finally(() => {
-      if (this.pendingCommits.get(conversationId) === safeNext) {
-        this.pendingCommits.delete(conversationId);
-      }
-    });
-
-    // Return the original (may reject) to callers so they can observe failures.
-    return next;
-  }
-
-  private async applyCommit(
-    conversationId: string,
-    commitBase64:   string,
-    epoch:          number,
-    user:           UserProfile,
-    device:         SessionDevice,
-  ): Promise<void> {
-    const scope = this.makeScope(user.did, device.id);
-    const cs    = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    // Decode commit bytes outside the storage lock (pure decoding, no state).
-    const commitBytes = this.base64ToBytes(commitBase64);
-    const decoded     = decodeMlsMessage(commitBytes, 0)?.[0];
-    if (!decoded || decoded.wireformat !== 'mls_public_message') {
-      console.error('[MLS] processIncomingCommit: unexpected wireformat for conv', conversationId);
-      return;
-    }
-
-    let previousStateB64ac: string | undefined;
-    let newStateB64ac: string | undefined;
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) return null;
-      const encoded = state.groupStates[conversationId];
-      if (!encoded) return null;
-
-      const clientState  = this.restoreClientState(encoded);
-      const currentEpoch = Number(clientState.groupContext.epoch);
-      // Root Cause #1 fix (see AUDIT_02/03): a commit's declared epoch equals the
-      // epoch it was built FROM. The legitimate next commit therefore always has
-      // epoch === currentEpoch — that case must be applied, not skipped. Only
-      // epoch < currentEpoch is genuinely already-applied/stale. Using `>=` here
-      // silently discarded every legitimate next commit for any non-committing
-      // member, with no error and no log — see AUDIT_02/03 for the full trace.
-      if (currentEpoch > epoch) {
-        console.log('[MLS:observability] applyCommit', {
-          conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'skipped_already_applied',
-        });
-        return null; // already applied
-      }
-
-      try {
-        const result = await processPublicMessage(
-          clientState,
-          decoded.publicMessage,
-          emptyPskIndex,
-          cs,
-          acceptAll,
-        );
-
-        previousStateB64ac = state.groupStates[conversationId];
-        newStateB64ac      = this.bytesToBase64(encodeGroupState(result.newState));
-        state.groupStates[conversationId] = newStateB64ac;
-        state.updatedAt = Date.now();
-        console.log('[MLS:observability] applyCommit', {
-          conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'applied',
-        });
-        if (!environment.production) console.log('[MLS] processIncomingCommit: applied epoch', epoch, 'for conv', conversationId);
-        return state;
-      } catch (err) {
-        console.log('[MLS:observability] applyCommit', {
-          conversationId, deviceId: device.id, currentEpoch, commitEpoch: epoch, result: 'failed', error: err instanceof Error ? err.message : String(err),
-        });
-        console.error('[MLS] processIncomingCommit: failed to apply epoch', epoch, 'for conv', conversationId, ':', err);
-        throw err;
-      }
-    });
-
-    if (newStateB64ac && newStateB64ac !== previousStateB64ac) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64ac);
-    }
+    return this.commitSvc.processIncomingCommit(conversationId, commitBase64, epoch, user, device);
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  private isDeviceMember(clientState: ClientState, deviceId: string): boolean {
-    const dec = new TextDecoder();
-    return getGroupMembers(clientState).some((m: ReturnType<typeof getGroupMembers>[number]) =>
-      m.credential.credentialType === 'basic' &&
-      dec.decode(m.credential.identity).endsWith(`#${deviceId}`)
-    );
-  }
-
+  // Thin delegates to MlsCryptoContextService (mls-crypto-context.service.ts),
+  // the real owner now -- kept here so the many call sites below don't all
+  // need touching in this same step. Call sites migrate to `this.cryptoCtx.X`
+  // directly as each method physically moves to its own sub-service.
   private restoreClientState(base64: string): ClientState {
-    const bytes   = this.base64ToBytes(base64);
-    const decoded = decodeGroupState(bytes, 0);
-    if (!decoded) throw new Error('Failed to decode MLS group state');
-
-    const [groupState] = decoded;
-    const clientConfig: ClientConfig = {
-      keyRetentionConfig:       { ...defaultKeyRetentionConfig, retainKeysForEpochs: 50 },
-      lifetimeConfig:           defaultLifetimeConfig,
-      keyPackageEqualityConfig: defaultKeyPackageEqualityConfig,
-      paddingConfig:            defaultPaddingConfig,
-      authService:              defaultAuthenticationService,
-    };
-    return { ...groupState, clientConfig };
-  }
-
-  // Called by KeyPackageService to generate key package records.
-  async generateKeyPackages(
-    userDid:  string,
-    deviceId: string,
-    count:    number,
-  ): Promise<StoredKeyPackageRecord[]> {
-    if (count <= 0) return [];
-
-    const credentialIdentity = this.buildCredentialIdentity(userDid, deviceId);
-    const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-    const credential: Credential = {
-      credentialType: 'basic',
-      identity: new TextEncoder().encode(credentialIdentity),
-    };
-
-    const generated: StoredKeyPackageRecord[] = [];
-    for (let i = 0; i < count; i += 1) {
-      const keyPackage = await generateKeyPackage(credential, defaultCapabilities(), defaultLifetime, [], cs);
-
-      generated.push({
-        serverId:             null,
-        deviceId,
-        serializedKeyPackage: this.bytesToBase64(encodeMlsMessage({
-          version:    'mls10',
-          wireformat: 'mls_key_package',
-          keyPackage: keyPackage.publicPackage,
-        })),
-        privatePackage: this.serializePrivatePackage(keyPackage.privatePackage),
-        createdAt:      Date.now(),
-      });
-      const _rec1       = generated[generated.length - 1]!;
-      const _toHex1     = (b: Uint8Array) => Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
-      const _kpBytes1   = this.base64ToBytes(_rec1.serializedKeyPackage);
-      const _kpSha256_1 = await this._sha256hex(_kpBytes1);
-      const _kpRef1     = _toHex1(await makeKeyPackageRef(keyPackage.publicPackage, cs.hash));
-      const _initSha1   = await this._sha256hex(keyPackage.privatePackage.initPrivateKey);
-      if (!environment.production) console.log(`[MLS:trace:1] KP generated  index=${i}  deviceId=${deviceId}  sha256=${_kpSha256_1}  kpRef=${_kpRef1}  initPrivSha256=${_initSha1}  b64fp=${_rec1.serializedKeyPackage.substring(0, 48)}`);
-    }
-
-    return generated;
-  }
-
-  // Called by KeyPackageService after uploading generated records to the server.
-  async appendKeyPackagesToState(
-    userDid:  string,
-    deviceId: string,
-    records:  StoredKeyPackageRecord[],
-  ): Promise<void> {
-    const scope = this.makeScope(userDid, deviceId);
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      // Deduplicate by serializedKeyPackage to prevent double-append on concurrent calls.
-      const existingKPs = new Set(state.keyPackages.map(kp => kp.serializedKeyPackage));
-      const fresh = records.filter(r => !existingKPs.has(r.serializedKeyPackage));
-      state.keyPackages = [...state.keyPackages, ...fresh];
-      if (!environment.production) {
-        console.log(`[MLS:trace:2] appendKeyPackagesToState  total=${state.keyPackages.length}`);
-        state.keyPackages.forEach((kp, i) => {
-          console.log(`[MLS:trace:2]   slot=${i}  serverId=${kp.serverId}  b64fp=${kp.serializedKeyPackage.substring(0, 48)}`);
-        });
-      }
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    if (!environment.production) {
-      const _verState = await this.storage.load<StoredMlsState>(scope);
-      console.log(`[MLS:trace:2b] VERIFY post-append  stored=${_verState?.keyPackages.length}  submitted=${records.length}`);
-      await Promise.all(records.map(async (r) => {
-        const sha256In   = await this._sha256hex(this.base64ToBytes(r.serializedKeyPackage));
-        const storedRec  = _verState?.keyPackages.find(k => k.serverId === r.serverId);
-        const sha256Stor = storedRec
-          ? await this._sha256hex(this.base64ToBytes(storedRec.serializedKeyPackage))
-          : 'NOT_FOUND';
-        const result = sha256In === sha256Stor ? 'IDENTICAL' : 'DIFFERENT ←';
-        console.log(`[MLS:trace:2b]   serverId=${r.serverId}  sha256In=${sha256In}  sha256Stored=${sha256Stor}  result=${result}`);
-      }));
-    }
+    return this.cryptoCtx.restoreClientState(base64);
   }
 
   private buildCredentialIdentity(userDid: string, deviceId: string): string {
-    return `${userDid}#${deviceId}`;
+    return this.cryptoCtx.buildCredentialIdentity(userDid, deviceId);
   }
 
   private makeScope(userDid: string, deviceId: string): string {
-    return `mls:${userDid}:${deviceId}`;
-  }
-
-  getStorageScope(userDid: string, deviceId: string): string {
-    return this.makeScope(userDid, deviceId);
-  }
-
-  private serializePrivatePackage(value: PrivateKeyPackage): SerializedPrivateKeyPackage {
-    return {
-      initPrivateKey:      this.bytesToBase64(value.initPrivateKey),
-      hpkePrivateKey:      this.bytesToBase64(value.hpkePrivateKey),
-      signaturePrivateKey: this.bytesToBase64(value.signaturePrivateKey),
-    };
+    return this.cryptoCtx.makeScope(userDid, deviceId);
   }
 
   private bytesToBase64(value: Uint8Array): string {
-    let binary = '';
-    value.forEach(b => { binary += String.fromCharCode(b); });
-    return btoa(binary);
+    return this.cryptoCtx.bytesToBase64(value);
   }
 
   private base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
-    const binary = atob(value);
-    const bytes  = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
+    return this.cryptoCtx.base64ToBytes(value);
   }
 
   private async _sha256hex(data: Uint8Array<ArrayBufferLike>): Promise<string> {
-    const copy = new Uint8Array(data);
-    const buf  = await crypto.subtle.digest('SHA-256', copy);
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return this.cryptoCtx.sha256hex(data);
   }
 
+  // Thin delegate to MlsMembershipService (mls-membership.service.ts), the
+  // real owner now -- kept on MlsService (same name) so the coordinator's
+  // contract (and its spec's mockMlsSvc-based mocking) doesn't change.
   async removeRevokedDeviceFromAllGroups(
     revokedDeviceId: string,
     user:            UserProfile,
     device:          SessionDevice,
   ): Promise<void> {
-    const scope = this.getStorageScope(user.did, device.id);
-    const state = await this.storage.load<StoredMlsState>(scope);
-    if (!state || !state.groupStates) return;
-
-    for (const convId of Object.keys(state.groupStates)) {
-      // Wait for any in-progress incoming commit for THIS conversation to
-      // finish applying first (mirrors provisionDevice() / encryptMessage() /
-      // decryptMessage()) — narrows the window for a wasted round trip +
-      // lost-race rollback below.
-      const pendingIncoming = this.pendingCommits.get(convId);
-      if (pendingIncoming) await pendingIncoming;
-
-      // Acquire the reusable commit lock before doing any work for this
-      // conversation — same rationale as provisionDevice(): if another device
-      // (e.g. another member notified by the same device:revoked event)
-      // already holds it, skip cleanly instead of racing to remove the same
-      // leaf twice. A network failure asking for the lock is not treated as
-      // "denied" — proceed, relying on the after-the-fact race detection below.
-      try {
-        const { acquired } = await this.mlsRepo.acquireCommitLock(convId);
-        if (!acquired) {
-          if (!environment.production) console.log('[MLS] removeRevokedDevice: commit lock held by another device for conv', convId, '— skipping');
-          continue;
-        }
-      } catch (err) {
-        if (err instanceof HttpErrorResponse && (err.status === 403 || err.status === 404)) {
-          if (!environment.production) console.warn('[MLS] removeRevokedDevice: conversation not found or access forbidden, clearing state for conv', convId);
-          await this.storage.update<StoredMlsState>(scope, async (current) => {
-            if (current && current.groupStates) {
-              delete current.groupStates[convId];
-              if (current.conversations) delete current.conversations[convId];
-              current.updatedAt = Date.now();
-              return current;
-            }
-            return null;
-          });
-          continue;
-        }
-        console.warn('[MLS] removeRevokedDevice: failed to acquire commit lock for conv', convId, '— proceeding without it', err);
-      }
-
-      let currentEpoch: number;
-      await this.storage.update<StoredMlsState>(scope, async (current) => {
-        if (!current || !current.groupStates || !current.groupStates[convId]) return null;
-
-        const encoded = current.groupStates[convId];
-        const clientState = this.restoreClientState(encoded);
-        currentEpoch = Number(clientState.groupContext.epoch);
-        const members = getGroupMembers(clientState);
-        const dec = new TextDecoder();
-
-        // getGroupMembers() returns leaves in tree order with no attached index —
-        // the array position IS the leaf index (see provisionDevice's identical
-        // "already member" lookup above, which relies on the same ordering).
-        const leafIndex = members.findIndex((m) =>
-          m.credential.credentialType === 'basic' &&
-          dec.decode(m.credential.identity).endsWith(`#${revokedDeviceId}`)
-        );
-
-        if (leafIndex === -1) return null;
-
-        if (!environment.production) console.warn('[MLS] removeRevokedDevice: found device to remove in conv', convId, revokedDeviceId, 'at leaf', leafIndex);
-
-        const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-        const removeProposal = {
-          proposalType: 'remove' as const,
-          remove: { removed: leafIndex },
-        };
-
-        const { newState, commit } = await createCommit(
-          { state: clientState, cipherSuite: cs },
-          { extraProposals: [removeProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
-        );
-
-        const serializedCommit = this.bytesToBase64(encodeMlsMessage(commit));
-
-        let stored;
-        try {
-          stored = await this.mlsRepo.postCommit(convId, serializedCommit, currentEpoch);
-        } catch (err) {
-          if (err instanceof HttpErrorResponse && err.status === 409) {
-            console.warn('[MLS] removeRevokedDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
-            console.log('[MLS:observability] clearConversationGroup caller', { conversationId: convId, caller: 'removeRevokedDeviceFromAllGroups 409 handler' });
-            await this.clearConversationGroup(convId, user, device);
-            this.epochConflict$.next({ conversationId: convId });
-          }
-          console.error('[MLS] removeRevokedDevice: failed to post Remove commit for conv', convId, err);
-          return null;
-        }
-
-        // Another device may have posted a commit for the same epoch first (e.g.
-        // another recipient of the same device:revoked event racing to remove the
-        // same device). Detect it the same way provisionDevice() does: if the
-        // stored commit isn't ours, don't write our optimistic state — resync onto
-        // the winning commit instead, so we don't fork.
-        if (stored.senderDeviceId !== device.id) {
-          console.warn(
-            '[MLS] removeRevokedDevice: lost commit race for conv', convId,
-            '— resyncing on winning commit from', stored.senderDeviceId,
-          );
-          void this.processIncomingCommit(convId, stored.commit, stored.epoch, user, device)
-            .catch(err => console.warn('[MLS] removeRevokedDevice: resync after lost race failed for conv', convId, err));
-          return null;
-        }
-
-        const serializedState = this.bytesToBase64(encodeGroupState(newState));
-        current.groupStates[convId] = serializedState;
-        current.updatedAt = Date.now();
-        return current;
-      });
-    }
+    return this.membershipSvc.removeRevokedDeviceFromAllGroups(revokedDeviceId, user, device);
   }
 }

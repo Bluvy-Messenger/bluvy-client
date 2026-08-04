@@ -33,4 +33,18 @@ export class LinkPreviewService {
     }
     return cached;
   }
+
+  clear(): void {
+    // Revoke all created Object URLs to release memory blobs
+    this.imageCache.forEach(async (promise) => {
+      try {
+        const url = await promise;
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
+      } catch { /* ignore */ }
+    });
+    this.previewCache.clear();
+    this.imageCache.clear();
+  }
 }

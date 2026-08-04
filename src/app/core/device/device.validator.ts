@@ -1,4 +1,4 @@
-import type { DeviceItem } from './device.repository';
+import type { DeviceItem, RevokedDeviceItem } from './device.repository';
 import type { StoredDeviceIdentity } from './device.types';
 import { isObject } from '../infrastructure/validation.util';
 
@@ -23,4 +23,17 @@ export function validateDeviceItemsResponse(data: { data: DeviceItem[] }): { dat
   if (!isObject(data)) throw new Error('DeviceItemsResponse: expected object');
   if (!Array.isArray(data['data'])) throw new Error('DeviceItemsResponse.data: expected array');
   return { data: data['data'].map(validateDeviceItem) };
+}
+
+export function validateRevokedDeviceItem(data: RevokedDeviceItem): RevokedDeviceItem {
+  if (!isObject(data)) throw new Error('RevokedDeviceItem: expected object');
+  if (typeof data['id'] !== 'string') throw new Error('RevokedDeviceItem.id: expected string');
+  if (typeof data['userDid'] !== 'string') throw new Error('RevokedDeviceItem.userDid: expected string');
+  return data;
+}
+
+export function validateRevokedDeviceItemsResponse(data: { data: RevokedDeviceItem[] }): { data: RevokedDeviceItem[] } {
+  if (!isObject(data)) throw new Error('RevokedDeviceItemsResponse: expected object');
+  if (!Array.isArray(data['data'])) throw new Error('RevokedDeviceItemsResponse.data: expected array');
+  return { data: data['data'].map(validateRevokedDeviceItem) };
 }

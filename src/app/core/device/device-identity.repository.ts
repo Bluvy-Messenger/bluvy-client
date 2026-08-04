@@ -25,10 +25,7 @@ export class DeviceIdentityRepository {
     const legacy    = await Preferences.get({ key: legacyKey });
     const id        = legacy.value ?? crypto.randomUUID();
 
-    await Preferences.set({
-      key:   newKey,
-      value: JSON.stringify({ id, createdAt: Date.now() } satisfies StoredDeviceIdentity),
-    });
+    await this.writeIdentity(userDid, id);
 
     if (legacy.value) {
       await Preferences.remove({ key: legacyKey });
@@ -36,6 +33,24 @@ export class DeviceIdentityRepository {
 
     const meta = await this.getDeviceMetadata();
     return { id, ...meta };
+  }
+
+  // Reconciles the locally stored deviceId with one the backend returned
+  // (login/restore response), which can differ from what was requested --
+  // e.g. a revoked device row doesn't match the backend's idempotent-reuse
+  // filter, so a fresh id is minted server-side (see devices.service.ts
+  // upsertActiveDevice). Without this, the stale local id would be resent on
+  // every subsequent login, minting a new device row (and orphaning this
+  // device's MLS state) each time.
+  async persist(userDid: string, deviceId: string): Promise<void> {
+    await this.writeIdentity(userDid, deviceId);
+  }
+
+  private async writeIdentity(userDid: string, id: string): Promise<void> {
+    await Preferences.set({
+      key:   `${NEW_KEY_PREFIX}${userDid}`,
+      value: JSON.stringify({ id, createdAt: Date.now() } satisfies StoredDeviceIdentity),
+    });
   }
 
   async get(userDid: string): Promise<{ id: string; name: string; platform: string } | null> {

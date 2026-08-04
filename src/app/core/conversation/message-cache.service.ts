@@ -68,7 +68,16 @@ export class MessageCacheService {
 
   async clearAllForUser(userDid: string): Promise<void> {
     const sanitizedDid = userDid.replace(/[^a-zA-Z0-9]/g, '_');
-    
+
+    // Close this store's own open connection first (production incident:
+    // logging out while viewing a conversation left WebMessageStore's
+    // connection open, so indexedDB.deleteDatabase() below fired onblocked
+    // instead of onsuccess/onerror and never resolved -- hanging the whole
+    // logout() chain silently, with no error, no navigation, no visible
+    // failure). The onblocked handler below is a second layer of defense in
+    // case some other connection (a second tab) is also holding it open.
+    await this.msgStore?.close().catch(() => {});
+
     if (Capacitor.isNativePlatform()) {
       try {
         const sqlite = new SQLiteConnection(CapacitorSQLite);
