@@ -1,5 +1,5 @@
 import { TestBed, fakeAsync, tick, flush } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { MlsCoordinatorService } from './mls-coordinator.service';
 import { ConversationMlsState } from './mls-coordinator.types';
 import { MlsService } from '../mls.service';
@@ -7,6 +7,7 @@ import { MessageCacheService } from '../../conversation/message-cache.service';
 import { ConversationsService } from '../../conversation/conversations.service';
 import { PendingDecryptRepository } from '../repositories/pending-decrypt.repository';
 import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
+import { MlsBackupRegistry } from '../mls-backup-registry.service';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
 
@@ -36,6 +37,10 @@ describe('MlsCoordinatorService', () => {
     mockConvSvc = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getMessages']);
     mockPendingRepo = jasmine.createSpyObj<PendingDecryptRepository>('PendingDecryptRepository', ['enqueue', 'remove', 'markAttempt', 'getAll']);
     mockWatchdog = jasmine.createSpyObj<MlsWatchdogService>('MlsWatchdogService', ['watch', 'unwatch']);
+    // epochConflict$ is a real Observable property (not a spy-able method) --
+    // the constructor subscribes to it directly, same as MlsCoordinatorService's
+    // own pendingDecryptQueued$ pattern seen in sync.service.spec.ts.
+    Object.defineProperty(mockMlsSvc, 'epochConflict$', { value: new Subject(), configurable: true });
 
     // Sane defaults so paths not under test (recovery timers, replay) don't blow up.
     mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(false));
@@ -507,7 +512,8 @@ describe('MlsCoordinatorService', () => {
 
     it('returns 0 without calling restore when the MBK is available but nothing is undecryptable', fakeAsync(() => {
       const restore = jasmine.createSpy('restore').and.returnValue(Promise.resolve());
-      service.setBackupService({
+      TestBed.inject(MlsBackupRegistry).setBackupService({
+        backupGroupState: () => {},
         enqueue: () => {},
         isMbkAvailable: () => true,
         restore,
@@ -524,7 +530,8 @@ describe('MlsCoordinatorService', () => {
 
     it('restores from the cloud and reports how many undecryptable placeholders were healed', fakeAsync(() => {
       const restore = jasmine.createSpy('restore').and.returnValue(Promise.resolve());
-      service.setBackupService({
+      TestBed.inject(MlsBackupRegistry).setBackupService({
+        backupGroupState: () => {},
         enqueue: () => {},
         isMbkAvailable: () => true,
         restore,

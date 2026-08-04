@@ -38,8 +38,8 @@ import type { DeviceInfo } from '../device/device.types';
 import { KeyPackageService } from '../mls/key-package/key-package.service';
 import { ConversationsService } from '../conversation/conversations.service';
 import { MessageCacheService } from '../conversation/message-cache.service';
-import { MlsService } from '../mls/mls.service';
 import { MlsCoordinatorService } from '../mls/coordinator/mls-coordinator.service';
+import { MlsBackupRegistry } from '../mls/mls-backup-registry.service';
 import { SecureLocalStorageService } from '../secure-local-storage/secure-local-storage.service';
 
 const FLUSH_INTERVAL_MS = 5_000;
@@ -54,13 +54,16 @@ export class SyncService {
   private kpSvc              = inject(KeyPackageService);
   private convSvc         = inject(ConversationsService);
   private messageCacheSvc = inject(MessageCacheService);
-  private mlsSvc          = inject(MlsService);
   private coordinatorSvc  = inject(MlsCoordinatorService);
+  private backupRegistry  = inject(MlsBackupRegistry);
   private secureStorage   = inject(SecureLocalStorageService);
 
   constructor() {
-    this.mlsSvc.setBackupService(this);
-    this.coordinatorSvc.setBackupService(this);
+    // Single registration point for both MlsService and MlsCoordinatorService
+    // -- see mls-backup-registry.service.ts. SyncService implements the full
+    // combined shape (backupGroupState + enqueue/isMbkAvailable/restore), so
+    // one call here covers every MLS-side consumer.
+    this.backupRegistry.setBackupService(this);
     this.coordinatorSvc.pendingDecryptQueued$.subscribe(e => {
       if (e.errorKind === 'GroupNotReady') this.onGroupNotReady();
     });

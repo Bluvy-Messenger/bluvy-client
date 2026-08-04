@@ -39,6 +39,9 @@ import type { UserProfile } from '../auth/auth.types';
 import { MlsStateStorageService } from './mls-state-storage.service';
 import { MlsRepository } from './mls.repository';
 import { EpochGapError } from './errors/epoch-gap-error';
+import { MlsCryptoContextService } from './mls-crypto-context.service';
+import { MlsBackupRegistry } from './mls-backup-registry.service';
+import { MlsPendingCommitTracker } from './mls-pending-commit-tracker.service';
 import type {
   SerializedPrivateKeyPackage,
   StoredKeyPackageRecord,
@@ -75,30 +78,23 @@ export interface PreparedConversationInitialization {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
-type BackupServiceLike = { backupGroupState(conversationId: string, stateB64: string): void };
-
 @Injectable({ providedIn: 'root' })
 export class MlsService {
-  private readonly mlsRepo = inject(MlsRepository);
-  private readonly storage = inject(MlsStateStorageService);
+  private readonly mlsRepo            = inject(MlsRepository);
+  private readonly storage            = inject(MlsStateStorageService);
+  private readonly cryptoCtx          = inject(MlsCryptoContextService);
+  private readonly backupRegistry     = inject(MlsBackupRegistry);
+  private readonly pendingCommitTracker = inject(MlsPendingCommitTracker);
 
-  private readonly cipherSuiteName = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519' as const;
-
-  // Per-conversation serialization queue for incoming Commit processing.
-  // processIncomingCommit() chains onto this promise and registers the new one
-  // synchronously (before any await) so that decryptMessage/encryptMessage can
-  // await it before entering the storage lock — eliminating the race between an
-  // arriving mls:commit event and the next message:new event.
-  private readonly pendingCommits = new Map<string, Promise<void>>();
-
-  // Registered by BackupService at construction time to avoid a circular DI cycle.
-  private backupSvcRef: BackupServiceLike | null = null;
+  // Thin delegate, kept so the many call sites below don't all need touching
+  // in this same step -- MlsCryptoContextService (mls-crypto-context.service.ts)
+  // is the real owner now. Call sites migrate to `this.cryptoCtx.X` directly
+  // as each method physically moves to its own sub-service in later steps.
+  private get cipherSuiteName(): typeof this.cryptoCtx.cipherSuiteName {
+    return this.cryptoCtx.cipherSuiteName;
+  }
 
   readonly epochConflict$ = new Subject<{ conversationId: string }>();
-
-  setBackupService(svc: BackupServiceLike): void {
-    this.backupSvcRef = svc;
-  }
 
   // ── Session initialization ─────────────────────────────────────────────────
 
@@ -110,7 +106,7 @@ export class MlsService {
     // disconnects the socket before this runs and doesn't reconnect until after
     // it resolves, so no commit processing can genuinely be in flight here --
     // safe to drop unconditionally rather than track the previous scope.
-    this.pendingCommits.clear();
+    this.pendingCommitTracker.clear();
 
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state || state.userDid !== user.did || state.deviceId !== device.id) {
@@ -308,7 +304,7 @@ export class MlsService {
     });
 
     if (newStateB64eg !== previousStateB64eg) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64eg);
+      this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64eg);
     }
 
     void this.provisionAllOtherDevices(conversationId, user, device)
@@ -324,7 +320,7 @@ export class MlsService {
   ): Promise<string> {
     // Await any in-progress commit before entering the storage lock so that
     // the outgoing message uses the epoch produced by the latest commit.
-    const pending = this.pendingCommits.get(conversationId);
+    const pending = this.pendingCommitTracker.get(conversationId);
     if (pending) await pending;
 
     const scope = this.makeScope(user.did, device.id);
@@ -366,7 +362,7 @@ export class MlsService {
     ciphertextBase64: string,
   ): Promise<string> {
     // Await any in-progress commit before entering the storage lock.
-    const pending = this.pendingCommits.get(conversationId);
+    const pending = this.pendingCommitTracker.get(conversationId);
     if (pending) await pending;
 
     const scope = this.makeScope(user.did, device.id);
@@ -619,7 +615,7 @@ export class MlsService {
 
     if (welcomeId) this.ackWelcome(welcomeId);
     if (newStateB64wfc !== previousStateB64wfc) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64wfc);
+      this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64wfc);
     }
   }
 
@@ -766,7 +762,7 @@ export class MlsService {
     // never start building a proposal against an epoch that's about to be
     // superseded (mirrors encryptMessage/decryptMessage below) — narrows the
     // window for a wasted round trip + lost-race rollback.
-    const pendingIncoming = this.pendingCommits.get(conversationId);
+    const pendingIncoming = this.pendingCommitTracker.get(conversationId);
     if (pendingIncoming) await pendingIncoming;
 
     const scope = this.makeScope(user.did, device.id);
@@ -940,7 +936,7 @@ export class MlsService {
     }
 
     if (newStateB64pd !== previousStateB64pd) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64pd);
+      this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64pd);
     }
     if (!environment.production) console.log('[MLS] provisionDevice: provisioned', newDeviceId, 'for', conversationId, 'epoch', newEpoch);
   }
@@ -962,7 +958,7 @@ export class MlsService {
   ): Promise<void> {
     // Same rationale as provisionDevice(): don't race a proposal against an
     // epoch that's about to be superseded by an in-flight incoming commit.
-    const pendingIncoming = this.pendingCommits.get(conversationId);
+    const pendingIncoming = this.pendingCommitTracker.get(conversationId);
     if (pendingIncoming) await pendingIncoming;
 
     const scope = this.makeScope(user.did, device.id);
@@ -1133,7 +1129,7 @@ export class MlsService {
     }
 
     if (newStateB64pd !== previousStateB64pd) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64pd);
+      this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64pd);
     }
     if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: reprovisioned', staleDeviceId, 'for', conversationId, 'epoch', newEpoch);
   }
@@ -1207,7 +1203,7 @@ export class MlsService {
     user:           UserProfile,
     device:         SessionDevice,
   ): Promise<void> {
-    const existing = this.pendingCommits.get(conversationId) ?? Promise.resolve();
+    const existing = this.pendingCommitTracker.get(conversationId) ?? Promise.resolve();
 
     const next: Promise<void> = existing.then(
       () => this.applyCommit(conversationId, commitBase64, epoch, user, device),
@@ -1220,11 +1216,11 @@ export class MlsService {
       console.error('[MLS] processIncomingCommit: epoch', epoch, 'failed for', conversationId, ':', err);
     }) as Promise<void>;
 
-    this.pendingCommits.set(conversationId, safeNext);
+    this.pendingCommitTracker.set(conversationId, safeNext);
 
     void safeNext.finally(() => {
-      if (this.pendingCommits.get(conversationId) === safeNext) {
-        this.pendingCommits.delete(conversationId);
+      if (this.pendingCommitTracker.get(conversationId) === safeNext) {
+        this.pendingCommitTracker.delete(conversationId);
       }
     });
 
@@ -1315,34 +1311,22 @@ export class MlsService {
     });
 
     if (newStateB64ac && newStateB64ac !== previousStateB64ac) {
-      this.backupSvcRef?.backupGroupState(conversationId, newStateB64ac);
+      this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64ac);
     }
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
+  // Thin delegates to MlsCryptoContextService (mls-crypto-context.service.ts),
+  // the real owner now -- kept here so the many call sites below don't all
+  // need touching in this same step. Call sites migrate to `this.cryptoCtx.X`
+  // directly as each method physically moves to its own sub-service.
   private isDeviceMember(clientState: ClientState, deviceId: string): boolean {
-    const dec = new TextDecoder();
-    return getGroupMembers(clientState).some((m: ReturnType<typeof getGroupMembers>[number]) =>
-      m.credential.credentialType === 'basic' &&
-      dec.decode(m.credential.identity).endsWith(`#${deviceId}`)
-    );
+    return this.cryptoCtx.isDeviceMember(clientState, deviceId);
   }
 
   private restoreClientState(base64: string): ClientState {
-    const bytes   = this.base64ToBytes(base64);
-    const decoded = decodeGroupState(bytes, 0);
-    if (!decoded) throw new Error('Failed to decode MLS group state');
-
-    const [groupState] = decoded;
-    const clientConfig: ClientConfig = {
-      keyRetentionConfig:       { ...defaultKeyRetentionConfig, retainKeysForEpochs: 50 },
-      lifetimeConfig:           defaultLifetimeConfig,
-      keyPackageEqualityConfig: defaultKeyPackageEqualityConfig,
-      paddingConfig:            defaultPaddingConfig,
-      authService:              defaultAuthenticationService,
-    };
-    return { ...groupState, clientConfig };
+    return this.cryptoCtx.restoreClientState(base64);
   }
 
   // Called by KeyPackageService to generate key package records.
@@ -1427,44 +1411,31 @@ export class MlsService {
   }
 
   private buildCredentialIdentity(userDid: string, deviceId: string): string {
-    return `${userDid}#${deviceId}`;
+    return this.cryptoCtx.buildCredentialIdentity(userDid, deviceId);
   }
 
   private makeScope(userDid: string, deviceId: string): string {
-    return `mls:${userDid}:${deviceId}`;
+    return this.cryptoCtx.makeScope(userDid, deviceId);
   }
 
   getStorageScope(userDid: string, deviceId: string): string {
-    return this.makeScope(userDid, deviceId);
+    return this.cryptoCtx.getStorageScope(userDid, deviceId);
   }
 
   private serializePrivatePackage(value: PrivateKeyPackage): SerializedPrivateKeyPackage {
-    return {
-      initPrivateKey:      this.bytesToBase64(value.initPrivateKey),
-      hpkePrivateKey:      this.bytesToBase64(value.hpkePrivateKey),
-      signaturePrivateKey: this.bytesToBase64(value.signaturePrivateKey),
-    };
+    return this.cryptoCtx.serializePrivatePackage(value);
   }
 
   private bytesToBase64(value: Uint8Array): string {
-    let binary = '';
-    value.forEach(b => { binary += String.fromCharCode(b); });
-    return btoa(binary);
+    return this.cryptoCtx.bytesToBase64(value);
   }
 
   private base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
-    const binary = atob(value);
-    const bytes  = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
+    return this.cryptoCtx.base64ToBytes(value);
   }
 
   private async _sha256hex(data: Uint8Array<ArrayBufferLike>): Promise<string> {
-    const copy = new Uint8Array(data);
-    const buf  = await crypto.subtle.digest('SHA-256', copy);
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return this.cryptoCtx.sha256hex(data);
   }
 
   async removeRevokedDeviceFromAllGroups(
@@ -1481,7 +1452,7 @@ export class MlsService {
       // finish applying first (mirrors provisionDevice() / encryptMessage() /
       // decryptMessage()) — narrows the window for a wasted round trip +
       // lost-race rollback below.
-      const pendingIncoming = this.pendingCommits.get(convId);
+      const pendingIncoming = this.pendingCommitTracker.get(convId);
       if (pendingIncoming) await pendingIncoming;
 
       // Acquire the reusable commit lock before doing any work for this

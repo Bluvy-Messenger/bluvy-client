@@ -28,6 +28,7 @@ import { getGroupMembers } from 'ts-mls/clientState.js';
 import { MlsService } from './mls.service';
 import { MlsRepository } from './mls.repository';
 import { MlsStateStorageService } from './mls-state-storage.service';
+import { MlsPendingCommitTracker } from './mls-pending-commit-tracker.service';
 import type { UserProfile } from '../auth/auth.types';
 import type { DeviceInfo } from '../device/device.types';
 import type { StoredMlsState } from './mls.types';
@@ -169,6 +170,7 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
   let service: MlsService;
   let mockRepo: jasmine.SpyObj<MlsRepository>;
   let fakeStorage: FakeMlsStorage;
+  let pendingCommitTracker: MlsPendingCommitTracker;
 
   const USER: UserProfile = { did: 'did:plc:alice', handle: 'alice.test', displayName: 'Alice', avatarUrl: null };
   const DEVICE: DeviceInfo = { id: 'device-a1', name: 'Phone', platform: 'android' };
@@ -204,6 +206,7 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
       ],
     });
     service = TestBed.inject(MlsService);
+    pendingCommitTracker = TestBed.inject(MlsPendingCommitTracker);
   });
 
   describe('provisionDevice', () => {
@@ -212,12 +215,11 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
       fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
 
       // Simulate a processIncomingCommit() already in flight for this
-      // conversation by seeding the private pendingCommits map directly —
+      // conversation by seeding the shared MlsPendingCommitTracker directly —
       // there's no public seam for "an incoming commit is being applied".
       let resolveIncoming!: () => void;
       const blocking = new Promise<void>(resolve => { resolveIncoming = resolve; });
-      (service as unknown as { pendingCommits: Map<string, Promise<void>> })
-        .pendingCommits.set(CONV_ID, blocking);
+      pendingCommitTracker.set(CONV_ID, blocking);
 
       mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
 
@@ -389,8 +391,7 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
 
       let resolveIncoming!: () => void;
       const blocking = new Promise<void>(resolve => { resolveIncoming = resolve; });
-      (service as unknown as { pendingCommits: Map<string, Promise<void>> })
-        .pendingCommits.set(CONV_ID, blocking);
+      pendingCommitTracker.set(CONV_ID, blocking);
 
       mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
 
@@ -529,8 +530,7 @@ describe('MlsService — commit lock behavior (provisionDevice / removeRevokedDe
 
       let resolveIncoming!: () => void;
       const blocking = new Promise<void>(resolve => { resolveIncoming = resolve; });
-      (service as unknown as { pendingCommits: Map<string, Promise<void>> })
-        .pendingCommits.set(CONV_ID, blocking);
+      pendingCommitTracker.set(CONV_ID, blocking);
 
       mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
 

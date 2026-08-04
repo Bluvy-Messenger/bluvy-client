@@ -14,6 +14,7 @@ import { TransientMlsError }        from '../errors/transient-mls-error';
 import { PermanentMlsError }        from '../errors/permanent-mls-error';
 import { EpochGapError }            from '../errors/epoch-gap-error';
 import { MlsWatchdogService }       from '../watchdog/mls-watchdog.service';
+import { MlsBackupRegistry }        from '../mls-backup-registry.service';
 import { assertMls }                from '../assertions/mls-assertions';
 import {
   ConversationMlsState,
@@ -31,22 +32,6 @@ import {
   type HistoryRecoveryCompletedEvent,
 } from './mls-coordinator.events';
 import { MlsCoordinatorBase } from './mls-coordinator.base';
-
-type BackupEnqueuerLike = {
-  enqueue(item: {
-    messageId:      string;
-    conversationId: string;
-    plaintext:      string;
-    createdAt:      number;
-    senderDid:      string;
-  }): void;
-  // SyncService can't be injected directly here -- it already injects
-  // MlsCoordinatorService (for injectRestoredGroupStates), so the reverse
-  // dependency would be circular. Structural typing through this same
-  // registered-reference mechanism (setBackupService) avoids that entirely.
-  isMbkAvailable(): boolean;
-  restore(): Promise<unknown>;
-};
 
 // Error message fragments from ts-mls that indicate transient vs permanent failures.
 const TRANSIENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -76,6 +61,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly pendingRepo     = inject(PendingDecryptRepository);
   private readonly watchdog        = inject(MlsWatchdogService);
   private readonly convSvc         = inject(ConversationsService);
+  private readonly backupRegistry  = inject(MlsBackupRegistry);
 
   private currentUserProfile: UserProfile | null = null;
   private currentSessionDevice: DeviceInfo | null = null;
@@ -88,8 +74,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly pendingDerivations = new Map<string, Promise<ConversationMlsState>>();
   // Deduplicates concurrent decryptMessage calls for the same messageId.
   private readonly inFlightDecrypts = new Map<string, Promise<DecryptResult>>();
-
-  private backupSvcRef: BackupEnqueuerLike | null = null;
 
   // Auto-recovery state for FAILED conversations (backoff: 5s, 15s, 45s).
   private readonly failedRecovery = new Map<string, { attempts: number; timerId: ReturnType<typeof setTimeout> | undefined }>();
@@ -133,11 +117,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   override readonly pendingDecryptReplayed$ = this._pendingDecryptReplayed$$.asObservable();
   override readonly restoreCompleted$       = this._restoreCompleted$$.asObservable();
   override readonly historyRecoveryCompleted$ = this._historyRecoveryCompleted$$.asObservable();
-
-  // Called by BackupService at construction time to avoid a circular DI cycle.
-  setBackupService(svc: BackupEnqueuerLike): void {
-    this.backupSvcRef = svc;
-  }
 
   constructor() {
     super();
@@ -382,9 +361,9 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<void> {
-    if (this.backupSvcRef?.isMbkAvailable()) {
+    if (this.backupRegistry.backupService?.isMbkAvailable()) {
       try {
-        await this.backupSvcRef.restore();
+        await this.backupRegistry.backupService.restore();
       } catch (err) {
         console.warn('[MLS:coordinator] recoverMissingHistoryBeforeClear: cloud restore failed', convId, err);
       }
@@ -502,7 +481,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     user:   UserProfile,
     device: DeviceInfo,
   ): Promise<number> {
-    if (!this.backupSvcRef?.isMbkAvailable()) return 0;
+    if (!this.backupRegistry.backupService?.isMbkAvailable()) return 0;
 
     const undecryptableIds: string[] = [];
     let cursor: number | undefined;
@@ -519,7 +498,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     if (undecryptableIds.length === 0) return 0;
 
     try {
-      await this.backupSvcRef.restore();
+      await this.backupRegistry.backupService.restore();
     } catch (err) {
       console.warn('[MLS:coordinator] retryUndecryptableViaCloudBackup: cloud restore failed', convId, err);
       return 0;
@@ -897,7 +876,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         const cached    = this.buildCached(entry, plaintext, false);
         await this.messageCacheSvc.store(cached);
         await this.pendingRepo.remove(entry.messageId);
-        this.backupSvcRef?.enqueue({
+        this.backupRegistry.backupService?.enqueue({
           messageId:      entry.messageId,
           conversationId: convId,
           plaintext,
