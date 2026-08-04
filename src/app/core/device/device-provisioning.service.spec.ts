@@ -157,7 +157,12 @@ describe('DeviceProvisioningService.handleDeviceNew — pagination + archived sw
   });
 });
 
-describe('DeviceProvisioningService.checkAndProvisionOnConnect — pagination + archived sweep (F4)', () => {
+// checkAndProvisionOnConnect's own-device provisioning now reads a precise,
+// server-computed list (GET /v1/devices/pending-provisions) instead of
+// blindly looping every own device x every conversation. See
+// devices.service.test.ts's getPendingProvisions suite for the server-side
+// query coverage; these tests cover the client's consumption of that list.
+describe('DeviceProvisioningService.checkAndProvisionOnConnect — pending-provisions list', () => {
   let service: DeviceProvisioningService;
   let mockCoordinator: jasmine.SpyObj<MlsCoordinatorBase>;
   let mockConvSvc: jasmine.SpyObj<ConversationsService>;
@@ -166,14 +171,10 @@ describe('DeviceProvisioningService.checkAndProvisionOnConnect — pagination + 
   const USER:   UserProfile = { did: 'did:plc:alice', handle: 'alice.test', displayName: 'Alice', avatarUrl: null };
   const DEVICE: DeviceInfo  = { id: 'device-a1', name: 'Phone', platform: 'android' };
 
-  function page(data: Array<{ id: string }>, hasMore: boolean, cursor: string | null): ConversationsPage {
-    return { data: data as ConversationsPage['data'], hasMore, cursor };
-  }
-
   beforeEach(() => {
     mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups']);
     mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
-    mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getMyDevices', 'getRevokedDevices']);
+    mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getPendingProvisions', 'getRevokedDevices']);
 
     TestBed.configureTestingModule({
       providers: [
@@ -188,22 +189,55 @@ describe('DeviceProvisioningService.checkAndProvisionOnConnect — pagination + 
     mockCoordinator.canProvision.and.returnValue(Promise.resolve(true));
     mockCoordinator.provisionDevice.and.returnValue(Promise.resolve());
     mockCoordinator.removeRevokedDeviceFromAllGroups.and.returnValue(Promise.resolve());
-    mockDeviceRepo.getMyDevices.and.returnValue(Promise.resolve({ data: [{ id: 'device-a2', name: 'Laptop', platform: 'web', lastSeen: Date.now(), createdAt: Date.now() }] }));
     mockDeviceRepo.getRevokedDevices.and.returnValue(Promise.resolve({ data: [] }));
   });
 
-  it('provisions another own device into a conversation beyond the first page and into archived conversations', async () => {
-    mockConvSvc.getConversations.and.callFake((cursor?: string, _limit?: number, archived?: boolean) => {
-      if (archived) return of(page([{ id: 'conv-archived' }], false, null));
-      if (!cursor)  return of(page([{ id: 'conv-1' }], true, 'cursor-1'));
-      return of(page([{ id: 'conv-101' }], false, null));
-    });
+  it('provisions every pair returned by the pending-provisions endpoint', async () => {
+    mockDeviceRepo.getPendingProvisions.and.returnValue(Promise.resolve({
+      data: [
+        { deviceId: 'device-a2', conversationId: 'conv-1' },
+        { deviceId: 'device-a2', conversationId: 'conv-archived' },
+      ],
+    }));
 
     await service.checkAndProvisionOnConnect(USER, DEVICE);
 
     expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-a2', 'conv-1', USER, DEVICE);
-    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-a2', 'conv-101', USER, DEVICE);
     expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-a2', 'conv-archived', USER, DEVICE);
+    expect(mockConvSvc.getConversations).not.toHaveBeenCalled();
+  });
+
+  it('skips a pair whose conversation the caller cannot currently provision into', async () => {
+    mockDeviceRepo.getPendingProvisions.and.returnValue(Promise.resolve({
+      data: [{ deviceId: 'device-a2', conversationId: 'conv-not-ready' }],
+    }));
+    mockCoordinator.canProvision.and.returnValue(Promise.resolve(false));
+
+    await service.checkAndProvisionOnConnect(USER, DEVICE);
+
+    expect(mockCoordinator.provisionDevice).not.toHaveBeenCalled();
+  });
+
+  it('continues with remaining pairs if one provisionDevice call fails', async () => {
+    mockDeviceRepo.getPendingProvisions.and.returnValue(Promise.resolve({
+      data: [
+        { deviceId: 'device-bad', conversationId: 'conv-1' },
+        { deviceId: 'device-ok',  conversationId: 'conv-2' },
+      ],
+    }));
+    mockCoordinator.provisionDevice.and.callFake((deviceId: string) =>
+      deviceId === 'device-bad' ? Promise.reject(new Error('boom')) : Promise.resolve());
+
+    await service.checkAndProvisionOnConnect(USER, DEVICE);
+
+    expect(mockCoordinator.provisionDevice).toHaveBeenCalledWith('device-ok', 'conv-2', USER, DEVICE);
+  });
+
+  it('does not throw if loading pending provisions fails', async () => {
+    mockDeviceRepo.getPendingProvisions.and.returnValue(Promise.reject(new Error('network down')));
+
+    await expectAsync(service.checkAndProvisionOnConnect(USER, DEVICE)).toBeResolved();
+    expect(mockCoordinator.provisionDevice).not.toHaveBeenCalled();
   });
 });
 
@@ -226,7 +260,7 @@ describe('DeviceProvisioningService.checkAndProvisionOnConnect — revoked-devic
   beforeEach(() => {
     mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups']);
     mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
-    mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getMyDevices', 'getRevokedDevices']);
+    mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getPendingProvisions', 'getRevokedDevices']);
 
     TestBed.configureTestingModule({
       providers: [
@@ -239,9 +273,9 @@ describe('DeviceProvisioningService.checkAndProvisionOnConnect — revoked-devic
     });
     service = TestBed.inject(DeviceProvisioningService);
     mockCoordinator.removeRevokedDeviceFromAllGroups.and.returnValue(Promise.resolve());
-    // Single-device account: no own devices to provision, but revoked-device
-    // reconciliation must still run (it's not gated on otherDeviceIds.length).
-    mockDeviceRepo.getMyDevices.and.returnValue(Promise.resolve({ data: [] }));
+    // Single-device account: no pending provisions, but revoked-device
+    // reconciliation must still run (it's a separate, unconditional step).
+    mockDeviceRepo.getPendingProvisions.and.returnValue(Promise.resolve({ data: [] }));
   });
 
   it('re-attempts leaf removal for a revoked conversation partner device even with no other own devices', async () => {

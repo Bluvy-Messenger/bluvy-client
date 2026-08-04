@@ -130,31 +130,35 @@ export class DeviceProvisioningService {
   ): Promise<void> {
     await this.syncSvc.flush();
 
-    // Independent of the own-device provisioning below (not gated on
-    // otherDeviceIds.length): a revoked device needing leaf removal is just
-    // as often a conversation partner's device as one of this account's own.
+    // Independent of the own-device provisioning below: a revoked device
+    // needing leaf removal is just as often a conversation partner's device
+    // as one of this account's own.
     await this.removeRevokedDeviceLeaves(user, device);
 
-    let otherDeviceIds: string[];
+    // Precise, server-computed list instead of the old blind "every other own
+    // device x every conversation" sweep -- see getPendingProvisions on the
+    // backend. This also closes the gap where claimInitiatorSlot's device:new
+    // nudge is an ephemeral socket event: if this device was offline when it
+    // fired, nothing used to re-derive that another device was left waiting;
+    // this list is re-read on every reconnect instead of relying on the nudge
+    // having been received.
+    let pending: Array<{ deviceId: string; conversationId: string }>;
     try {
-      const resp = await this.deviceRepo.getMyDevices();
-      otherDeviceIds = resp.data.map(d => d.id).filter(id => id !== device.id);
+      const resp = await this.deviceRepo.getPendingProvisions();
+      pending = resp.data;
     } catch (err) {
-      console.warn('[DeviceProvisioning] checkAndProvisionOnConnect: failed to load devices', err);
+      console.warn('[DeviceProvisioning] checkAndProvisionOnConnect: failed to load pending provisions', err);
       return;
     }
-    if (otherDeviceIds.length === 0) return;
 
-    await this.forEachConversation(async (conv) => {
-      for (const otherId of otherDeviceIds) {
-        if (!await this.coordinator.canProvision(conv.id, user, device)) continue;
-        try {
-          await this.coordinator.provisionDevice(otherId, conv.id, user, device);
-        } catch (err) {
-          console.warn('[DeviceProvisioning] checkAndProvisionOnConnect: failed for device', otherId, 'conv', conv.id, ':', err);
-        }
+    for (const { deviceId: otherId, conversationId } of pending) {
+      if (!await this.coordinator.canProvision(conversationId, user, device)) continue;
+      try {
+        await this.coordinator.provisionDevice(otherId, conversationId, user, device);
+      } catch (err) {
+        console.warn('[DeviceProvisioning] checkAndProvisionOnConnect: failed for device', otherId, 'conv', conversationId, ':', err);
       }
-    });
+    }
   }
 
   // Forensic audit finding F11: device:revoked is an ephemeral socket event

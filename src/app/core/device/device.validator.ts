@@ -1,4 +1,4 @@
-import type { DeviceItem, RevokedDeviceItem } from './device.repository';
+import type { DeviceItem, RevokedDeviceItem, PendingProvisionItem } from './device.repository';
 import type { StoredDeviceIdentity } from './device.types';
 import { isObject } from '../infrastructure/validation.util';
 
@@ -36,4 +36,17 @@ export function validateRevokedDeviceItemsResponse(data: { data: RevokedDeviceIt
   if (!isObject(data)) throw new Error('RevokedDeviceItemsResponse: expected object');
   if (!Array.isArray(data['data'])) throw new Error('RevokedDeviceItemsResponse.data: expected array');
   return { data: data['data'].map(validateRevokedDeviceItem) };
+}
+
+export function validatePendingProvisionItem(data: PendingProvisionItem): PendingProvisionItem {
+  if (!isObject(data)) throw new Error('PendingProvisionItem: expected object');
+  if (typeof data['deviceId'] !== 'string') throw new Error('PendingProvisionItem.deviceId: expected string');
+  if (typeof data['conversationId'] !== 'string') throw new Error('PendingProvisionItem.conversationId: expected string');
+  return data;
+}
+
+export function validatePendingProvisionItemsResponse(data: { data: PendingProvisionItem[] }): { data: PendingProvisionItem[] } {
+  if (!isObject(data)) throw new Error('PendingProvisionItemsResponse: expected object');
+  if (!Array.isArray(data['data'])) throw new Error('PendingProvisionItemsResponse.data: expected array');
+  return { data: data['data'].map(validatePendingProvisionItem) };
 }

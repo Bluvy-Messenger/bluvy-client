@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { ApiClientService } from '../infrastructure/api-client.service';
-import { validateDeviceItemsResponse, validateRevokedDeviceItemsResponse } from './device.validator';
+import { validateDeviceItemsResponse, validateRevokedDeviceItemsResponse, validatePendingProvisionItemsResponse } from './device.validator';
 
 export interface DeviceItem {
   id:        string;
@@ -13,6 +13,11 @@ export interface DeviceItem {
 export interface RevokedDeviceItem {
   id:      string;
   userDid: string;
+}
+
+export interface PendingProvisionItem {
+  deviceId:       string;
+  conversationId: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -38,5 +43,13 @@ export class DeviceRepository {
   async getRevokedDevices(): Promise<{ data: RevokedDeviceItem[] }> {
     const raw = await this.apiClient.get<{ data: RevokedDeviceItem[] }>('/v1/devices/revoked');
     return validateRevokedDeviceItemsResponse(raw);
+  }
+
+  // Every (deviceId, conversationId) pair among the caller's own other active
+  // devices that still needs an MLS Welcome for that conversation -- see
+  // DeviceProvisioningService.checkAndProvisionOnConnect.
+  async getPendingProvisions(): Promise<{ data: PendingProvisionItem[] }> {
+    const raw = await this.apiClient.get<{ data: PendingProvisionItem[] }>('/v1/devices/pending-provisions');
+    return validatePendingProvisionItemsResponse(raw);
   }
 }
