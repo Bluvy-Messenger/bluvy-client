@@ -1,13 +1,21 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { decodeMlsMessage } from 'ts-mls';
+import {
+  decodeMlsMessage,
+  defaultCapabilities,
+  defaultLifetime,
+  encodeMlsMessage,
+  generateKeyPackage,
+  type Credential,
+} from 'ts-mls';
+import { makeKeyPackageRef } from 'ts-mls/keyPackage.js';
 import { environment } from '../../../../environments/environment';
-import { MlsService } from '../mls.service';
 import { KeyPackageRepository } from './key-package.repository';
 import { MlsStateStorageService } from '../mls-state-storage.service';
+import { MlsCryptoContextService } from '../mls-crypto-context.service';
 import { AtprotoRepoService } from '../../auth/atproto-repo.service';
 import type { KeyPackageCountResponse, KeyPackagePoolStatus } from './key-package.types';
-import type { StoredMlsState } from '../mls.types';
+import type { StoredKeyPackageRecord, StoredMlsState } from '../mls.types';
 
 export type { KeyPackageCountResponse, KeyPackagePoolStatus } from './key-package.types';
 
@@ -16,8 +24,8 @@ const KP_THRESHOLD = 10;
 
 @Injectable({ providedIn: 'root' })
 export class KeyPackageService {
-  private readonly kpRepo  = inject(KeyPackageRepository);
-  private readonly mlsSvc  = inject(MlsService);
+  private readonly kpRepo      = inject(KeyPackageRepository);
+  private readonly cryptoCtx   = inject(MlsCryptoContextService);
   private readonly atprotoRepo = inject(AtprotoRepoService);
   private readonly storage     = inject(MlsStateStorageService);
 
@@ -44,7 +52,7 @@ export class KeyPackageService {
     const count = Math.max(0, Math.min(toGenerate, KP_TARGET));
     if (count === 0) return;
 
-    const generated = await this.mlsSvc.generateKeyPackages(userDid, deviceId, count);
+    const generated = await this.generateKeyPackages(userDid, deviceId, count);
     if (generated.length === 0) return;
 
     const uploaded = await this.kpRepo.upload(generated.map(r => r.serializedKeyPackage));
@@ -61,12 +69,12 @@ export class KeyPackageService {
       });
     }
 
-    await this.mlsSvc.appendKeyPackagesToState(userDid, deviceId, generated);
+    await this.appendKeyPackagesToState(userDid, deviceId, generated);
   }
 
   async syncDeclaration(userDid: string, deviceId: string): Promise<void> {
     try {
-      const state = await this.storage.load<StoredMlsState>(this.mlsSvc.getStorageScope(userDid, deviceId));
+      const state = await this.storage.load<StoredMlsState>(this.cryptoCtx.getStorageScope(userDid, deviceId));
       if (!state) return;
 
       const rec = state.keyPackages?.find(k => k.serverId !== null);
@@ -148,6 +156,91 @@ export class KeyPackageService {
     } catch (err) {
       this._poolStatus = 'error';
       throw err;
+    }
+  }
+
+  // Generates fresh key package records for a device. Moved from MlsService
+  // (Phase 1 Step 5 of the mls.service.ts split) -- KeyPackageService was
+  // already this method's only caller, so the cross-service reach-through
+  // just added indirection with no benefit.
+  private async generateKeyPackages(
+    userDid:  string,
+    deviceId: string,
+    count:    number,
+  ): Promise<StoredKeyPackageRecord[]> {
+    if (count <= 0) return [];
+
+    const credentialIdentity = this.cryptoCtx.buildCredentialIdentity(userDid, deviceId);
+    const cs = await this.cryptoCtx.getCiphersuiteImpl();
+    const credential: Credential = {
+      credentialType: 'basic',
+      identity: new TextEncoder().encode(credentialIdentity),
+    };
+
+    const generated: StoredKeyPackageRecord[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const keyPackage = await generateKeyPackage(credential, defaultCapabilities(), defaultLifetime, [], cs);
+
+      generated.push({
+        serverId:             null,
+        deviceId,
+        serializedKeyPackage: this.cryptoCtx.bytesToBase64(encodeMlsMessage({
+          version:    'mls10',
+          wireformat: 'mls_key_package',
+          keyPackage: keyPackage.publicPackage,
+        })),
+        privatePackage: this.cryptoCtx.serializePrivatePackage(keyPackage.privatePackage),
+        createdAt:      Date.now(),
+      });
+      const _rec1       = generated[generated.length - 1]!;
+      const _toHex1     = (b: Uint8Array) => Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+      const _kpBytes1   = this.cryptoCtx.base64ToBytes(_rec1.serializedKeyPackage);
+      const _kpSha256_1 = await this.cryptoCtx.sha256hex(_kpBytes1);
+      const _kpRef1     = _toHex1(await makeKeyPackageRef(keyPackage.publicPackage, cs.hash));
+      const _initSha1   = await this.cryptoCtx.sha256hex(keyPackage.privatePackage.initPrivateKey);
+      if (!environment.production) console.log(`[MLS:trace:1] KP generated  index=${i}  deviceId=${deviceId}  sha256=${_kpSha256_1}  kpRef=${_kpRef1}  initPrivSha256=${_initSha1}  b64fp=${_rec1.serializedKeyPackage.substring(0, 48)}`);
+    }
+
+    return generated;
+  }
+
+  // Appends newly-uploaded key package records to local MLS state. Moved
+  // from MlsService alongside generateKeyPackages -- same rationale.
+  private async appendKeyPackagesToState(
+    userDid:  string,
+    deviceId: string,
+    records:  StoredKeyPackageRecord[],
+  ): Promise<void> {
+    const scope = this.cryptoCtx.makeScope(userDid, deviceId);
+
+    await this.storage.update<StoredMlsState>(scope, async (state) => {
+      if (!state) throw new Error('MLS not initialized');
+      // Deduplicate by serializedKeyPackage to prevent double-append on concurrent calls.
+      const existingKPs = new Set(state.keyPackages.map(kp => kp.serializedKeyPackage));
+      const fresh = records.filter(r => !existingKPs.has(r.serializedKeyPackage));
+      state.keyPackages = [...state.keyPackages, ...fresh];
+      if (!environment.production) {
+        console.log(`[MLS:trace:2] appendKeyPackagesToState  total=${state.keyPackages.length}`);
+        state.keyPackages.forEach((kp, i) => {
+          console.log(`[MLS:trace:2]   slot=${i}  serverId=${kp.serverId}  b64fp=${kp.serializedKeyPackage.substring(0, 48)}`);
+        });
+      }
+      state.updatedAt = Date.now();
+      return state;
+    });
+
+    if (!environment.production) {
+      const _verState = await this.storage.load<StoredMlsState>(scope);
+      console.log(`[MLS:trace:2b] VERIFY post-append  stored=${_verState?.keyPackages.length}  submitted=${records.length}`);
+      await Promise.all(records.map(async (r) => {
+        const sha256In   = await this.cryptoCtx.sha256hex(this.cryptoCtx.base64ToBytes(r.serializedKeyPackage));
+        const storedRec  = _verState?.keyPackages.find(k => k.serverId === r.serverId);
+        const sha256Stor = storedRec
+          ? await this.cryptoCtx.sha256hex(this.cryptoCtx.base64ToBytes(storedRec.serializedKeyPackage))
+          : 'NOT_FOUND';
+        const result = sha256In === sha256Stor ? 'IDENTICAL' : 'DIFFERENT ←';
+        console.log(`[MLS:trace:2b]   serverId=${r.serverId}  sha256In=${sha256In}  sha256Stored=${sha256Stor}  result=${result}`);
+      }));
     }
   }
 }

@@ -23,10 +23,8 @@ import {
   type ClientState,
   type Credential,
   type KeyPackage,
-  type PrivateKeyPackage,
   type ProposalAdd,
 } from 'ts-mls';
-import { makeKeyPackageRef } from 'ts-mls/keyPackage.js';
 import type { UserProfile } from '../auth/auth.types';
 import { MlsStateStorageService } from './mls-state-storage.service';
 import { MlsRepository } from './mls.repository';
@@ -542,101 +540,12 @@ export class MlsService {
     return this.cryptoCtx.restoreClientState(base64);
   }
 
-  // Called by KeyPackageService to generate key package records.
-  async generateKeyPackages(
-    userDid:  string,
-    deviceId: string,
-    count:    number,
-  ): Promise<StoredKeyPackageRecord[]> {
-    if (count <= 0) return [];
-
-    const credentialIdentity = this.buildCredentialIdentity(userDid, deviceId);
-    const cs = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-    const credential: Credential = {
-      credentialType: 'basic',
-      identity: new TextEncoder().encode(credentialIdentity),
-    };
-
-    const generated: StoredKeyPackageRecord[] = [];
-    for (let i = 0; i < count; i += 1) {
-      const keyPackage = await generateKeyPackage(credential, defaultCapabilities(), defaultLifetime, [], cs);
-
-      generated.push({
-        serverId:             null,
-        deviceId,
-        serializedKeyPackage: this.bytesToBase64(encodeMlsMessage({
-          version:    'mls10',
-          wireformat: 'mls_key_package',
-          keyPackage: keyPackage.publicPackage,
-        })),
-        privatePackage: this.serializePrivatePackage(keyPackage.privatePackage),
-        createdAt:      Date.now(),
-      });
-      const _rec1       = generated[generated.length - 1]!;
-      const _toHex1     = (b: Uint8Array) => Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
-      const _kpBytes1   = this.base64ToBytes(_rec1.serializedKeyPackage);
-      const _kpSha256_1 = await this._sha256hex(_kpBytes1);
-      const _kpRef1     = _toHex1(await makeKeyPackageRef(keyPackage.publicPackage, cs.hash));
-      const _initSha1   = await this._sha256hex(keyPackage.privatePackage.initPrivateKey);
-      if (!environment.production) console.log(`[MLS:trace:1] KP generated  index=${i}  deviceId=${deviceId}  sha256=${_kpSha256_1}  kpRef=${_kpRef1}  initPrivSha256=${_initSha1}  b64fp=${_rec1.serializedKeyPackage.substring(0, 48)}`);
-    }
-
-    return generated;
-  }
-
-  // Called by KeyPackageService after uploading generated records to the server.
-  async appendKeyPackagesToState(
-    userDid:  string,
-    deviceId: string,
-    records:  StoredKeyPackageRecord[],
-  ): Promise<void> {
-    const scope = this.makeScope(userDid, deviceId);
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      // Deduplicate by serializedKeyPackage to prevent double-append on concurrent calls.
-      const existingKPs = new Set(state.keyPackages.map(kp => kp.serializedKeyPackage));
-      const fresh = records.filter(r => !existingKPs.has(r.serializedKeyPackage));
-      state.keyPackages = [...state.keyPackages, ...fresh];
-      if (!environment.production) {
-        console.log(`[MLS:trace:2] appendKeyPackagesToState  total=${state.keyPackages.length}`);
-        state.keyPackages.forEach((kp, i) => {
-          console.log(`[MLS:trace:2]   slot=${i}  serverId=${kp.serverId}  b64fp=${kp.serializedKeyPackage.substring(0, 48)}`);
-        });
-      }
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    if (!environment.production) {
-      const _verState = await this.storage.load<StoredMlsState>(scope);
-      console.log(`[MLS:trace:2b] VERIFY post-append  stored=${_verState?.keyPackages.length}  submitted=${records.length}`);
-      await Promise.all(records.map(async (r) => {
-        const sha256In   = await this._sha256hex(this.base64ToBytes(r.serializedKeyPackage));
-        const storedRec  = _verState?.keyPackages.find(k => k.serverId === r.serverId);
-        const sha256Stor = storedRec
-          ? await this._sha256hex(this.base64ToBytes(storedRec.serializedKeyPackage))
-          : 'NOT_FOUND';
-        const result = sha256In === sha256Stor ? 'IDENTICAL' : 'DIFFERENT ←';
-        console.log(`[MLS:trace:2b]   serverId=${r.serverId}  sha256In=${sha256In}  sha256Stored=${sha256Stor}  result=${result}`);
-      }));
-    }
-  }
-
   private buildCredentialIdentity(userDid: string, deviceId: string): string {
     return this.cryptoCtx.buildCredentialIdentity(userDid, deviceId);
   }
 
   private makeScope(userDid: string, deviceId: string): string {
     return this.cryptoCtx.makeScope(userDid, deviceId);
-  }
-
-  getStorageScope(userDid: string, deviceId: string): string {
-    return this.cryptoCtx.getStorageScope(userDid, deviceId);
-  }
-
-  private serializePrivatePackage(value: PrivateKeyPackage): SerializedPrivateKeyPackage {
-    return this.cryptoCtx.serializePrivatePackage(value);
   }
 
   private bytesToBase64(value: Uint8Array): string {
