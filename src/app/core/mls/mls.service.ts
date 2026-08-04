@@ -2,8 +2,6 @@ import { Injectable, inject } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import {
-  acceptAll,
-  createApplicationMessage,
   createCommit,
   createGroup,
   decodeGroupState,
@@ -16,13 +14,11 @@ import {
   defaultLifetime,
   defaultLifetimeConfig,
   defaultPaddingConfig,
-  emptyPskIndex,
   encodeMlsMessage,
   encodeGroupState,
   generateKeyPackage,
   getCiphersuiteFromName,
   getCiphersuiteImpl,
-  processPrivateMessage,
   type ClientConfig,
   type ClientState,
   type Credential,
@@ -48,6 +44,7 @@ import { MlsWelcomeService } from './mls-welcome.service';
 import { MlsCommitService } from './mls-commit.service';
 import { MlsEpochConflictBus } from './mls-epoch-conflict-bus.service';
 import { MlsMembershipService } from './mls-membership.service';
+import { MlsMessageCryptoService } from './mls-message-crypto.service';
 
 export type { UploadedKeyPackage } from './mls.types';
 
@@ -82,6 +79,7 @@ export class MlsService {
   private readonly commitSvc          = inject(MlsCommitService);
   private readonly epochConflictBus   = inject(MlsEpochConflictBus);
   private readonly membershipSvc      = inject(MlsMembershipService);
+  private readonly messageCryptoSvc   = inject(MlsMessageCryptoService);
 
   // Thin delegate, kept so the many call sites below don't all need touching
   // in this same step -- MlsCryptoContextService (mls-crypto-context.service.ts)
@@ -314,97 +312,26 @@ export class MlsService {
       .catch(err => { console.warn('[MLS] ensureGroupReady: provisionAllOtherDevices failed', err); });
   }
 
-  // Encrypts a plaintext string for the given conversation.
+  // Thin delegate to MlsMessageCryptoService (mls-message-crypto.service.ts),
+  // the real owner now -- kept on MlsService (same name) so the
+  // coordinator's contract (and its spec's mockMlsSvc-based mocking)
+  // doesn't need to change in this step.
   async encryptMessage(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
     text:           string,
   ): Promise<string> {
-    // Await any in-progress commit before entering the storage lock so that
-    // the outgoing message uses the epoch produced by the latest commit.
-    const pending = this.pendingCommitTracker.get(conversationId);
-    if (pending) await pending;
-
-    const scope = this.makeScope(user.did, device.id);
-    const cs    = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    let ciphertextB64!: string;
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      const encoded = state.groupStates[conversationId];
-      if (!encoded) throw new Error('MLS group not ready for this conversation');
-
-      const clientState = this.restoreClientState(encoded);
-      const { newState, privateMessage } = await createApplicationMessage(
-        clientState,
-        new TextEncoder().encode(text),
-        cs,
-      );
-
-      ciphertextB64 = this.bytesToBase64(encodeMlsMessage({
-        version:        'mls10',
-        wireformat:     'mls_private_message',
-        privateMessage,
-      }));
-
-      state.groupStates[conversationId] = this.bytesToBase64(encodeGroupState(newState));
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    return ciphertextB64;
+    return this.messageCryptoSvc.encryptMessage(conversationId, user, device, text);
   }
 
-  // Decrypts a base64-encoded MLS private message for the given conversation.
   async decryptMessage(
     conversationId:   string,
     user:             UserProfile,
     device:           SessionDevice,
     ciphertextBase64: string,
   ): Promise<string> {
-    // Await any in-progress commit before entering the storage lock.
-    const pending = this.pendingCommitTracker.get(conversationId);
-    if (pending) await pending;
-
-    const scope = this.makeScope(user.did, device.id);
-    const cs    = await getCiphersuiteImpl(getCiphersuiteFromName(this.cipherSuiteName), defaultCryptoProvider);
-
-    // Decode message bytes outside lock (no state dependency).
-    const msgBytes = this.base64ToBytes(ciphertextBase64);
-    const decoded  = decodeMlsMessage(msgBytes, 0)?.[0];
-    if (!decoded || decoded.wireformat !== 'mls_private_message') {
-      throw new Error('Invalid MLS message');
-    }
-
-    let plaintext!: string;
-
-    await this.storage.update<StoredMlsState>(scope, async (state) => {
-      if (!state) throw new Error('MLS not initialized');
-      const encoded = state.groupStates[conversationId];
-      if (!encoded) throw new Error('MLS group not ready for this conversation');
-
-      const clientState = this.restoreClientState(encoded);
-      const result = await processPrivateMessage(
-        clientState,
-        decoded.privateMessage,
-        emptyPskIndex,
-        cs,
-        acceptAll,
-      );
-
-      if (result.kind !== 'applicationMessage') {
-        throw new Error('Expected application message, got handshake');
-      }
-
-      plaintext = new TextDecoder().decode(result.message);
-      state.groupStates[conversationId] = this.bytesToBase64(encodeGroupState(result.newState));
-      state.updatedAt = Date.now();
-      return state;
-    });
-
-    return plaintext;
+    return this.messageCryptoSvc.decryptMessage(conversationId, user, device, ciphertextBase64);
   }
 
   // Thin delegate to MlsWelcomeService (mls-welcome.service.ts), the real
