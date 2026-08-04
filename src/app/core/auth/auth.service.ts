@@ -24,6 +24,10 @@ import { NotificationService } from '../notification/notification.service';
 import { PushNotificationService } from '../notification/push-notification.service';
 import { AccountBadgeService } from '../notification/account-badge.service';
 import { EmbedPreferencesService } from '../embed/embed-preferences.service';
+import { ReceiptsService } from '../receipts/receipts.service';
+import { PresenceService } from '../presence/presence.service';
+import { BskyPostRepository } from '../bsky-post/bsky-post.repository';
+import { LinkPreviewService } from '../link-preview/link-preview.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
@@ -59,6 +63,10 @@ export class AuthService {
   private get notifSvc(): NotificationService     { return this.injector.get(NotificationService); }
   private get pushSvc():  PushNotificationService { return this.injector.get(PushNotificationService); }
   private get badgeSvc(): AccountBadgeService     { return this.injector.get(AccountBadgeService); }
+  private get receiptsSvc(): ReceiptsService       { return this.injector.get(ReceiptsService); }
+  private get presenceSvc(): PresenceService       { return this.injector.get(PresenceService); }
+  private get bskyPostRepo(): BskyPostRepository   { return this.injector.get(BskyPostRepository); }
+  private get linkPreviewSvc(): LinkPreviewService { return this.injector.get(LinkPreviewService); }
 
   readonly currentUser     = signal<UserProfile | null>(null);
   readonly currentDevice   = signal<DeviceInfo | null>(null);
@@ -81,6 +89,7 @@ export class AuthService {
   // single field would hand that caller a still-in-flight restore for the
   // PREVIOUS account instead of starting a fresh one for the new DID.
   private restoreSessionPromises = new Map<string, Promise<boolean>>();
+  private refreshSecondaryPromises = new Map<string, Promise<string | null>>();
 
   // Decodes the (unverified — verification is the server's job, this is only
   // used to schedule a client-side timer) `exp` claim of a JWT access token.
@@ -218,6 +227,7 @@ export class AuthService {
     // 2. Clear in-memory active states + close any visible notification toast
     this.syncSvc.reset();
     this.contactsSvc.reset();
+    this.clearAllSingletonCaches();
     this.notifSvc.onAccountSwitch();
     this.badgeSvc.clearBadge(did); // Clear the unread badge for the account we're switching TO
     await this.pushSvc.onAccountSwitch();
@@ -371,10 +381,23 @@ export class AuthService {
     }
   }
 
+  private clearAllSingletonCaches(): void {
+    try {
+      this.coordinator.clear();
+      this.receiptsSvc.clear();
+      this.presenceSvc.clear();
+      this.bskyPostRepo.clear();
+      this.linkPreviewSvc.clear();
+    } catch (err) {
+      console.warn('[AuthService] failed to clear singleton caches:', err);
+    }
+  }
+
   async logout(): Promise<void> {
     this.cancelProactiveRefresh();
     this.syncSvc.reset();
     this.contactsSvc.reset();
+    this.clearAllSingletonCaches();
 
     const did = this.currentUser()?.did ?? null;
 
@@ -622,17 +645,27 @@ export class AuthService {
       return refreshed ? this.tokenRepo.getAccessToken(did) : null;
     }
 
-    const refreshToken = await this.tokenRepo.getRefreshToken(did);
-    if (!refreshToken) return null;
+    const existing = this.refreshSecondaryPromises.get(did);
+    if (existing) return existing;
 
-    try {
-      const tokens = await this.authRepo.refresh(refreshToken);
-      await this.tokenRepo.setAccessToken(tokens.accessToken, did);
-      await this.tokenRepo.setRefreshToken(tokens.refreshToken, did);
-      return tokens.accessToken;
-    } catch {
-      return null;
-    }
+    const promise = (async () => {
+      const refreshToken = await this.tokenRepo.getRefreshToken(did);
+      if (!refreshToken) return null;
+
+      try {
+        const tokens = await this.authRepo.refresh(refreshToken);
+        await this.tokenRepo.setAccessToken(tokens.accessToken, did);
+        await this.tokenRepo.setRefreshToken(tokens.refreshToken, did);
+        return tokens.accessToken;
+      } catch {
+        return null;
+      }
+    })().finally(() => {
+      this.refreshSecondaryPromises.delete(did);
+    });
+
+    this.refreshSecondaryPromises.set(did, promise);
+    return promise;
   }
 
   // Delegates to ApiClientService.ensureRefresh() -- the single shared

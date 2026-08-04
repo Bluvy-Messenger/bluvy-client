@@ -565,11 +565,17 @@ export class SyncService {
     while (this.queue.length > 0 && this.mbk) {
       const batch = this.queue.splice(0, FLUSH_BATCH_SIZE);
       const mbk   = this.mbk; // snapshot — key may change during await
-      let   items: SyncDataInput[];
-      try {
-        items = await Promise.all(batch.map(item => this.encryptItem(item, mbk)));
-      } catch (err) {
-        if (!environment.production) console.error('[SyncService] encrypt error (batch discarded):', err);
+      const items: SyncDataInput[] = [];
+      const results = await Promise.allSettled(batch.map(item => this.encryptItem(item, mbk)));
+      for (let i = 0; i < results.length; i++) {
+        const res = results[i]!;
+        if (res.status === 'fulfilled') {
+          items.push(res.value);
+        } else {
+          if (!environment.production) console.error('[SyncService] encrypt error for item:', batch[i], res.reason);
+        }
+      }
+      if (items.length === 0) {
         continue;
       }
       try {

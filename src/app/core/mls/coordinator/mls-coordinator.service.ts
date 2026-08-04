@@ -568,7 +568,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       try {
         const plaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
         console.log('[MLS:coordinator] decryptMessage success for', messageId, 'length:', plaintext.length);
-        this.states.set(convId, ConversationMlsState.Ready);
+        this.transitionState(convId, ConversationMlsState.Ready);
         this.decryptionFailures.set(convId, 0);
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
@@ -834,7 +834,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     // Mark restored conversations as READY, bypassing normal transition rules.
     for (const convId of injectedIds) {
       const from = this.states.get(convId) ?? ConversationMlsState.Empty;
-      this.states.set(convId, ConversationMlsState.Ready);
+      this.transitionState(convId, ConversationMlsState.Ready, TRANSITION_REASON_RESTORE);
       if (!this.readyTimestamps.has(convId)) {
         this.readyTimestamps.set(convId, Date.now());
       }
@@ -1151,5 +1151,22 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       createdAt:         entry.createdAt,
       cachedAt:          Date.now(),
     };
+  }
+
+  override clear(): void {
+    // Clear failed recovery timers if any are pending
+    this.failedRecovery.forEach(entry => {
+      if (entry.timerId !== undefined) {
+        clearTimeout(entry.timerId);
+      }
+    });
+    this.failedRecovery.clear();
+
+    this.states.clear();
+    this.pendingDerivations.clear();
+    this.inFlightDecrypts.clear();
+    this.commitFailureCounts.clear();
+    this.decryptionFailures.clear();
+    this.readyTimestamps.clear();
   }
 }

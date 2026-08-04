@@ -17,7 +17,7 @@ import { ROUTES } from '../../core/routes';
   templateUrl: './devices.page.html',
   styleUrls: ['./devices.page.scss'],
 })
-export class DevicesPage implements OnInit {
+export class DevicesPage {
   private deviceRepo = inject(DeviceRepository);
   private authSvc    = inject(AuthService);
   private syncSvc    = inject(SyncService);
@@ -46,7 +46,7 @@ export class DevicesPage implements OnInit {
   newRecoveryChunks    = [] as string[];
   rotationAcknowledged = false;
 
-  async ngOnInit(): Promise<void> {
+  async ionViewWillEnter(): Promise<void> {
     this.currentDeviceId = this.authSvc.currentDevice()?.id ?? '';
     await this.load();
   }

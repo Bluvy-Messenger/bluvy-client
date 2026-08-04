@@ -24,7 +24,7 @@ import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.b
 import { SocketService } from '../../core/infrastructure/socket.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../core/infrastructure/socket.types';
 import { MessageCacheService } from '../../core/conversation/message-cache.service';
-import { OutboxRepository } from '../../core/conversation/outbox.repository';
+import { OutboxRepository, OutboxEntry } from '../../core/conversation/outbox.repository';
 import type { CachedMessage, DisplayMessage } from '../../core/conversation/conversation.types';
 import { SyncService } from '../../core/sync/sync.service';
 import { TypingService } from '../../core/typing/typing.service';
@@ -85,6 +85,7 @@ export class ConversationPage implements OnDestroy {
   // device was killed after a send reached the network but before it was
   // confirmed locally. Restored into the composer, never auto-resent.
   draftText        = '';
+  private loadedDrafts: OutboxEntry[] = [];
   mlsGroupReady    = true;
   reestablishing   = false;
   typingUsers$!:   Observable<string[]>;
@@ -120,12 +121,13 @@ export class ConversationPage implements OnDestroy {
   // ionViewWillLeave, so they don't leak (and don't double-fire) across
   // repeated visits to a cached conversation instance.
   async ionViewWillEnter(): Promise<void> {
-    this.conversationId = this.route.snapshot.paramMap.get('id') ?? '';
-    if (!this.conversationId) {
+    const currentConvId = this.route.snapshot.paramMap.get('id') ?? '';
+    this.conversationId = currentConvId;
+    if (!currentConvId) {
       this.error = 'Invalid conversation.';
       return;
     }
-    this.typingUsers$ = this.typingSvc.typingUsers$(this.conversationId);
+    this.typingUsers$ = this.typingSvc.typingUsers$(currentConvId);
 
     // Reset for the (possibly different) conversation this page instance is now
     // showing — before the MLS catch-up calls below, so a FAILED detected during
@@ -144,9 +146,11 @@ export class ConversationPage implements OnDestroy {
 
     this.loading = true;
     try {
-      this.conversation = await firstValueFrom(
-        this.convSvc.getConversationById(this.conversationId),
+      const conversation = await firstValueFrom(
+        this.convSvc.getConversationById(currentConvId),
       );
+      if (this.conversationId !== currentConvId) return;
+      this.conversation = conversation;
 
       const user   = this.authSvc.currentUser();
       const device = this.authSvc.currentDevice();
@@ -160,12 +164,14 @@ export class ConversationPage implements OnDestroy {
       if (supersededBy) {
         if (user && device) {
           await this.messageCacheSvc.initialize(user.did, device.id);
+          if (this.conversationId !== currentConvId) return;
           try {
-            await this.messageCacheSvc.spliceHistory(this.conversationId, supersededBy);
+            await this.messageCacheSvc.spliceHistory(currentConvId, supersededBy);
           } catch (err) {
             if (!environment.production) console.error('[Conversation] supersession splice failed:', err);
           }
         }
+        if (this.conversationId !== currentConvId) return;
         await this.router.navigateByUrl(ROUTES.conversation(supersededBy), { replaceUrl: true });
         void this.showRecreatedNotice();
         return;
@@ -173,13 +179,16 @@ export class ConversationPage implements OnDestroy {
 
       if (user && device) {
         await this.messageCacheSvc.initialize(user.did, device.id);
+        if (this.conversationId !== currentConvId) return;
 
         try {
           await this.outboxRepo.initialize(user.did, device.id);
-          const drafts = await this.outboxRepo.getByConversation(this.conversationId);
+          if (this.conversationId !== currentConvId) return;
+          const drafts = await this.outboxRepo.getByConversation(currentConvId);
+          if (this.conversationId !== currentConvId) return;
           if (drafts.length > 0) {
             this.draftText = drafts.map(d => d.plaintext).join('\n');
-            for (const d of drafts) await this.outboxRepo.remove(d.localId).catch(() => {});
+            this.loadedDrafts = drafts;
           }
         } catch (err) {
           if (!environment.production) console.warn('[Conversation] outbox draft restore failed:', err);
@@ -194,16 +203,18 @@ export class ConversationPage implements OnDestroy {
         const predecessorId = this.conversation.predecessorConversationId;
         if (predecessorId) {
           try {
-            await this.messageCacheSvc.spliceHistory(predecessorId, this.conversationId);
+            await this.messageCacheSvc.spliceHistory(predecessorId, currentConvId);
           } catch (err) {
             if (!environment.production) console.error('[Conversation] predecessor splice failed:', err);
           }
         }
 
         try {
-          const hadWelcome = await this.coordinator.fetchAndProcessPendingWelcome(this.conversationId, user, device);
+          const hadWelcome = await this.coordinator.fetchAndProcessPendingWelcome(currentConvId, user, device);
+          if (this.conversationId !== currentConvId) return;
           if (hadWelcome && this.syncSvc.isMbkAvailable()) {
             const restoreResult = await this.syncSvc.restore();
+            if (this.conversationId !== currentConvId) return;
             // AUDIT_01 W2 fast-follow: inject any recovered GroupState snapshot
             // instead of silently discarding it (fill-only-if-empty, never
             // overwrites an existing local state -- see MlsService.injectRestoredGroupStates).
@@ -215,15 +226,17 @@ export class ConversationPage implements OnDestroy {
           if (!environment.production) console.warn('[MLS] fetchAndProcessPendingWelcome failed:', err);
         }
         try {
-          await this.coordinator.catchUpMissedCommits(this.conversationId, user, device);
+          await this.coordinator.catchUpMissedCommits(currentConvId, user, device);
         } catch (err) {
           if (!environment.production) console.warn('[MLS] catchUpMissedCommits failed:', err);
         }
       }
 
+      if (this.conversationId !== currentConvId) return;
       await this.loadHistory();
-      this.mlsGroupReady = !this.coordinator.isConversationFailed(this.conversationId) &&
-        (this.coordinator.isConversationReady(this.conversationId) || this.displayMessages.length === 0);
+      if (this.conversationId !== currentConvId) return;
+      this.mlsGroupReady = !this.coordinator.isConversationFailed(currentConvId) &&
+        (this.coordinator.isConversationReady(currentConvId) || this.displayMessages.length === 0);
       this.markReadIfVisible();
     } catch {
       this.error = 'Could not load conversation.';
@@ -238,13 +251,29 @@ export class ConversationPage implements OnDestroy {
     this.scrollToBottom();
   }
 
-  ionViewWillLeave(): void {
+  async ionViewWillLeave(): Promise<void> {
     this.typingSvc.stopTyping(this.conversationId);
     this.markReadIfVisible();
     this.subs.unsubscribe();
     // "Load once" embeds are for this visit only -- don't let them silently
     // keep auto-loading if the user comes back to this conversation later.
     this.embedSessionSvc.clear();
+
+    if (this.loadedDrafts && this.loadedDrafts.length > 0) {
+      const user   = this.authSvc.currentUser();
+      const device = this.authSvc.currentDevice();
+      if (user && device) {
+        try {
+          await this.outboxRepo.initialize(user.did, device.id);
+          for (const d of this.loadedDrafts) {
+            await this.outboxRepo.remove(d.localId).catch(() => {});
+          }
+        } catch (err) {
+          if (!environment.production) console.warn('[Conversation] Failed to clear drafts on leave:', err);
+        }
+      }
+      this.loadedDrafts = [];
+    }
   }
 
   // Defensive: only reached if the page is truly destroyed (e.g. Ionic evicts
@@ -285,6 +314,13 @@ export class ConversationPage implements OnDestroy {
     if (!user || !device) {
       this.error = 'Not authenticated.';
       return;
+    }
+
+    if (this.loadedDrafts && this.loadedDrafts.length > 0) {
+      for (const d of this.loadedDrafts) {
+        await this.outboxRepo.remove(d.localId).catch(() => {});
+      }
+      this.loadedDrafts = [];
     }
 
     const participantDid = this.conversation?.participant.did;
@@ -372,20 +408,24 @@ export class ConversationPage implements OnDestroy {
   // ── Private ───────────────────────────────────────────────────────────────
 
   private async loadHistory(): Promise<void> {
+    const currentConvId = this.conversationId;
     const user   = this.authSvc.currentUser();
     const device = this.authSvc.currentDevice();
     if (!user || !device) return;
 
     // [1] Show cached messages immediately — no MLS calls.
-    const cacheResult = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
+    const cacheResult = await this.messageCacheSvc.getMessages(currentConvId, 50, true);
+    if (this.conversationId !== currentConvId) return;
     this.displayMessages = cacheResult.messages.map(m => this.toDisplayMessage(m));
     this.scrollToBottom();
 
     // [2] Fetch server page for gap detection, sender info repair, and placeholder recovery.
-    const page = await firstValueFrom(this.convSvc.getMessages(this.conversationId));
+    const page = await firstValueFrom(this.convSvc.getMessages(currentConvId));
+    if (this.conversationId !== currentConvId) return;
 
     // [3] Get all cached IDs (not just displayed 50) for accurate gap detection.
-    const allCachedIds = await this.messageCacheSvc.getAllIds(this.conversationId);
+    const allCachedIds = await this.messageCacheSvc.getAllIds(currentConvId);
+    if (this.conversationId !== currentConvId) return;
 
     // [4] Repair sender info for cached messages that predate migration 0004.
     // senderDid is now returned by the server — update any cached record that lacks it.
@@ -397,11 +437,13 @@ export class ConversationPage implements OnDestroy {
           msg.senderDid,
           msg.senderDid === user.did,
         );
+        if (this.conversationId !== currentConvId) return;
         if (changed) senderUpdated = true;
       }
     }
     if (senderUpdated) {
-      const refreshed = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
+      const refreshed = await this.messageCacheSvc.getMessages(currentConvId, 50, true);
+      if (this.conversationId !== currentConvId) return;
       this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
       this.scrollToBottom();
     }
@@ -430,7 +472,7 @@ export class ConversationPage implements OnDestroy {
         const serverMsg = serverMsgById.get(orphan.id);
         if (!serverMsg) continue;
         const result = await this.coordinator.decryptMessage(
-          this.conversationId,
+          currentConvId,
           orphan.id,
           orphan.senderDid ?? user.did,
           orphan.senderDeviceId,
@@ -440,11 +482,13 @@ export class ConversationPage implements OnDestroy {
           user,
           device,
         );
+        if (this.conversationId !== currentConvId) return;
         if (result.state === 'plaintext') {
           await this.messageCacheSvc.store({ ...orphan, plaintext: result.plaintext, undecryptable: false });
+          if (this.conversationId !== currentConvId) return;
           this.syncSvc.enqueue({
             messageId:      orphan.id,
-            conversationId: this.conversationId,
+            conversationId: currentConvId,
             plaintext:      result.plaintext,
             createdAt:      orphan.createdAt,
             senderDid:      orphan.senderDid ?? user.did,
@@ -454,7 +498,8 @@ export class ConversationPage implements OnDestroy {
         // pending_decrypt or still undecryptable: placeholder stays unchanged.
       }
       if (anyFixed) {
-        const refreshed = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
+        const refreshed = await this.messageCacheSvc.getMessages(currentConvId, 50, true);
+        if (this.conversationId !== currentConvId) return;
         this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
         this.scrollToBottom();
       }
@@ -465,9 +510,11 @@ export class ConversationPage implements OnDestroy {
     // written by recoverMissingHistoryBeforeClear() when the group's keys
     // were already gone AND the MBK wasn't unlocked yet at that time. No-op
     // (and cheap) if the MBK still isn't available now.
-    const healedCount = await this.coordinator.retryUndecryptableViaCloudBackup(this.conversationId, user, device);
+    const healedCount = await this.coordinator.retryUndecryptableViaCloudBackup(currentConvId, user, device);
+    if (this.conversationId !== currentConvId) return;
     if (healedCount > 0) {
-      const refreshed = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
+      const refreshed = await this.messageCacheSvc.getMessages(currentConvId, 50, true);
+      if (this.conversationId !== currentConvId) return;
       this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
       this.scrollToBottom();
     }
@@ -476,7 +523,7 @@ export class ConversationPage implements OnDestroy {
     // Messages at/before the last local-history-clear watermark are excluded: they were
     // already decrypted once before being cleared, so their MLS ratchet generation is
     // already consumed and re-decrypting them would fail with EpochMismatch.
-    const clearedAt = this.messageCacheSvc.getHistoryClearedAt(this.conversationId);
+    const clearedAt = this.messageCacheSvc.getHistoryClearedAt(currentConvId);
     const missing = page.data.filter(m =>
       !allCachedIds.has(m.id) &&
       !this.knownIds.has(m.id) &&
@@ -499,7 +546,7 @@ export class ConversationPage implements OnDestroy {
         // Attempt decryption before storing a placeholder — recovers content when the
         // MLS ratchet hasn't advanced past this message (e.g. very recent gap-fill).
         const result = await this.coordinator.decryptMessage(
-          this.conversationId,
+          currentConvId,
           msg.id,
           msg.senderDid,
           msg.senderDeviceId,
@@ -509,9 +556,11 @@ export class ConversationPage implements OnDestroy {
           user,
           device,
         );
+        if (this.conversationId !== currentConvId) return;
         const plaintext = result.state === 'plaintext' ? result.plaintext : '';
         const cached = this.buildCached(msg.id, msg.conversationId, msg.senderDeviceId, msg.senderDid, plaintext, true, false, msg.createdAt);
         await this.messageCacheSvc.store(cached);
+        if (this.conversationId !== currentConvId) return;
         newMessages.push(cached);
         if (result.state === 'plaintext') {
           this.syncSvc.enqueue({
@@ -524,7 +573,7 @@ export class ConversationPage implements OnDestroy {
         }
       } else {
         const result = await this.coordinator.decryptMessage(
-          this.conversationId,
+          currentConvId,
           msg.id,
           msg.senderDid,
           msg.senderDeviceId,
@@ -534,6 +583,7 @@ export class ConversationPage implements OnDestroy {
           user,
           device,
         );
+        if (this.conversationId !== currentConvId) return;
 
         if (result.state === 'pending_decrypt') {
           // Coordinator has queued this message for replay after GroupState becomes READY.
@@ -543,6 +593,7 @@ export class ConversationPage implements OnDestroy {
 
         const cached = this.buildCached(msg.id, msg.conversationId, msg.senderDeviceId, msg.senderDid, result.plaintext, false, result.state === 'undecryptable', msg.createdAt);
         await this.messageCacheSvc.store(cached);
+        if (this.conversationId !== currentConvId) return;
         newMessages.push(cached);
         if (result.state === 'plaintext') {
           this.syncSvc.enqueue({

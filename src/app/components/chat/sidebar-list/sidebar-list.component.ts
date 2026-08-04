@@ -43,7 +43,7 @@ const SYNC_INTERVAL_MS = 3 * 60 * 1000;
 export class SidebarListComponent implements OnInit, OnDestroy {
   private convSvc      = inject(ConversationsService);
   private router       = inject(Router);
-  private receiptsSvc  = inject(ReceiptsService);
+  readonly receiptsSvc = inject(ReceiptsService);
   readonly authSvc     = inject(AuthService);
   private socketSvc    = inject(SocketService);
   private cacheSvc     = inject(MessageCacheService);
@@ -70,7 +70,6 @@ export class SidebarListComponent implements OnInit, OnDestroy {
 
   private readonly previews    = new Map<string, string>();
   private readonly subs        = new Subscription();
-  private unreadSubs           = new Subscription();
   private periodicTimer?: ReturnType<typeof setInterval>;
 
   private readonly currentUrl = toSignal(
@@ -148,7 +147,6 @@ export class SidebarListComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     clearInterval(this.periodicTimer);
-    this.unreadSubs.unsubscribe();
     this.subs.unsubscribe();
   }
 
@@ -164,13 +162,6 @@ export class SidebarListComponent implements OnInit, OnDestroy {
       this.receiptsSvc.setUnreadCounts(counts);
       await this.receiptsSvc.initReadStates();
 
-      this.unreadSubs.unsubscribe();
-      this.unreadSubs = new Subscription();
-      for (const conv of this.conversations) {
-        this.unreadSubs.add(
-          this.receiptsSvc.unreadCount$(conv.id).subscribe(count => { conv.unreadCount = count; }),
-        );
-      }
       this.loadPreviews();
     } catch {
       this.error = 'Could not load conversations.';
@@ -331,12 +322,6 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     };
     this.conversations = [newConv, ...this.conversations];
     this.sortConversations();
-    this.unreadSubs.add(
-      this.receiptsSvc.unreadCount$(payload.id).subscribe(count => {
-        const c = this.conversations.find(x => x.id === payload.id);
-        if (c) c.unreadCount = count;
-      }),
-    );
   }
 
   private sortConversations(): void {

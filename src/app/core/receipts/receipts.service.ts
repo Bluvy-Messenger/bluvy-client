@@ -132,6 +132,15 @@ export class ReceiptsService implements OnDestroy {
     this.sub.unsubscribe();
   }
 
+  clear(): void {
+    // Complete all BehaviorSubjects to release any subscribers
+    this.unreadSubjects.forEach(subject => subject.complete());
+    this.unreadSubjects.clear();
+    this.readStates.clear();
+    this.deliveredStates.clear();
+    this._totalUnread.next(0);
+  }
+
   private setCount(conversationId: string, count: number): void {
     this.getUnreadSubject(conversationId).next(count);
     this.recalcTotal();
