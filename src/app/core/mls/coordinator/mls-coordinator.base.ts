@@ -67,6 +67,7 @@ export abstract class MlsCoordinatorBase {
     device:         DeviceInfo,
     signal?:        AbortSignal,
     preConsumedKeyPackage?: { keyPackage: string; deviceId: string },
+    memberDids?:    string[],
   ): Promise<void>;
 
   abstract clearConversationGroup(convId: string, user: UserProfile, device: DeviceInfo): Promise<void>;

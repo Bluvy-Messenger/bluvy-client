@@ -366,7 +366,16 @@ export class ConversationPage implements OnDestroy {
       if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
         this.ensureGroupAbort = new AbortController();
       }
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device, this.ensureGroupAbort.signal);
+      const memberDids = this.conversation?.members?.map(m => m.did);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        this.ensureGroupAbort.signal,
+        undefined,
+        memberDids,
+      );
       const ciphertext = await this.coordinator.encryptMessage(this.conversationId, text, user, device);
       const serverMsg  = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
       // Mark as known immediately so the socket handler skips it if it fires before cache write.
@@ -951,8 +960,17 @@ export class ConversationPage implements OnDestroy {
       // re-provisioning. Succeeds quickly if another currently-connected
       // device of either account can help; otherwise ensureGroupReady times
       // out on its own bounded poll (~30s) rather than hanging forever.
+      const memberDids = this.conversation?.members?.map(m => m.did);
       await this.coordinator.clearConversationGroup(this.conversationId, user, device);
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        undefined,
+        undefined,
+        memberDids,
+      );
       this.mlsGroupReady = true;
       await this.loadHistory();
       this.reestablishing = false;
@@ -960,6 +978,14 @@ export class ConversationPage implements OnDestroy {
       return;
     } catch (err) {
       if (!environment.production) console.warn('[Conversation] reestablishEncryption: Option A failed, falling back to recreate:', err);
+    }
+
+    if (this.conversation?.type === 'group') {
+      // Group conversations cannot be recreated via 1:1 recreate endpoint
+      this.error = this.i18n.t('conversation.restore_failed');
+      this.reestablishing = false;
+      this.cdr.detectChanges();
+      return;
     }
 
     // Option B/C fallback (Phase 9, see AUDIT_04/05): no other device could

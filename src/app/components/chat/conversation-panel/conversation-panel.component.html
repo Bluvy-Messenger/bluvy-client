@@ -4,16 +4,18 @@
       <span class="panel__name">Chargement...</span>
     } @else if (conversation) {
       <app-avatar
-        [src]="conversation.participant.avatarUrl ?? null"
-        [handle]="conversation.participant.handle"
+        [src]="conversation.type === 'group' ? (conversation.avatarUrl ?? null) : (conversation.participant.avatarUrl ?? null)"
+        [handle]="conversation.type === 'group' ? ((conversation.memberCount || conversation.members?.length || 0) + ' membres') : conversation.participant.handle"
         size="sm"
       ></app-avatar>
       <div class="panel__info">
         <span class="panel__name">
-          {{ conversation.participant.displayName || conversation.participant.handle }}
+          {{ conversation.type === 'group' ? (conversation.name || 'Groupe de discussion') : (conversation.participant.displayName || conversation.participant.handle) }}
         </span>
-        @if ((presenceSvc.status$(conversation.participant.did) | async) === 'online') {
+        @if (conversation.type === 'dm' && (presenceSvc.status$(conversation.participant.did) | async) === 'online') {
           <span class="panel__status">En ligne</span>
+        } @else if (conversation.type === 'group') {
+          <span class="panel__status">{{ conversation.memberCount || conversation.members?.length || 0 }} membres</span>
         }
       </div>
     }

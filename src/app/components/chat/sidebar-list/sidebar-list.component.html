@@ -12,9 +12,14 @@
         {{ (activeTab === 'conversations' ? 'tabs.conversations' : 'tabs.contacts') | translate }}
       </span>
       @if (activeTab === 'conversations') {
-        <button class="header-archive-btn" (click)="openArchives()" [attr.aria-label]="'conversations.archives' | translate">
-          <ion-icon name="archive-outline"></ion-icon>
-        </button>
+        <div class="header-actions">
+          <button class="header-compose-btn" (click)="openNewChatModal()" aria-label="Nouvelle conversation" title="Nouvelle conversation">
+            <ion-icon name="create-outline"></ion-icon>
+          </button>
+          <button class="header-archive-btn" (click)="openArchives()" [attr.aria-label]="'conversations.archives' | translate">
+            <ion-icon name="archive-outline"></ion-icon>
+          </button>
+        </div>
       }
     </div>
   }
@@ -44,6 +49,10 @@
         <ion-icon name="chatbubble-outline" class="empty-state__icon"></ion-icon>
         <p class="empty-state__title">{{ 'conversations.empty.title' | translate }}</p>
         <p class="empty-state__desc">{{ 'conversations.empty.desc' | translate }}</p>
+        <button class="empty-create-btn" (click)="openNewChatModal()">
+          <ion-icon name="create-outline"></ion-icon>
+          <span>Créer une conversation</span>
+        </button>
       </div>
     }
     @if (!loading && conversations.length > 0) {
@@ -51,13 +60,13 @@
 
         @for (conv of conversations; track conv.id) {
           <app-conversation-item
-            [avatarSrc]="conv.participant.avatarUrl ?? null"
-            [handle]="conv.participant.handle"
-            [name]="conv.participant.displayName || conv.participant.handle"
+            [avatarSrc]="conv.type === 'group' ? (conv.avatarUrl ?? null) : (conv.participant.avatarUrl ?? null)"
+            [handle]="conv.type === 'group' ? ((conv.memberCount || conv.members?.length || 0) + ' membres') : conv.participant.handle"
+            [name]="conv.type === 'group' ? (conv.name || 'Groupe de discussion') : (conv.participant.displayName || conv.participant.handle)"
             [preview]="getPreview(conv)"
             [time]="conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ''"
             [unreadCount]="(receiptsSvc.unreadCount$(conv.id) | async) ?? 0"
-            [online]="(presenceSvc.status$(conv.participant.did) | async) === 'online'"
+            [online]="conv.type === 'dm' && (presenceSvc.status$(conv.participant.did) | async) === 'online'"
             [class.conversation-item--selected]="selectedConvId() === conv.id"
             (open)="openConversation(conv)"
           ></app-conversation-item>
@@ -78,7 +87,7 @@
             <app-avatar [src]="c.avatarUrl ?? null" [handle]="c.handle" size="md"></app-avatar>
             <div class="contact-info">
               <span class="contact-name">{{ c.displayName || c.handle }}</span>
-              <span class="contact-handle">@{{ c.handle }}</span>
+              <span class="contact-handle">&#64;{{ c.handle }}</span>
             </div>
           </button>
         }
@@ -92,7 +101,7 @@
             <app-avatar [src]="c.avatarUrl ?? null" [handle]="c.handle" size="md"></app-avatar>
             <div class="contact-info">
               <span class="contact-name">{{ c.displayName || c.handle }}</span>
-              <span class="contact-handle">@{{ c.handle }}</span>
+              <span class="contact-handle">&#64;{{ c.handle }}</span>
             </div>
           </button>
         }
@@ -106,3 +115,10 @@
     }
   }
 </div>
+
+<app-new-chat-modal
+  [isOpen]="isNewChatModalOpen"
+  [bluvyContacts]="bluvyContacts"
+  (closed)="closeNewChatModal()"
+  (conversationCreated)="onNewConversationCreated($event)"
+></app-new-chat-modal>

@@ -66,4 +66,14 @@ export class ConversationRepository {
   recreateConversation(id: string): Observable<RecreateConversationResult> {
     return from(this.apiClient.post<RecreateConversationResult>(`/v1/conversations/${encodeURIComponent(id)}/recreate`, {}));
   }
+
+  createGroupConversation(participantDids: string[], name?: string): Observable<ConversationListItem> {
+    return from(this.apiClient.post<ConversationListItem>('/v1/conversations/group', { participantDids, name })).pipe(
+      map(mapConversationListItem),
+    );
+  }
+
+  fetchServerConfig(): Observable<{ maxGroupMembers: number }> {
+    return from(this.apiClient.get<{ maxGroupMembers: number }>('/v1/conversations/config'));
+  }
 }
