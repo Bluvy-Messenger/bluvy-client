@@ -146,6 +146,9 @@ export const fr: Record<string, string> = {
   'conversation.confirm_delete': 'Voulez-vous vraiment supprimer cette conversation ? Cela effacera tous les messages et la retirera de votre liste.',
   'conversation.action.archive': 'Archiver la conversation',
   'conversation.action.unarchive': 'Désarchiver la conversation',
+  'conversation.action.view_members': 'Voir les membres',
+  'conversation.members_title': 'Membres',
+  'conversation.you_label': 'Vous',
 
   'contacts.title': 'Contacts',
   'contacts.empty.title': 'Aucun contact mutuel',

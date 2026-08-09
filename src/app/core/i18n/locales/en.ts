@@ -146,6 +146,9 @@ export const en: Record<string, string> = {
   'conversation.confirm_delete': 'Are you sure you want to delete this conversation? This will delete all messages and remove it from your list.',
   'conversation.action.archive': 'Archive conversation',
   'conversation.action.unarchive': 'Unarchive conversation',
+  'conversation.action.view_members': 'View members',
+  'conversation.members_title': 'Members',
+  'conversation.you_label': 'You',
 
   'contacts.title': 'Contacts',
   'contacts.empty.title': 'No mutual contacts',

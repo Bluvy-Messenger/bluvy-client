@@ -63,4 +63,12 @@ export class ConversationsService {
   recreateConversation(id: string): Observable<RecreateConversationResult> {
     return this.repo.recreateConversation(id);
   }
+
+  createGroupConversation(participantDids: string[], name?: string): Observable<ConversationListItem> {
+    return this.repo.createGroupConversation(participantDids, name);
+  }
+
+  fetchServerConfig(): Observable<{ maxGroupMembers: number }> {
+    return this.repo.fetchServerConfig();
+  }
 }

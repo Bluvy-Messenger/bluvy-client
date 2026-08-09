@@ -13,6 +13,7 @@ import {
   ToastController,
 } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
+import { GroupMembersModalComponent } from '../../components/chat/group-members-modal/group-members-modal.component';
 import { MessageBubbleComponent } from '../../components/chat/message-bubble/message-bubble.component';
 import { MessageComposerComponent } from '../../components/chat/message-composer/message-composer.component';
 import { TypingIndicatorComponent } from '../../components/chat/typing-indicator/typing-indicator.component';
@@ -48,6 +49,7 @@ import { ROUTES } from '../../core/routes';
     IonButtons, IonBackButton, IonButton,
     IonPopover, IonIcon,
     AvatarComponent,
+    GroupMembersModalComponent,
     MessageBubbleComponent, MessageComposerComponent, TypingIndicatorComponent,
     TranslatePipe,
   ],
@@ -366,7 +368,16 @@ export class ConversationPage implements OnDestroy {
       if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
         this.ensureGroupAbort = new AbortController();
       }
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device, this.ensureGroupAbort.signal);
+      const memberDids = this.conversation?.members?.map(m => m.did);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        this.ensureGroupAbort.signal,
+        undefined,
+        memberDids,
+      );
       const ciphertext = await this.coordinator.encryptMessage(this.conversationId, text, user, device);
       const serverMsg  = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
       // Mark as known immediately so the socket handler skips it if it fires before cache write.
@@ -661,6 +672,30 @@ export class ConversationPage implements OnDestroy {
     }
   }
 
+  showMembersModal = false;
+
+  get selfDid(): string {
+    return this.authSvc.currentUser()?.did ?? '';
+  }
+
+  get groupParticipantNames(): string {
+    const selfDid = this.selfDid;
+    return (this.conversation?.members ?? [])
+      .filter(m => m.did !== selfDid)
+      .map(m => m.displayName || m.handle)
+      .join(', ');
+  }
+
+  openMembersModal(): void {
+    if (this.conversation?.type === 'group') {
+      this.showMembersModal = true;
+    }
+  }
+
+  closeMembersModal(): void {
+    this.showMembersModal = false;
+  }
+
   isMuted(): boolean {
     return localStorage.getItem('muted_conv_' + this.conversationId) === 'true';
   }
@@ -951,8 +986,17 @@ export class ConversationPage implements OnDestroy {
       // re-provisioning. Succeeds quickly if another currently-connected
       // device of either account can help; otherwise ensureGroupReady times
       // out on its own bounded poll (~30s) rather than hanging forever.
+      const memberDids = this.conversation?.members?.map(m => m.did);
       await this.coordinator.clearConversationGroup(this.conversationId, user, device);
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        undefined,
+        undefined,
+        memberDids,
+      );
       this.mlsGroupReady = true;
       await this.loadHistory();
       this.reestablishing = false;
@@ -960,6 +1004,14 @@ export class ConversationPage implements OnDestroy {
       return;
     } catch (err) {
       if (!environment.production) console.warn('[Conversation] reestablishEncryption: Option A failed, falling back to recreate:', err);
+    }
+
+    if (this.conversation?.type === 'group') {
+      // Group conversations cannot be recreated via 1:1 recreate endpoint
+      this.error = this.i18n.t('conversation.restore_failed');
+      this.reestablishing = false;
+      this.cdr.detectChanges();
+      return;
     }
 
     // Option B/C fallback (Phase 9, see AUDIT_04/05): no other device could

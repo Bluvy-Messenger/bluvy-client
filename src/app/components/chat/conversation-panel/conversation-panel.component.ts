@@ -153,7 +153,16 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
         this.ensureGroupAbort = new AbortController();
       }
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device, this.ensureGroupAbort.signal);
+      const memberDids = this.conversation?.members?.map(m => m.did);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        this.ensureGroupAbort.signal,
+        undefined,
+        memberDids,
+      );
       const ciphertext = await this.coordinator.encryptMessage(this.conversationId, text, user, device);
       const serverMsg  = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
       this.knownIds.add(serverMsg.id);
@@ -192,8 +201,17 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     this.reestablishing = true;
     this.error          = '';
     try {
+      const memberDids = this.conversation?.members?.map(m => m.did);
       await this.coordinator.clearConversationGroup(this.conversationId, user, device);
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        undefined,
+        undefined,
+        memberDids,
+      );
       this.mlsGroupReady = true;
       await this.loadHistory();
     } catch (err) {
