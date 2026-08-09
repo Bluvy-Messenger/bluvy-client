@@ -117,7 +117,12 @@ async function commitAdd(stateB64: string, cs: Awaited<ReturnType<typeof getCs>>
   return {
     commitB64:   bytesToBase64(encodeMlsMessage(commit)),
     newStateB64: bytesToBase64(encodeGroupState(newState)),
-    epoch:       Number(newState.groupContext.epoch),
+    // The epoch a commit is stored/keyed under is the epoch it was BUILT
+    // FROM, not the resulting epoch after applying it (see AUDIT_02/03 and
+    // mls-commit.service.ts's applyCommit) -- matches storeMlsCommit's and
+    // processIncomingCommit's convention so a "winning commit" fixture built
+    // here round-trips through applyCommit without a spurious EpochGapError.
+    epoch:       Number(clientState.groupContext.epoch),
   };
 }
 

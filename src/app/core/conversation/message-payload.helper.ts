@@ -91,7 +91,11 @@ export class MessagePayloadHelper {
                 senderDid: parsed.replyTo.senderDid || '',
                 senderHandle: parsed.replyTo.senderHandle,
                 textSnippet: parsed.replyTo.textSnippet || '',
-                mediaThumbnail: typeof parsed.replyTo.mediaThumbnail === 'string' ? parsed.replyTo.mediaThumbnail : undefined,
+                // Only set when present -- an explicit `mediaThumbnail: undefined`
+                // own-property (vs. simply absent) makes this object structurally
+                // unequal to a caller-built MessageReplyTo that never mentions the
+                // key at all (Jasmine's toEqual, unlike JSON.stringify, treats the two differently).
+                ...(typeof parsed.replyTo.mediaThumbnail === 'string' ? { mediaThumbnail: parsed.replyTo.mediaThumbnail } : {}),
               }
             : undefined,
         };

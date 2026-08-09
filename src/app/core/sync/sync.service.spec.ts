@@ -52,7 +52,7 @@ describe('SyncService — MBK rotation', () => {
     mockConvSvc         = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations', 'getConversationById', 'createOrGetDm']);
     mockMessageCacheSvc = jasmine.createSpyObj<MessageCacheService>('MessageCacheService', ['isInitialized', 'initialize', 'getMessagesPage', 'getAllIds', 'getHistoryClearedAt', 'storeMany']);
     mockSecureStorage    = jasmine.createSpyObj<SecureLocalStorageService>('SecureLocalStorageService', ['storeMbk', 'loadMbk', 'clearMbk', 'hasMbk']);
-    mockCoordinatorSvc   = jasmine.createSpyObj<MlsCoordinatorService>('MlsCoordinatorService', []);
+    mockCoordinatorSvc   = jasmine.createSpyObj<MlsCoordinatorService>('MlsCoordinatorService', ['injectRestoredGroupStates']);
     // pendingDecryptQueued$ is a real Observable property (not a spy-able
     // method) -- the constructor subscribes to it directly.
     Object.defineProperty(mockCoordinatorSvc, 'pendingDecryptQueued$', { value: new Subject(), configurable: true });
@@ -61,6 +61,7 @@ describe('SyncService — MBK rotation', () => {
     // startBackfill() side effects (not under test here) don't throw or spam
     // console.error while background promises settle.
     mockFailedBatchRepo.initialize.and.returnValue(Promise.resolve());
+    mockFailedBatchRepo.getAll.and.returnValue(Promise.resolve([]));
     mockSecureStorage.hasMbk.and.returnValue(Promise.resolve(false));
     mockSyncRepo.getSettings.and.returnValue(Promise.resolve(defaultSettings));
     mockMessageCacheSvc.isInitialized.and.returnValue(true);

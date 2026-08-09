@@ -21,21 +21,27 @@ async function ensurePrefix(): Promise<void> {
 //   master-key:{userDid}         → Master Key bytes (BackupService, Phase 3)
 //   backup-key:{userDid}         → Backup Key bytes (BackupService, Phase 3)
 
-export async function nativeSetBytes(key: string, bytes: Uint8Array): Promise<void> {
-  await ensurePrefix();
-  await SecureStorage.set(key, bytesToBase64(bytes));
-}
+// Grouped under one object (not individual named exports) so it can be
+// spied on in tests -- a real ES module namespace's bindings are
+// non-configurable/non-writable by spec, which makes spyOn() fail on
+// individually-exported functions regardless of bundler.
+export const nativeSecureStorage = {
+  async nativeSetBytes(key: string, bytes: Uint8Array): Promise<void> {
+    await ensurePrefix();
+    await SecureStorage.set(key, bytesToBase64(bytes));
+  },
 
-export async function nativeGetBytes(key: string): Promise<Uint8Array<ArrayBuffer> | null> {
-  await ensurePrefix();
-  const stored = await SecureStorage.get(key, false) as string | null;
-  return stored ? base64ToBytes(stored) : null;
-}
+  async nativeGetBytes(key: string): Promise<Uint8Array<ArrayBuffer> | null> {
+    await ensurePrefix();
+    const stored = await SecureStorage.get(key, false) as string | null;
+    return stored ? base64ToBytes(stored) : null;
+  },
 
-export async function nativeRemoveItem(key: string): Promise<void> {
-  await ensurePrefix();
-  await SecureStorage.remove(key);
-}
+  async nativeRemoveItem(key: string): Promise<void> {
+    await ensurePrefix();
+    await SecureStorage.remove(key);
+  },
+};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

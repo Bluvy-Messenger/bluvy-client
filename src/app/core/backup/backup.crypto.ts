@@ -1,11 +1,7 @@
 import { argon2idAsync } from '@noble/hashes/argon2.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
-import {
-  nativeGetBytes,
-  nativeRemoveItem,
-  nativeSetBytes,
-} from '../conversation/cache/native-secure-storage';
+import { nativeSecureStorage } from '../conversation/cache/native-secure-storage';
 import type {
   Argon2idHkdfParams,
   BackupPayload,
@@ -140,19 +136,19 @@ export function storeBackupKeyNative(
   versionNumber: number,
   bytes: Uint8Array,
 ): Promise<void> {
-  return nativeSetBytes(nativeKeyId(userDid, versionNumber), bytes);
+  return nativeSecureStorage.nativeSetBytes(nativeKeyId(userDid, versionNumber), bytes);
 }
 
 export function loadBackupKeyNative(
   userDid: string,
   versionNumber: number,
 ): Promise<Uint8Array | null> {
-  return nativeGetBytes(nativeKeyId(userDid, versionNumber));
+  return nativeSecureStorage.nativeGetBytes(nativeKeyId(userDid, versionNumber));
 }
 
 export function removeBackupKeyNative(
   userDid: string,
   versionNumber: number,
 ): Promise<void> {
-  return nativeRemoveItem(nativeKeyId(userDid, versionNumber));
+  return nativeSecureStorage.nativeRemoveItem(nativeKeyId(userDid, versionNumber));
 }

@@ -8,6 +8,7 @@ import { ConversationsService } from '../../conversation/conversations.service';
 import { PendingDecryptRepository } from '../repositories/pending-decrypt.repository';
 import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
 import { MlsBackupRegistry } from '../mls-backup-registry.service';
+import { EpochGapError } from '../errors/epoch-gap-error';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
 
@@ -35,7 +36,7 @@ describe('MlsCoordinatorService', () => {
     ]);
     mockMessageCacheSvc = jasmine.createSpyObj<MessageCacheService>('MessageCacheService', ['store', 'exists', 'getAllIds', 'getMessagesPage', 'getById']);
     mockConvSvc = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getMessages']);
-    mockPendingRepo = jasmine.createSpyObj<PendingDecryptRepository>('PendingDecryptRepository', ['enqueue', 'remove', 'markAttempt', 'getAll']);
+    mockPendingRepo = jasmine.createSpyObj<PendingDecryptRepository>('PendingDecryptRepository', ['enqueue', 'remove', 'markAttempt', 'getAll', 'clear']);
     mockWatchdog = jasmine.createSpyObj<MlsWatchdogService>('MlsWatchdogService', ['watch', 'unwatch']);
     // epochConflict$ is a real Observable property (not a spy-able method) --
     // the constructor subscribes to it directly, same as MlsCoordinatorService's
@@ -140,7 +141,7 @@ describe('MlsCoordinatorService', () => {
     });
 
     it('marks the conversation FAILED and emits conversationFailed$ after 3 consecutive commit failures', fakeAsync(() => {
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
 
       let failedEvent: { conversationId: string } | undefined;
       service.conversationFailed$.subscribe(evt => { failedEvent = evt; });
@@ -172,7 +173,7 @@ describe('MlsCoordinatorService', () => {
       let failedEvent: { conversationId: string } | undefined;
       service.conversationFailed$.subscribe(evt => { failedEvent = evt; });
 
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
       service.processIncomingCommit('conv-y', 'commit-1', 1, mockUser, mockDevice).catch(() => {});
       tick();
       expect(service.getConversationState('conv-y')).toBe(ConversationMlsState.Ready);
@@ -183,7 +184,7 @@ describe('MlsCoordinatorService', () => {
       tick();
       expect(service.getConversationState('conv-y')).toBe(ConversationMlsState.Ready);
 
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
       service.processIncomingCommit('conv-y', 'commit-3', 3, mockUser, mockDevice).catch(() => {});
       tick();
       service.processIncomingCommit('conv-y', 'commit-4', 4, mockUser, mockDevice).catch(() => {});
@@ -201,15 +202,15 @@ describe('MlsCoordinatorService', () => {
       // Rejections are assigned immediately before each call (rather than
       // batched upfront) so no rejected promise sits unattached across a
       // tick() — that would trip the browser's unhandled-rejection detector.
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
       service.processIncomingCommit('conv-z', 'commit-1', 1, mockUser, mockDevice).catch(() => {});
       tick();
 
-      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.reject(new Error('epoch too old')));
       service.catchUpMissedCommits('conv-z', mockUser, mockDevice).catch(() => {});
       tick();
 
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
       service.processIncomingCommit('conv-z', 'commit-2', 2, mockUser, mockDevice).catch(() => {});
       tick();
 
@@ -225,7 +226,7 @@ describe('MlsCoordinatorService', () => {
       // entry for it. Before the fix, wasReady was read from the raw map
       // (always undefined on cold start), so a failing commit here would
       // never count towards the failure threshold.
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
 
       service.processIncomingCommit('conv-cold', 'commit-1', 1, mockUser, mockDevice).catch(() => {});
       tick();
@@ -245,7 +246,7 @@ describe('MlsCoordinatorService', () => {
       let failedEvent: { conversationId: string } | undefined;
       service.conversationFailed$.subscribe(evt => { failedEvent = evt; });
 
-      const gapError = Object.assign(new Error('epoch gap'), { name: 'EpochGapError' });
+      const gapError = new EpochGapError('conv-gap', 2, 3);
       mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
       mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(2));
 
@@ -268,7 +269,7 @@ describe('MlsCoordinatorService', () => {
     }));
 
     it('falls through to normal failure handling if the catch-up after an epoch gap itself fails', fakeAsync(() => {
-      const gapError = Object.assign(new Error('epoch gap'), { name: 'EpochGapError' });
+      const gapError = new EpochGapError('conv-gap-fail', 0, 1);
       mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(gapError));
       mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.reject(new Error('network down')));
 
@@ -289,7 +290,7 @@ describe('MlsCoordinatorService', () => {
   describe('FAILED -> EMPTY reset guard', () => {
     async function driveToFailed(convId: string): Promise<void> {
       mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(true));
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
       for (let i = 0; i < 3; i++) {
         await service.processIncomingCommit(convId, `commit-${i}`, i, mockUser, mockDevice).catch(() => {});
       }
@@ -386,7 +387,7 @@ describe('MlsCoordinatorService', () => {
   describe('recoverFromFailed (catch-up-before-clear, C1 regression)', () => {
     async function driveToFailed(convId: string): Promise<void> {
       mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(true));
-      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('EpochTooOld')));
+      mockMlsSvc.processIncomingCommit.and.returnValue(Promise.reject(new Error('epoch too old')));
       for (let i = 0; i < 3; i++) {
         await service.processIncomingCommit(convId, `commit-${i}`, i, mockUser, mockDevice).catch(() => {});
       }
@@ -448,7 +449,13 @@ describe('MlsCoordinatorService', () => {
       expect(service.getConversationState('conv-catchup-throws')).toBe(ConversationMlsState.Failed);
 
       mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(false));
-      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.reject(new Error('fork detected')));
+      // callFake (not returnValue) so the rejected promise is created lazily
+      // when catchUpMissedCommits is actually invoked inside tick(5_000)
+      // below, not eagerly right here -- an eagerly-created rejected promise
+      // sitting unconsumed across that gap is flagged by zone.js as an
+      // unhandled rejection even though recoverFromFailed does catch it once
+      // called.
+      mockMlsSvc.catchUpMissedCommits.and.callFake(() => Promise.reject(new Error('fork detected')));
 
       tick(5_000);
       tick();
