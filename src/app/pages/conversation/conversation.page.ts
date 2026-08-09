@@ -25,7 +25,8 @@ import { SocketService } from '../../core/infrastructure/socket.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../core/infrastructure/socket.types';
 import { MessageCacheService } from '../../core/conversation/message-cache.service';
 import { OutboxRepository, OutboxEntry } from '../../core/conversation/outbox.repository';
-import type { CachedMessage, DisplayMessage } from '../../core/conversation/conversation.types';
+import type { CachedMessage, DisplayMessage, MessageReplyTo } from '../../core/conversation/conversation.types';
+import { MessagePayloadHelper } from '../../core/conversation/message-payload.helper';
 import { SyncService } from '../../core/sync/sync.service';
 import { TypingService } from '../../core/typing/typing.service';
 import { ReceiptsService } from '../../core/receipts/receipts.service';
@@ -78,6 +79,7 @@ export class ConversationPage implements OnDestroy {
 
   conversation:    ConversationListItem | null = null;
   displayMessages: DisplayMessage[] = [];
+  replyingTo:      MessageReplyTo | null = null;
   loading          = false;
   sending          = false;
   error            = '';
@@ -362,13 +364,15 @@ export class ConversationPage implements OnDestroy {
       if (!environment.production) console.warn('[Conversation] sendMessage: outbox durable write failed:', err);
     }
 
+    const activeReplyTo = this.replyingTo;
     try {
       if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
         this.ensureGroupAbort = new AbortController();
       }
       await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device, this.ensureGroupAbort.signal);
-      const ciphertext = await this.coordinator.encryptMessage(this.conversationId, text, user, device);
-      const serverMsg  = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
+      const payloadText = MessagePayloadHelper.encodeChatMessage(text, activeReplyTo ?? undefined);
+      const ciphertext  = await this.coordinator.encryptMessage(this.conversationId, payloadText, user, device);
+      const serverMsg   = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
       // Mark as known immediately so the socket handler skips it if it fires before cache write.
       this.knownIds.add(serverMsg.id);
 
@@ -377,7 +381,7 @@ export class ConversationPage implements OnDestroy {
         conversationId:    this.conversationId,
         senderDeviceId:    device.id,
         senderDid:         user.did,
-        plaintext:         text,
+        plaintext:         payloadText,
         isMine:            true,
         undecryptable:     false,
         cacheVersion:      1,
@@ -385,17 +389,19 @@ export class ConversationPage implements OnDestroy {
         deletedAt:         null,
         createdAt:         serverMsg.createdAt,
         cachedAt:          Date.now(),
+        replyTo:           activeReplyTo,
       };
       await this.messageCacheSvc.store(cached);
       await this.outboxRepo.remove(outboxLocalId).catch(() => {});
       this.syncSvc.enqueue({
         messageId:      serverMsg.id,
         conversationId: this.conversationId,
-        plaintext:      text,
+        plaintext:      payloadText,
         createdAt:      serverMsg.createdAt,
         senderDid:      user.did,
       });
 
+      this.replyingTo = null;
       const idx = this.displayMessages.findIndex(m => m.id === pendingId);
       if (idx !== -1) {
         this.displayMessages[idx] = this.toDisplayMessage(cached);
@@ -422,7 +428,7 @@ export class ConversationPage implements OnDestroy {
     // [1] Show cached messages immediately — no MLS calls.
     const cacheResult = await this.messageCacheSvc.getMessages(currentConvId, 50, true);
     if (this.conversationId !== currentConvId) return;
-    this.displayMessages = cacheResult.messages.map(m => this.toDisplayMessage(m));
+    this.displayMessages = this.processMessagesAndFilterReactions(cacheResult.messages);
     this.scrollToBottom();
 
     // [2] Fetch server page for gap detection, sender info repair, and placeholder recovery.
@@ -450,7 +456,7 @@ export class ConversationPage implements OnDestroy {
     if (senderUpdated) {
       const refreshed = await this.messageCacheSvc.getMessages(currentConvId, 50, true);
       if (this.conversationId !== currentConvId) return;
-      this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
+      this.displayMessages = this.processMessagesAndFilterReactions(refreshed.messages);
       this.scrollToBottom();
     }
 
@@ -743,10 +749,10 @@ export class ConversationPage implements OnDestroy {
 
     // Show messages replayed from the pending queue after a barrier is released.
     this.subs.add(
-      this.coordinator.pendingDecryptReplayed$.subscribe(event => {
+      this.coordinator.pendingDecryptReplayed$.subscribe(async event => {
         if (event.conversationId !== this.conversationId) return;
         for (const msg of event.messages) {
-          this.upsertDisplay(msg);
+          await this.handleIncomingDecryptedMessage(msg);
         }
         this.displayMessages.sort((a, b) => a.createdAt - b.createdAt);
         this.cdr.detectChanges();
@@ -801,7 +807,6 @@ export class ConversationPage implements OnDestroy {
           msg.id, msg.conversationId, msg.senderDeviceId, msg.senderDid,
           plaintext, isMine, undecryptable, msg.createdAt,
         );
-        await this.messageCacheSvc.store(cached);
 
         if (result.state === 'plaintext') {
           this.syncSvc.enqueue({
@@ -813,13 +818,10 @@ export class ConversationPage implements OnDestroy {
           });
         }
 
-        this.upsertDisplay(cached);
-        this.markReadIfVisible();
         if (!isMine) {
           this.socketSvc.sendMessageDelivered(msg.conversationId, msg.id, msg.senderDid);
         }
-        this.cdr.detectChanges();
-        this.scrollToBottom();
+        await this.handleIncomingDecryptedMessage(cached);
       }),
     );
 
@@ -877,22 +879,120 @@ export class ConversationPage implements OnDestroy {
 
   private toDisplayMessage(msg: CachedMessage): DisplayMessage {
     let displayText: string;
+    let replyTo = msg.replyTo ?? null;
 
-    if (msg.deletedAt !== null)  displayText = '[Deleted]';
-    else if (msg.undecryptable)  displayText = '[Encrypted]';
-    else if (msg.isMine)         displayText = msg.plaintext || '[Sent]';
-    else                         displayText = msg.plaintext;
+    if (msg.deletedAt !== null) displayText = '[Deleted]';
+    else if (msg.undecryptable) displayText = '[Encrypted]';
+    else {
+      const parsed = MessagePayloadHelper.parseMessagePayload(msg.plaintext);
+      if (parsed.type === 'chat') {
+        displayText = parsed.text || (msg.isMine ? '[Sent]' : '');
+        if (!replyTo && parsed.replyTo) {
+          replyTo = parsed.replyTo;
+        }
+      } else if (parsed.type === 'reaction') {
+        displayText = '';
+      } else {
+        displayText = msg.plaintext;
+      }
+    }
 
     return {
-      id:          msg.id,
+      id: msg.id,
       displayText,
-      isMine:      msg.isMine,
-      createdAt:   msg.createdAt,
-      pending:     false,
+      isMine: msg.isMine,
+      createdAt: msg.createdAt,
+      pending: false,
+      senderDid: msg.senderDid,
+      replyTo,
+      reactions: msg.reactions,
     };
   }
 
+  onReplyToMessage(msg: DisplayMessage): void {
+    const handle = this.conversation?.participant.handle;
+    const mediaMatch = msg.displayText ? msg.displayText.match(/https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp)/i) : null;
+    this.replyingTo = {
+      messageId: msg.id,
+      senderDid: msg.senderDid || this.conversation?.participant.did || '',
+      senderHandle: msg.isMine ? 'Vous' : (handle ? `@${handle}` : undefined),
+      textSnippet: msg.displayText,
+      mediaThumbnail: mediaMatch ? mediaMatch[0] : undefined,
+    };
+    this.cdr.detectChanges();
+  }
+
+  get currentUserId(): string {
+    return this.authSvc.currentUser()?.did || '';
+  }
+
+  async onToggleReaction(msg: DisplayMessage, emoji: string): Promise<void> {
+    const user   = this.authSvc.currentUser();
+    const device = this.authSvc.currentDevice();
+    if (!user || !device) return;
+
+    const currentList = msg.reactions?.[emoji] ?? [];
+    const hasReacted  = currentList.includes(user.did);
+    const action      = hasReacted ? 'remove' : 'add';
+
+    const updated = MessagePayloadHelper.applyReactionMutation(
+      msg.reactions, user.did, emoji, action
+    );
+    msg.reactions = updated;
+
+    const cached = await this.messageCacheSvc.getById(msg.id);
+    if (cached) {
+      cached.reactions = updated;
+      await this.messageCacheSvc.store(cached);
+    }
+    this.cdr.detectChanges();
+
+    const encoded = MessagePayloadHelper.encodeReactionMessage(msg.id, emoji, action);
+    try {
+      const participantDid = this.conversation?.participant.did;
+      if (participantDid) {
+        await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device);
+        const ciphertext = await this.coordinator.encryptMessage(this.conversationId, encoded, user, device);
+        const serverMsg  = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
+        this.knownIds.add(serverMsg.id);
+
+        const reactionCached: CachedMessage = {
+          id:                serverMsg.id,
+          conversationId:    this.conversationId,
+          senderDeviceId:    device.id,
+          senderDid:         user.did,
+          plaintext:         encoded,
+          isMine:            true,
+          undecryptable:     false,
+          cacheVersion:      1,
+          encryptionVersion: 1,
+          deletedAt:         null,
+          createdAt:         serverMsg.createdAt,
+          cachedAt:          Date.now(),
+        };
+        await this.messageCacheSvc.store(reactionCached);
+      }
+    } catch (err) {
+      if (!environment.production) console.error('[ConversationPage] send reaction failed:', err);
+    }
+  }
+
+  onJumpToReply(targetMessageId: string): void {
+    const el = document.getElementById('msg-' + targetMessageId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('bubble--highlight');
+      setTimeout(() => el.classList.remove('bubble--highlight'), 1500);
+    }
+  }
+
   private upsertDisplay(msg: CachedMessage): void {
+    if (msg.plaintext) {
+      const parsed = MessagePayloadHelper.parseMessagePayload(msg.plaintext);
+      if (parsed.type === 'reaction') {
+        return;
+      }
+    }
     const dm  = this.toDisplayMessage(msg);
     const idx = this.displayMessages.findIndex(m => m.id === dm.id);
     if (idx !== -1) {
@@ -900,6 +1000,81 @@ export class ConversationPage implements OnDestroy {
     } else {
       this.displayMessages.push(dm);
     }
+  }
+
+  private processMessagesAndFilterReactions(cachedMessages: CachedMessage[]): DisplayMessage[] {
+    const reactionMapByMsgId = new Map<string, Record<string, string[]>>();
+
+    for (const m of cachedMessages) {
+      if (m.plaintext) {
+        const parsed = MessagePayloadHelper.parseMessagePayload(m.plaintext);
+        if (parsed.type === 'reaction') {
+          const { targetMessageId, emoji, action } = parsed.reaction;
+          const senderDid = m.senderDid || '';
+          const currentReactions = reactionMapByMsgId.get(targetMessageId) || {};
+          const updated = MessagePayloadHelper.applyReactionMutation(currentReactions, senderDid, emoji, action);
+          reactionMapByMsgId.set(targetMessageId, updated);
+        }
+      }
+    }
+
+    const displayList: DisplayMessage[] = [];
+    for (const m of cachedMessages) {
+      const parsed = MessagePayloadHelper.parseMessagePayload(m.plaintext);
+      if (parsed.type === 'reaction') {
+        continue;
+      }
+
+      const dm = this.toDisplayMessage(m);
+      const mergedReactions = reactionMapByMsgId.get(m.id) || m.reactions;
+      if (mergedReactions) {
+        dm.reactions = mergedReactions;
+      }
+      displayList.push(dm);
+    }
+
+    return displayList;
+  }
+
+  private async handleIncomingDecryptedMessage(cachedMsg: CachedMessage): Promise<void> {
+    await this.messageCacheSvc.store(cachedMsg);
+
+    if (cachedMsg.plaintext) {
+      const parsed = MessagePayloadHelper.parseMessagePayload(cachedMsg.plaintext);
+      if (parsed.type === 'reaction') {
+        const { targetMessageId, emoji, action } = parsed.reaction;
+        const senderDid = cachedMsg.senderDid || '';
+
+        const target = this.displayMessages.find(m => m.id === targetMessageId);
+        if (target) {
+          target.reactions = MessagePayloadHelper.applyReactionMutation(
+            target.reactions, senderDid, emoji, action
+          );
+        }
+
+        const cachedTarget = await this.messageCacheSvc.getById(targetMessageId);
+        if (cachedTarget) {
+          cachedTarget.reactions = MessagePayloadHelper.applyReactionMutation(
+            cachedTarget.reactions, senderDid, emoji, action
+          );
+          await this.messageCacheSvc.store(cachedTarget);
+        }
+
+        if (!cachedMsg.isMine) {
+          this.receiptsSvc.markConversationRead(this.conversationId, cachedMsg.id);
+        } else {
+          this.markReadIfVisible();
+        }
+
+        this.cdr.detectChanges();
+        return;
+      }
+    }
+
+    this.upsertDisplay(cachedMsg);
+    this.markReadIfVisible();
+    this.cdr.detectChanges();
+    this.scrollToBottom();
   }
 
   private buildCached(

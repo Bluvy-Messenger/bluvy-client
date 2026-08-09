@@ -1,6 +1,7 @@
 export const en: Record<string, string> = {
   'common.back': 'Back',
   'common.cancel': 'Cancel',
+  'common.reply': 'Reply',
   'common.save': 'Save',
   'common.close': 'Close',
   'common.yes': 'Yes',
@@ -415,6 +416,7 @@ export const en: Record<string, string> = {
   'menu.switch_account': 'Switch account',
 
   'composer.placeholder': 'Message...',
+  'composer.replyingTo': 'Replying to',
   'composer.send': 'Send',
   'typing.indicator': '{name} is typing…',
   'unread.count': '{count} unread messages',

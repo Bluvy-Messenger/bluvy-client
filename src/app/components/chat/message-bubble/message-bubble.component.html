@@ -1,37 +1,129 @@
-<div class="row" [class.row--mine]="isMine">
-  <div class="bubble"
-       [class.bubble--mine]="isMine"
-       [class.bubble--theirs]="!isMine"
-       [class.bubble--pending]="pending"
-       [class.bubble--first]="position === 'first'"
-       [class.bubble--middle]="position === 'middle'"
-       [class.bubble--last]="position === 'last'">
-    @if (displayText()) {
-      <p class="bubble__text">{{ displayText() }}</p>
-    }
-    @for (link of links(); track link.key) {
-      @if (link.bskyPostUrl || link.popfeedReviewUrl || link.embed || link.preview) {
-        <app-embed-preview-block
-          [bskyPostUrl]="link.bskyPostUrl"
-          [popfeedReviewUrl]="link.popfeedReviewUrl"
-          [embed]="link.embed"
-          [preview]="link.preview"
-          [previewImageSrc]="link.previewImageSrc"
-          [isMine]="isMine"
-        ></app-embed-preview-block>
+<div class="row"
+     [class.row--mine]="isMine"
+     (touchstart)="onTouchStart($event)"
+     (touchmove)="onTouchMove($event)"
+     (touchend)="onTouchEnd()"
+     [style.transform]="swipeOffset > 0 ? 'translateX(' + swipeOffset + 'px)' : null">
+  
+  <div class="bubble-wrapper" [class.bubble-wrapper--mine]="isMine">
+    <!-- Desktop Hover Actions Bar (Messenger / Discord style) -->
+    <div class="action-bar"
+         [class.action-bar--mine]="isMine"
+         [class.action-bar--visible]="showEmojiPicker()">
+      <!-- Quick Emoji Picker Popover -->
+      @if (showEmojiPicker()) {
+        <div class="emoji-popover" [class.emoji-popover--mine]="isMine">
+          <button class="action-bar__btn" (click)="onReactionSelect('👍')" type="button">👍</button>
+          <button class="action-bar__btn" (click)="onReactionSelect('❤️')" type="button">❤️</button>
+          <button class="action-bar__btn" (click)="onReactionSelect('😂')" type="button">😂</button>
+          <button class="action-bar__btn" (click)="onReactionSelect('😮')" type="button">😮</button>
+          <button class="action-bar__btn" (click)="onReactionSelect('😢')" type="button">😢</button>
+          <button class="action-bar__btn" (click)="onReactionSelect('🔥')" type="button">🔥</button>
+          <button class="action-bar__btn action-bar__btn--more" (click)="toggleFullPicker($event)" type="button">+</button>
+        </div>
       }
-    }
-    <div class="bubble__footer">
-      <span class="bubble__time">{{ timestamp | date:'HH:mm' }}</span>
-      @if (isMine && !pending) {
-        @if (receiptStatus === 'read') {
-          <ion-icon name="checkmark-done" class="bubble__receipt bubble__receipt--read"></ion-icon>
-        } @else if (receiptStatus === 'delivered') {
-          <ion-icon name="checkmark-done-outline" class="bubble__receipt"></ion-icon>
-        } @else if (receiptStatus === 'sent') {
-          <ion-icon name="checkmark-outline" class="bubble__receipt"></ion-icon>
+
+      <!-- Expanded Full Emoji Grid Popover -->
+      @if (showFullPicker()) {
+        <div class="emoji-grid-popover" [class.emoji-grid-popover--mine]="isMine">
+          @for (e of expandedEmojis; track e) {
+            <button class="emoji-grid__btn" (click)="onReactionSelect(e)" type="button">{{ e }}</button>
+          }
+        </div>
+      }
+
+      <button
+        class="action-bar__btn action-bar__btn--icon"
+        [class.action-bar__btn--active]="showEmojiPicker()"
+        type="button"
+        (click)="toggleEmojiPicker()"
+        [attr.aria-label]="'React'"
+      >
+        <ion-icon name="happy-outline"></ion-icon>
+      </button>
+
+      <button
+        class="action-bar__btn action-bar__btn--icon"
+        type="button"
+        (click)="onReplyClick()"
+        [attr.aria-label]="'common.reply' | translate"
+      >
+        <ion-icon name="return-up-back-outline"></ion-icon>
+      </button>
+    </div>
+
+    <div class="bubble"
+         [id]="'msg-' + messageId"
+         [class.bubble--mine]="isMine"
+         [class.bubble--theirs]="!isMine"
+         [class.bubble--pending]="pending"
+         [class.bubble--first]="position === 'first'"
+         [class.bubble--middle]="position === 'middle'"
+         [class.bubble--last]="position === 'last'"
+         (click)="onBubbleClick()">
+      
+      <!-- Quoted reply preview header -->
+      @if (replyTo) {
+        <div class="bubble__quote" (click)="onQuoteClick($event)">
+          @if (replyTo.mediaThumbnail) {
+            <img [src]="replyTo.mediaThumbnail" class="bubble__quote-thumb" alt="Thumbnail" />
+          }
+          <div class="bubble__quote-content">
+            <div class="bubble__quote-header">
+              <ion-icon name="return-up-back-outline"></ion-icon>
+              <span class="bubble__quote-sender">{{ replyTo.senderHandle || replyTo.senderDid }}</span>
+            </div>
+            <div class="bubble__quote-text">{{ replyTo.textSnippet }}</div>
+          </div>
+        </div>
+      }
+
+      @if (displayText()) {
+        <p class="bubble__text">{{ displayText() }}</p>
+      }
+      @for (link of links(); track link.key) {
+        @if (link.bskyPostUrl || link.popfeedReviewUrl || link.embed || link.preview) {
+          <app-embed-preview-block
+            [bskyPostUrl]="link.bskyPostUrl"
+            [popfeedReviewUrl]="link.popfeedReviewUrl"
+            [embed]="link.embed"
+            [preview]="link.preview"
+            [previewImageSrc]="link.previewImageSrc"
+            [isMine]="isMine"
+          ></app-embed-preview-block>
         }
       }
+      <div class="bubble__footer">
+        <span class="bubble__time">{{ timestamp | date:'HH:mm' }}</span>
+        @if (isMine && !pending) {
+          @if (receiptStatus === 'read') {
+            <ion-icon name="checkmark-done" class="bubble__receipt bubble__receipt--read"></ion-icon>
+          } @else if (receiptStatus === 'delivered') {
+            <ion-icon name="checkmark-done-outline" class="bubble__receipt"></ion-icon>
+          } @else if (receiptStatus === 'sent') {
+            <ion-icon name="checkmark-outline" class="bubble__receipt"></ion-icon>
+          }
+        }
+      </div>
     </div>
+
+    <!-- Reactions list underneath bubble -->
+    @if (reactionEntries.length > 0) {
+      <div class="reactions-list" [class.reactions-list--mine]="isMine">
+        @for (entry of reactionEntries; track entry.emoji) {
+          <button
+            type="button"
+            class="reaction-badge"
+            [class.reaction-badge--active]="entry.hasReacted"
+            [title]="getReactorsTooltip(entry.emoji)"
+            (click)="onReactionSelect(entry.emoji)"
+          >
+            <span class="reaction-badge__emoji">{{ entry.emoji }}</span>
+            <span class="reaction-badge__count">{{ entry.count }}</span>
+          </button>
+        }
+      </div>
+    }
   </div>
 </div>
+

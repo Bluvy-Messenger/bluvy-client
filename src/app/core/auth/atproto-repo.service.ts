@@ -5,6 +5,13 @@ import { environment } from '../../../environments/environment';
 import type { EmbedPreferencesRecord } from '../embed/embed-preferences.types';
 
 const EMBED_PREFERENCES_COLLECTION = 'com.bluvy.preferences.embeds';
+const EMOJI_PREFERENCES_COLLECTION = 'com.bluvy.preferences.emojis';
+
+export interface EmojiPreferencesRecord {
+  $type?: typeof EMOJI_PREFERENCES_COLLECTION;
+  emojis: string[];
+  updatedAt: string;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AtprotoRepoService {
@@ -109,6 +116,48 @@ export class AtprotoRepoService {
     await agent.com.atproto.repo.putRecord({
       repo: this.oauth.session.sub,
       collection: EMBED_PREFERENCES_COLLECTION,
+      rkey: 'self',
+      record: record as unknown as Record<string, unknown>,
+    });
+  }
+
+  /**
+   * Fetches the com.bluvy.preferences.emojis record from the user's ATProto repository.
+   */
+  async getEmojiPreferences(): Promise<EmojiPreferencesRecord | null> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) return null;
+
+    try {
+      const res = await agent.com.atproto.repo.getRecord({
+        repo: this.oauth.session.sub,
+        collection: EMOJI_PREFERENCES_COLLECTION,
+        rkey: 'self',
+      });
+      return res.data.value as unknown as EmojiPreferencesRecord;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Writes the com.bluvy.preferences.emojis record to the user's ATProto repository.
+   */
+  async putEmojiPreferences(emojis: string[]): Promise<void> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) {
+      throw new Error('No active ATProto session');
+    }
+
+    const record: EmojiPreferencesRecord = {
+      $type: EMOJI_PREFERENCES_COLLECTION,
+      emojis,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await agent.com.atproto.repo.putRecord({
+      repo: this.oauth.session.sub,
+      collection: EMOJI_PREFERENCES_COLLECTION,
       rkey: 'self',
       record: record as unknown as Record<string, unknown>,
     });

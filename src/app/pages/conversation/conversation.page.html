@@ -60,12 +60,19 @@
             <div class="date-sep">{{ label }}</div>
           }
           <app-message-bubble
+            [messageId]="msg.id"
             [text]="msg.displayText"
             [isMine]="msg.isMine"
             [timestamp]="msg.createdAt"
             [pending]="msg.pending"
             [position]="getMessagePosition(i)"
+            [replyTo]="msg.replyTo ?? null"
+            [reactions]="msg.reactions"
+            [currentUserId]="currentUserId"
             [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+            (reply)="onReplyToMessage(msg)"
+            (toggleReaction)="onToggleReaction(msg, $event)"
+            (jumpToReply)="onJumpToReply($event)"
           ></app-message-bubble>
         }
       </div>
@@ -106,6 +113,8 @@
     [conversationId]="conversationId"
     [disabled]="sending"
     [initialText]="draftText"
+    [replyTo]="replyingTo"
+    (cancelReply)="replyingTo = null"
     (send)="sendMessage($event)"
   ></app-message-composer>
 </ion-footer>

@@ -16,7 +16,8 @@ import { MlsCoordinatorBase } from '../../../core/mls/coordinator/mls-coordinato
 import { SocketService } from '../../../core/infrastructure/socket.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../../core/infrastructure/socket.types';
 import { MessageCacheService } from '../../../core/conversation/message-cache.service';
-import type { CachedMessage, DisplayMessage } from '../../../core/conversation/conversation.types';
+import type { CachedMessage, DisplayMessage, MessageReplyTo } from '../../../core/conversation/conversation.types';
+import { MessagePayloadHelper } from '../../../core/conversation/message-payload.helper';
 import { SyncService } from '../../../core/sync/sync.service';
 import { TypingService } from '../../../core/typing/typing.service';
 import { ReceiptsService } from '../../../core/receipts/receipts.service';
@@ -53,6 +54,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
 
   conversation:    ConversationListItem | null = null;
   displayMessages: DisplayMessage[] = [];
+  replyingTo:      MessageReplyTo | null = null;
   loading          = false;
   sending          = false;
   error            = '';
@@ -142,10 +144,11 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     const participantDid = this.conversation?.participant.did;
     if (!participantDid) { this.error = 'Conversation not loaded.'; return; }
 
+    const activeReplyTo = this.replyingTo;
     this.sending = true;
     const pendingId = `pending-${Date.now()}-${Math.random()}`;
     this.displayMessages.push({
-      id: pendingId, displayText: text, isMine: true, createdAt: Date.now(), pending: true,
+      id: pendingId, displayText: text, isMine: true, createdAt: Date.now(), pending: true, replyTo: activeReplyTo ?? null,
     });
     this.scrollToBottom();
 
@@ -154,22 +157,25 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
         this.ensureGroupAbort = new AbortController();
       }
       await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device, this.ensureGroupAbort.signal);
-      const ciphertext = await this.coordinator.encryptMessage(this.conversationId, text, user, device);
-      const serverMsg  = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
+      const payloadText = MessagePayloadHelper.encodeChatMessage(text, activeReplyTo ?? undefined);
+      const ciphertext  = await this.coordinator.encryptMessage(this.conversationId, payloadText, user, device);
+      const serverMsg   = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
       this.knownIds.add(serverMsg.id);
 
       const cached: CachedMessage = {
         id: serverMsg.id, conversationId: this.conversationId,
-        senderDeviceId: device.id, senderDid: user.did, plaintext: text,
+        senderDeviceId: device.id, senderDid: user.did, plaintext: payloadText,
         isMine: true, undecryptable: false, cacheVersion: 1, encryptionVersion: 1,
         deletedAt: null, createdAt: serverMsg.createdAt, cachedAt: Date.now(),
+        replyTo: activeReplyTo,
       };
       await this.messageCacheSvc.store(cached);
       this.syncSvc.enqueue({
         messageId: serverMsg.id, conversationId: this.conversationId,
-        plaintext: text, createdAt: serverMsg.createdAt, senderDid: user.did,
+        plaintext: payloadText, createdAt: serverMsg.createdAt, senderDid: user.did,
       });
 
+      this.replyingTo = null;
       const idx = this.displayMessages.findIndex(m => m.id === pendingId);
       if (idx !== -1) this.displayMessages[idx] = this.toDisplayMessage(cached);
       this.scrollToBottom();
@@ -267,7 +273,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     if (!user || !device) return;
 
     const cacheResult = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
-    this.displayMessages = cacheResult.messages.map(m => this.toDisplayMessage(m));
+    this.displayMessages = this.processMessagesAndFilterReactions(cacheResult.messages);
     this.scrollToBottom();
 
     const page         = await firstValueFrom(this.convSvc.getMessages(this.conversationId));
@@ -283,7 +289,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     }
     if (senderUpdated) {
       const refreshed = await this.messageCacheSvc.getMessages(this.conversationId, 50, true);
-      this.displayMessages = refreshed.messages.map(m => this.toDisplayMessage(m));
+      this.displayMessages = this.processMessagesAndFilterReactions(refreshed.messages);
       this.scrollToBottom();
     }
 
@@ -373,9 +379,11 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     );
 
     this.subs.add(
-      this.coordinator.pendingDecryptReplayed$.subscribe(event => {
+      this.coordinator.pendingDecryptReplayed$.subscribe(async event => {
         if (event.conversationId !== this.conversationId) return;
-        for (const msg of event.messages) this.upsertDisplay(msg);
+        for (const msg of event.messages) {
+          await this.handleIncomingDecryptedMessage(msg);
+        }
         this.displayMessages.sort((a, b) => a.createdAt - b.createdAt);
         this.cdr.detectChanges();
         this.scrollToBottom();
@@ -405,15 +413,13 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
         const undecryptable = !isMine && result.state === 'undecryptable';
         const plaintext     = result.state === 'plaintext' ? result.plaintext : '';
         const cached = this.buildCached(msg.id, msg.conversationId, msg.senderDeviceId, msg.senderDid, plaintext, isMine, undecryptable, msg.createdAt);
-        await this.messageCacheSvc.store(cached);
+        
         if (result.state === 'plaintext') {
           this.syncSvc.enqueue({ messageId: msg.id, conversationId: msg.conversationId, plaintext, createdAt: msg.createdAt, senderDid: msg.senderDid });
         }
-        this.upsertDisplay(cached);
-        this.markReadIfVisible();
+
         if (!isMine) this.socketSvc.sendMessageDelivered(msg.conversationId, msg.id, msg.senderDid);
-        this.cdr.detectChanges();
-        this.scrollToBottom();
+        await this.handleIncomingDecryptedMessage(cached);
       }),
     );
 
@@ -453,14 +459,195 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
 
   private toDisplayMessage(msg: CachedMessage): DisplayMessage {
     let displayText: string;
-    if (msg.deletedAt !== null)  displayText = '[Deleted]';
-    else if (msg.undecryptable)  displayText = '[Encrypted]';
-    else if (msg.isMine)         displayText = msg.plaintext || '[Sent]';
-    else                         displayText = msg.plaintext;
-    return { id: msg.id, displayText, isMine: msg.isMine, createdAt: msg.createdAt, pending: false };
+    let replyTo = msg.replyTo ?? null;
+
+    if (msg.deletedAt !== null) displayText = '[Deleted]';
+    else if (msg.undecryptable) displayText = '[Encrypted]';
+    else {
+      const parsed = MessagePayloadHelper.parseMessagePayload(msg.plaintext);
+      if (parsed.type === 'chat') {
+        displayText = parsed.text || (msg.isMine ? '[Sent]' : '');
+        if (!replyTo && parsed.replyTo) {
+          replyTo = parsed.replyTo;
+        }
+      } else if (parsed.type === 'reaction') {
+        displayText = '';
+      } else {
+        displayText = msg.plaintext;
+      }
+    }
+
+    return {
+      id: msg.id,
+      displayText,
+      isMine: msg.isMine,
+      createdAt: msg.createdAt,
+      pending: false,
+      senderDid: msg.senderDid,
+      replyTo,
+      reactions: msg.reactions,
+    };
+  }
+
+  onReplyToMessage(msg: DisplayMessage): void {
+    const handle = this.conversation?.participant.handle;
+    const mediaMatch = msg.displayText ? msg.displayText.match(/https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp)/i) : null;
+    this.replyingTo = {
+      messageId: msg.id,
+      senderDid: msg.senderDid || this.conversation?.participant.did || '',
+      senderHandle: msg.isMine ? 'Vous' : (handle ? `@${handle}` : undefined),
+      textSnippet: msg.displayText,
+      mediaThumbnail: mediaMatch ? mediaMatch[0] : undefined,
+    };
+    this.cdr.detectChanges();
+  }
+
+  get currentUserId(): string {
+    return this.authSvc.currentUser()?.did || '';
+  }
+
+  async onToggleReaction(msg: DisplayMessage, emoji: string): Promise<void> {
+    const user   = this.authSvc.currentUser();
+    const device = this.authSvc.currentDevice();
+    if (!user || !device) return;
+
+    const currentList = msg.reactions?.[emoji] ?? [];
+    const hasReacted  = currentList.includes(user.did);
+    const action      = hasReacted ? 'remove' : 'add';
+
+    const updated = MessagePayloadHelper.applyReactionMutation(
+      msg.reactions, user.did, emoji, action
+    );
+    msg.reactions = updated;
+
+    const cached = await this.messageCacheSvc.getById(msg.id);
+    if (cached) {
+      cached.reactions = updated;
+      await this.messageCacheSvc.store(cached);
+    }
+    this.cdr.detectChanges();
+
+    const encoded = MessagePayloadHelper.encodeReactionMessage(msg.id, emoji, action);
+    try {
+      const participantDid = this.conversation?.participant.did;
+      if (participantDid) {
+        await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device);
+        const ciphertext = await this.coordinator.encryptMessage(this.conversationId, encoded, user, device);
+        const serverMsg  = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
+        this.knownIds.add(serverMsg.id);
+
+        const reactionCached: CachedMessage = {
+          id:                serverMsg.id,
+          conversationId:    this.conversationId,
+          senderDeviceId:    device.id,
+          senderDid:         user.did,
+          plaintext:         encoded,
+          isMine:            true,
+          undecryptable:     false,
+          cacheVersion:      1,
+          encryptionVersion: 1,
+          deletedAt:         null,
+          createdAt:         serverMsg.createdAt,
+          cachedAt:          Date.now(),
+        };
+        await this.messageCacheSvc.store(reactionCached);
+      }
+    } catch (err) {
+      if (!environment.production) console.error('[ConversationPanel] send reaction failed:', err);
+    }
+  }
+
+  onJumpToReply(targetMessageId: string): void {
+    const el = document.getElementById('msg-' + targetMessageId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('bubble--highlight');
+      setTimeout(() => el.classList.remove('bubble--highlight'), 1500);
+    }
+  }
+
+  private processMessagesAndFilterReactions(cachedMessages: CachedMessage[]): DisplayMessage[] {
+    const reactionMapByMsgId = new Map<string, Record<string, string[]>>();
+
+    for (const m of cachedMessages) {
+      if (m.plaintext) {
+        const parsed = MessagePayloadHelper.parseMessagePayload(m.plaintext);
+        if (parsed.type === 'reaction') {
+          const { targetMessageId, emoji, action } = parsed.reaction;
+          const senderDid = m.senderDid || '';
+          const currentReactions = reactionMapByMsgId.get(targetMessageId) || {};
+          const updated = MessagePayloadHelper.applyReactionMutation(currentReactions, senderDid, emoji, action);
+          reactionMapByMsgId.set(targetMessageId, updated);
+        }
+      }
+    }
+
+    const displayList: DisplayMessage[] = [];
+    for (const m of cachedMessages) {
+      const parsed = MessagePayloadHelper.parseMessagePayload(m.plaintext);
+      if (parsed.type === 'reaction') {
+        continue;
+      }
+
+      const dm = this.toDisplayMessage(m);
+      const mergedReactions = reactionMapByMsgId.get(m.id) || m.reactions;
+      if (mergedReactions) {
+        dm.reactions = mergedReactions;
+      }
+      displayList.push(dm);
+    }
+
+    return displayList;
+  }
+
+  private async handleIncomingDecryptedMessage(cachedMsg: CachedMessage): Promise<void> {
+    await this.messageCacheSvc.store(cachedMsg);
+
+    if (cachedMsg.plaintext) {
+      const parsed = MessagePayloadHelper.parseMessagePayload(cachedMsg.plaintext);
+      if (parsed.type === 'reaction') {
+        const { targetMessageId, emoji, action } = parsed.reaction;
+        const senderDid = cachedMsg.senderDid || '';
+
+        const target = this.displayMessages.find(m => m.id === targetMessageId);
+        if (target) {
+          target.reactions = MessagePayloadHelper.applyReactionMutation(
+            target.reactions, senderDid, emoji, action
+          );
+        }
+
+        const cachedTarget = await this.messageCacheSvc.getById(targetMessageId);
+        if (cachedTarget) {
+          cachedTarget.reactions = MessagePayloadHelper.applyReactionMutation(
+            cachedTarget.reactions, senderDid, emoji, action
+          );
+          await this.messageCacheSvc.store(cachedTarget);
+        }
+
+        if (!cachedMsg.isMine) {
+          this.receiptsSvc.markConversationRead(this.conversationId, cachedMsg.id);
+        } else {
+          this.markReadIfVisible();
+        }
+
+        this.cdr.detectChanges();
+        return;
+      }
+    }
+
+    this.upsertDisplay(cachedMsg);
+    this.markReadIfVisible();
+    this.cdr.detectChanges();
+    this.scrollToBottom();
   }
 
   private upsertDisplay(msg: CachedMessage): void {
+    if (msg.plaintext) {
+      const parsed = MessagePayloadHelper.parseMessagePayload(msg.plaintext);
+      if (parsed.type === 'reaction') {
+        return;
+      }
+    }
     const dm  = this.toDisplayMessage(msg);
     const idx = this.displayMessages.findIndex(m => m.id === dm.id);
     if (idx !== -1) this.displayMessages[idx] = dm;

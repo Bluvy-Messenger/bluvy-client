@@ -30,11 +30,18 @@
           <div class="panel__date-sep">{{ label }}</div>
         }
         <app-message-bubble
+          [messageId]="msg.id"
           [text]="msg.displayText"
           [isMine]="msg.isMine"
           [timestamp]="msg.createdAt"
           [pending]="msg.pending"
+          [replyTo]="msg.replyTo ?? null"
+          [reactions]="msg.reactions"
+          [currentUserId]="currentUserId"
           [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+          (reply)="onReplyToMessage(msg)"
+          (toggleReaction)="onToggleReaction(msg, $event)"
+          (jumpToReply)="onJumpToReply($event)"
         ></app-message-bubble>
       }
 
@@ -64,6 +71,8 @@
     <app-message-composer
       [conversationId]="conversationId"
       [disabled]="sending"
+      [replyTo]="replyingTo"
+      (cancelReply)="replyingTo = null"
       (send)="sendMessage($event)"
     ></app-message-composer>
   </div>
