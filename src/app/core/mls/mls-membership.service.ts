@@ -108,7 +108,8 @@ export class MlsMembershipService {
     try {
       consumed = await this.mlsRepo.consumeOwnKeyPackage(newDeviceId);
     } catch (err) {
-      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
+      const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
+      if (err instanceof HttpErrorResponse && errCode === 'NO_KEY_PACKAGES') {
         console.warn('[MLS] provisionDevice: no key packages for', newDeviceId, '— cannot provision conv', conversationId);
       }
       throw err;
@@ -287,7 +288,8 @@ export class MlsMembershipService {
     try {
       consumed = await this.mlsRepo.consumeOwnKeyPackage(staleDeviceId);
     } catch (err) {
-      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
+      const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
+      if (err instanceof HttpErrorResponse && errCode === 'NO_KEY_PACKAGES') {
         console.warn('[MLS] reprovisionLostStateDevice: no key packages for', staleDeviceId, '— cannot reprovision conv', conversationId);
       }
       throw err;

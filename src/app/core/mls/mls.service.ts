@@ -254,7 +254,8 @@ export class MlsService {
         try {
           consumed = await this.mlsRepo.consumeKeyPackage(did);
         } catch (err) {
-          if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
+          const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
+          if (err instanceof HttpErrorResponse && errCode === 'NO_KEY_PACKAGES') {
             if (targetDids.length === 1) {
               throw new Error("This contact hasn't set up encrypted messaging yet. Ask them to open the app.");
             }
