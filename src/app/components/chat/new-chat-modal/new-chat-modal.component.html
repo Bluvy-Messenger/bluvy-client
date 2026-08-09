@@ -1,0 +1,133 @@
+<ion-modal [isOpen]="isOpen" (didDismiss)="closeModal()" class="new-chat-modal">
+  <ng-template>
+    <div class="modal-wrapper">
+      <div class="modal-header">
+        <h2 class="modal-title">Nouveau message</h2>
+        <button class="close-btn" (click)="closeModal()" aria-label="Fermer">
+          <ion-icon name="close-outline"></ion-icon>
+        </button>
+      </div>
+
+      <!-- Selected Contacts Chips Bar (Messenger Style) -->
+      @if (selectedDids().length > 0) {
+        <div class="chips-container">
+          <div class="chips-list">
+            @for (contact of getSelectedContacts(); track contact.did) {
+              <div class="chip">
+                <app-avatar [src]="contact.avatarUrl" [handle]="contact.handle" size="sm"></app-avatar>
+                <span class="chip-name">{{ contact.displayName || contact.handle }}</span>
+                <button type="button" class="chip-remove" (click)="toggleContactSelection(contact.did)">
+                  <ion-icon name="close-circle"></ion-icon>
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Group Name Input (Appears Automatically when >1 Contacts Selected) -->
+      @if (isGroupMode) {
+        <div class="group-config animate-fade-in">
+          <input
+            type="text"
+            class="group-name-input"
+            placeholder="Nom du groupe (optionnel)"
+            [(ngModel)]="groupName"
+          />
+
+          <div class="group-counter" [class.group-counter--limit]="isLimitReached">
+            <span>{{ selectedDids().length + 1 }} / {{ maxGroupMembers() }} membres</span>
+            <small class="counter-note">(Limite maximale serveur)</small>
+          </div>
+        </div>
+      }
+
+      <!-- Search Input -->
+      <div class="search-box">
+        <ion-icon name="search-outline" class="search-icon"></ion-icon>
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Rechercher un contact..."
+          [(ngModel)]="searchQuery"
+        />
+      </div>
+
+      <!-- Error banner -->
+      @if (error()) {
+        <div class="error-banner">
+          <ion-icon name="alert-circle-outline"></ion-icon>
+          <span>{{ error() }}</span>
+        </div>
+      }
+
+      <!-- Contact List -->
+      <div class="contacts-body">
+        @if (filteredContacts.length === 0) {
+          <div class="empty-state">
+            <ion-icon name="people-outline"></ion-icon>
+            <p>Aucun contact Bluvy trouvé.</p>
+          </div>
+        } @else {
+          <div class="contact-list">
+            @for (contact of filteredContacts; track contact.did) {
+              <div
+                class="contact-row"
+                [class.contact-row--selected]="isSelected(contact.did)"
+                [class.contact-row--disabled]="!isSelected(contact.did) && isLimitReached"
+                (click)="onContactClick(contact)"
+              >
+                <!-- Checkbox for Multi-Select -->
+                <button
+                  type="button"
+                  class="checkbox-button"
+                  (click)="$event.stopPropagation(); toggleContactSelection(contact.did)"
+                  [disabled]="loading() || (!isSelected(contact.did) && isLimitReached)"
+                >
+                  @if (isSelected(contact.did)) {
+                    <ion-icon name="checkmark-circle" class="check-icon"></ion-icon>
+                  } @else {
+                    <div class="uncheck-circle"></div>
+                  }
+                </button>
+
+                <app-avatar [src]="contact.avatarUrl" [handle]="contact.handle" size="md"></app-avatar>
+
+                <div class="contact-info">
+                  <span class="contact-name">{{ contact.displayName || contact.handle }}</span>
+                  <span class="contact-handle">&#64;{{ contact.handle }}</span>
+                </div>
+
+                @if (!isSelected(contact.did) && isLimitReached) {
+                  <span class="limit-badge">Max {{ maxGroupMembers() }} membres</span>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Action Footer (Dynamic DM / Group button) -->
+      @if (selectedDids().length > 0) {
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="submit-btn"
+            [disabled]="loading()"
+            (click)="submitConversation()"
+          >
+            @if (loading()) {
+              <ion-spinner name="crescent"></ion-spinner>
+            } @else if (selectedDids().length === 1) {
+              <ion-icon name="chatbubble-ellipses-outline"></ion-icon>
+              <span>Démarrer la discussion (DM)</span>
+            } @else {
+              <ion-icon name="people-outline"></ion-icon>
+              <span>Créer le groupe ({{ selectedDids().length + 1 }} membres)</span>
+            }
+          </button>
+        </div>
+      }
+    </div>
+  </ng-template>
+</ion-modal>

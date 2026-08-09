@@ -280,6 +280,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     device:         DeviceInfo,
     signal?:        AbortSignal,
     preConsumedKeyPackage?: { keyPackage: string; deviceId: string },
+    memberDids?:    string[],
   ): Promise<void> {
     assertMls(!!participantDid, 'ensureGroupReady: participantDid required', { convId });
     assertMls(!!convId,         'ensureGroupReady: convId required');
@@ -305,7 +306,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
     this.transitionState(convId, ConversationMlsState.Initializing);
     try {
-      await this.mlsSvc.ensureGroupReady(convId, participantDid, user, device, signal, preConsumedKeyPackage);
+      await this.mlsSvc.ensureGroupReady(convId, participantDid, user, device, signal, preConsumedKeyPackage, memberDids);
       this.transitionState(convId, ConversationMlsState.Ready);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {

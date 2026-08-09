@@ -5,6 +5,20 @@
     </ion-buttons>
     @if (loading) {
       <ion-title>{{ 'conversation.loading' | translate }}</ion-title>
+    } @else if (conversation && conversation.type === 'group') {
+      <div class="conv-header conv-header--clickable" (click)="openMembersModal()">
+        <app-avatar
+          [src]="conversation.avatarUrl ?? null"
+          [handle]="groupParticipantNames"
+          size="sm"
+        ></app-avatar>
+        <div class="conv-header__info">
+          <span class="conv-header__name">
+            {{ groupParticipantNames }}
+          </span>
+        </div>
+        <ion-icon name="chevron-forward-outline" class="conv-header__chevron"></ion-icon>
+      </div>
     } @else if (conversation) {
       <div class="conv-header">
         <app-avatar
@@ -70,6 +84,8 @@
             [reactions]="msg.reactions"
             [currentUserId]="currentUserId"
             [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+            [senderName]="senderNameFor(msg)"
+            [senderAvatarUrl]="senderAvatarFor(msg)"
             (reply)="onReplyToMessage(msg)"
             (toggleReaction)="onToggleReaction(msg, $event)"
             (jumpToReply)="onJumpToReply($event)"
@@ -80,7 +96,7 @@
 
     @if ((typingUsers$ | async)?.length) {
       <app-typing-indicator
-        [name]="conversation?.participant?.displayName || conversation?.participant?.handle || ''"
+        [name]="(typingNames$ | async) || ''"
       ></app-typing-indicator>
     }
 
@@ -122,10 +138,17 @@
 <ion-popover #optionsPopover dismissOnSelect="true" [keepContentsMounted]="true">
   <ng-template>
     <div class="popover-menu">
-      <button class="popover-item" (click)="viewProfile()">
-        <ion-icon name="person-outline" class="popover-item__icon"></ion-icon>
-        <span class="popover-item__label">{{ 'conversation.action.profile' | translate }}</span>
-      </button>
+      @if (conversation?.type === 'group') {
+        <button class="popover-item" (click)="openMembersModal()">
+          <ion-icon name="people-outline" class="popover-item__icon"></ion-icon>
+          <span class="popover-item__label">{{ 'conversation.action.view_members' | translate }}</span>
+        </button>
+      } @else {
+        <button class="popover-item" (click)="viewProfile()">
+          <ion-icon name="person-outline" class="popover-item__icon"></ion-icon>
+          <span class="popover-item__label">{{ 'conversation.action.profile' | translate }}</span>
+        </button>
+      }
       @if (environment.features.muteConversation) {
         <button class="popover-item" (click)="toggleMute()">
           <ion-icon [name]="isMuted() ? 'volume-high-outline' : 'volume-mute-outline'" class="popover-item__icon"></ion-icon>
@@ -156,3 +179,12 @@
     </div>
   </ng-template>
 </ion-popover>
+
+@if (conversation?.type === 'group') {
+  <app-group-members-modal
+    [isOpen]="showMembersModal"
+    [members]="conversation?.members ?? []"
+    [selfDid]="selfDid"
+    (closed)="closeMembersModal()"
+  ></app-group-members-modal>
+}

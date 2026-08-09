@@ -485,9 +485,10 @@ describe('MlsMembershipService — commit lock behavior (provisionDevice / remov
       await service.reprovisionLostStateDevice('device-stale', CONV_ID, USER, DEVICE);
 
       expect(mockRepo.postCommit).toHaveBeenCalled();
-      const [, , , welcomeOpt] = mockRepo.postCommit.calls.mostRecent().args as [string, string, number, { targetDeviceId: string; welcome: string }];
-      expect(welcomeOpt.targetDeviceId).toBe('device-stale');
-      expect(welcomeOpt.welcome).toBeTruthy();
+      const [, , , welcomesArg] = mockRepo.postCommit.calls.mostRecent().args as [string, string, number, Array<{ targetDeviceId: string; welcome: string }>];
+      expect(welcomesArg).toHaveSize(1);
+      expect(welcomesArg[0].targetDeviceId).toBe('device-stale');
+      expect(welcomesArg[0].welcome).toBeTruthy();
 
       const finalState = await fakeStorage.load<StoredMlsState>(SCOPE);
       const identities = memberIdentities(finalState!.groupStates[CONV_ID]!);

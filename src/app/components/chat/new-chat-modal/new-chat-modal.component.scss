@@ -1,0 +1,335 @@
+.new-chat-modal {
+  --width: 100%;
+  --max-width: 480px;
+  --height: 85vh;
+  --max-height: 640px;
+  --border-radius: 16px;
+}
+
+.modal-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ion-background-color, #0f172a);
+  color: var(--ion-text-color, #f8fafc);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+
+  .modal-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--ion-color-medium, #94a3b8);
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 50%;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+  }
+}
+
+/* Messenger Style Chips Bar */
+.chips-container {
+  margin-bottom: 12px;
+
+  .chips-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 90px;
+    overflow-y: auto;
+  }
+
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    padding: 4px 8px 4px 4px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: #e2e8f0;
+
+    .chip-name {
+      font-weight: 600;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chip-remove {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      color: #94a3b8;
+      font-size: 1.1rem;
+
+      &:hover {
+        color: #ef4444;
+      }
+    }
+  }
+}
+
+.group-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px;
+  border-radius: 12px;
+
+  .group-name-input {
+    width: 100%;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 0.95rem;
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+      border-color: var(--ion-color-primary, #3b82f6);
+    }
+  }
+
+  .group-counter {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    padding: 0 2px;
+
+    &--limit {
+      color: #f59e0b;
+      font-weight: 600;
+    }
+
+    .counter-note {
+      opacity: 0.7;
+    }
+  }
+}
+
+.search-box {
+  position: relative;
+  margin-bottom: 12px;
+
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #64748b;
+    font-size: 1.1rem;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 10px 12px 10px 38px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+      border-color: var(--ion-color-primary, #3b82f6);
+    }
+  }
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.contacts-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #64748b;
+
+    ion-icon {
+      font-size: 2.5rem;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 0.9rem;
+    }
+  }
+
+  .contact-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .contact-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border-radius: 10px;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .checkbox-button {
+      background: none;
+      border: none;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+
+      .check-icon {
+        color: var(--ion-color-primary, #3b82f6);
+        font-size: 1.4rem;
+      }
+
+      .uncheck-circle {
+        width: 18px;
+        height: 18px;
+        border: 2px solid #64748b;
+        border-radius: 50%;
+      }
+    }
+
+    .contact-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+
+      .contact-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .contact-handle {
+        font-size: 0.8rem;
+        color: #64748b;
+      }
+    }
+
+    &.contact-row--selected {
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    &.contact-row--disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .limit-badge {
+      font-size: 0.75rem;
+      color: #f59e0b;
+      background: rgba(245, 158, 11, 0.15);
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+  }
+}
+
+.modal-footer {
+  margin-top: 12px;
+
+  .submit-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--ion-color-primary, #3b82f6);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s ease;
+
+    ion-icon {
+      font-size: 1.2rem;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    &:hover:not(:disabled) {
+      background: #2563eb;
+    }
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

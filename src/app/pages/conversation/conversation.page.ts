@@ -4,6 +4,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import { firstValueFrom, Observable, Subscription } from 'rxjs';
+import { map } from 'rxjs/operators';
 import {
   IonHeader, IonToolbar, IonTitle, IonContent,
   IonFooter,
@@ -13,13 +14,14 @@ import {
   ToastController,
 } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
+import { GroupMembersModalComponent } from '../../components/chat/group-members-modal/group-members-modal.component';
 import { MessageBubbleComponent } from '../../components/chat/message-bubble/message-bubble.component';
 import { MessageComposerComponent } from '../../components/chat/message-composer/message-composer.component';
 import { TypingIndicatorComponent } from '../../components/chat/typing-indicator/typing-indicator.component';
 import { PresenceService } from '../../core/presence/presence.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ConversationsService } from '../../core/conversation/conversations.service';
-import type { ConversationListItem } from '../../core/conversation/conversation.types';
+import type { ConversationListItem, ConversationParticipant } from '../../core/conversation/conversation.types';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { SocketService } from '../../core/infrastructure/socket.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../core/infrastructure/socket.types';
@@ -49,6 +51,7 @@ import { ROUTES } from '../../core/routes';
     IonButtons, IonBackButton, IonButton,
     IonPopover, IonIcon,
     AvatarComponent,
+    GroupMembersModalComponent,
     MessageBubbleComponent, MessageComposerComponent, TypingIndicatorComponent,
     TranslatePipe,
   ],
@@ -91,6 +94,7 @@ export class ConversationPage implements OnDestroy {
   mlsGroupReady    = true;
   reestablishing   = false;
   typingUsers$!:   Observable<string[]>;
+  typingNames$!:   Observable<string>;
   get receiptStatusForLast(): 'read' | 'delivered' | 'sent' {
     if (this.isLastMessageRead) return 'read';
     if (this.isLastMessageDelivered) return 'delivered';
@@ -130,6 +134,12 @@ export class ConversationPage implements OnDestroy {
       return;
     }
     this.typingUsers$ = this.typingSvc.typingUsers$(currentConvId);
+    this.typingNames$ = this.typingUsers$.pipe(
+      map(dids => dids
+        .map(did => this.resolveMember(did)?.displayName || this.resolveMember(did)?.handle)
+        .filter((n): n is string => !!n)
+        .join(', ')),
+    );
 
     // Reset for the (possibly different) conversation this page instance is now
     // showing — before the MLS catch-up calls below, so a FAILED detected during
@@ -369,10 +379,19 @@ export class ConversationPage implements OnDestroy {
       if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
         this.ensureGroupAbort = new AbortController();
       }
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device, this.ensureGroupAbort.signal);
+      const memberDids = this.conversation?.members?.map(m => m.did);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        this.ensureGroupAbort.signal,
+        undefined,
+        memberDids,
+      );
       const payloadText = MessagePayloadHelper.encodeChatMessage(text, activeReplyTo ?? undefined);
-      const ciphertext  = await this.coordinator.encryptMessage(this.conversationId, payloadText, user, device);
-      const serverMsg   = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
+      const ciphertext   = await this.coordinator.encryptMessage(this.conversationId, payloadText, user, device);
+      const serverMsg    = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
       // Mark as known immediately so the socket handler skips it if it fires before cache write.
       this.knownIds.add(serverMsg.id);
 
@@ -637,6 +656,15 @@ export class ConversationPage implements OnDestroy {
     return null;
   }
 
+  // "Mine" messages are always the same sender (self) regardless of whether
+  // senderDid happens to be populated yet (e.g. an optimistic pending entry) --
+  // only messages from OTHERS need the senderDid check, which is what breaks
+  // a run correctly when a group conversation has multiple non-mine senders.
+  private isSameSender(a: DisplayMessage, b: DisplayMessage): boolean {
+    if (a.isMine !== b.isMine) return false;
+    return a.isMine || a.senderDid === b.senderDid;
+  }
+
   getMessagePosition(index: number): 'first' | 'middle' | 'last' | 'single' {
     const current = this.displayMessages[index];
     if (!current) return 'single';
@@ -644,8 +672,8 @@ export class ConversationPage implements OnDestroy {
     const prev = this.displayMessages[index - 1];
     const next = this.displayMessages[index + 1];
 
-    const isPrevSame = prev && prev.isMine === current.isMine;
-    const isNextSame = next && next.isMine === current.isMine;
+    const isPrevSame = !!prev && this.isSameSender(prev, current);
+    const isNextSame = !!next && this.isSameSender(next, current);
 
     if (isPrevSame && isNextSame) return 'middle';
     if (isPrevSame) return 'last';
@@ -665,6 +693,46 @@ export class ConversationPage implements OnDestroy {
     if (partnerDid) {
       void this.router.navigate([ROUTES.contact(partnerDid)]);
     }
+  }
+
+  showMembersModal = false;
+
+  get selfDid(): string {
+    return this.authSvc.currentUser()?.did ?? '';
+  }
+
+  get groupParticipantNames(): string {
+    const selfDid = this.selfDid;
+    return (this.conversation?.members ?? [])
+      .filter(m => m.did !== selfDid)
+      .map(m => m.displayName || m.handle)
+      .join(', ');
+  }
+
+  resolveMember(did: string | undefined): ConversationParticipant | undefined {
+    if (!did) return undefined;
+    return this.conversation?.members?.find(m => m.did === did);
+  }
+
+  senderNameFor(msg: DisplayMessage): string | null {
+    if (msg.isMine || this.conversation?.type !== 'group') return null;
+    const member = this.resolveMember(msg.senderDid);
+    return member?.displayName || member?.handle || null;
+  }
+
+  senderAvatarFor(msg: DisplayMessage): string | null {
+    if (msg.isMine) return null;
+    return this.resolveMember(msg.senderDid)?.avatarUrl ?? null;
+  }
+
+  openMembersModal(): void {
+    if (this.conversation?.type === 'group') {
+      this.showMembersModal = true;
+    }
+  }
+
+  closeMembersModal(): void {
+    this.showMembersModal = false;
   }
 
   isMuted(): boolean {
@@ -1126,8 +1194,17 @@ export class ConversationPage implements OnDestroy {
       // re-provisioning. Succeeds quickly if another currently-connected
       // device of either account can help; otherwise ensureGroupReady times
       // out on its own bounded poll (~30s) rather than hanging forever.
+      const memberDids = this.conversation?.members?.map(m => m.did);
       await this.coordinator.clearConversationGroup(this.conversationId, user, device);
-      await this.coordinator.ensureGroupReady(this.conversationId, participantDid, user, device);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        undefined,
+        undefined,
+        memberDids,
+      );
       this.mlsGroupReady = true;
       await this.loadHistory();
       this.reestablishing = false;
@@ -1135,6 +1212,14 @@ export class ConversationPage implements OnDestroy {
       return;
     } catch (err) {
       if (!environment.production) console.warn('[Conversation] reestablishEncryption: Option A failed, falling back to recreate:', err);
+    }
+
+    if (this.conversation?.type === 'group') {
+      // Group conversations cannot be recreated via 1:1 recreate endpoint
+      this.error = this.i18n.t('conversation.restore_failed');
+      this.reestablishing = false;
+      this.cdr.detectChanges();
+      return;
     }
 
     // Option B/C fallback (Phase 9, see AUDIT_04/05): no other device could

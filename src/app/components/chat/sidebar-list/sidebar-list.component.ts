@@ -25,6 +25,8 @@ import { TranslationService } from '../../../core/i18n/translation.service';
 import { ROUTES } from '../../../core/routes';
 import { environment } from '../../../../environments/environment';
 
+import { NewChatModalComponent } from '../new-chat-modal/new-chat-modal.component';
+
 const SYNC_INTERVAL_MS = 3 * 60 * 1000;
 
 @Component({
@@ -39,6 +41,7 @@ const SYNC_INTERVAL_MS = 3 * 60 * 1000;
     ConversationItemComponent,
     AvatarComponent,
     TranslatePipe,
+    NewChatModalComponent,
   ],
 })
 export class SidebarListComponent implements OnInit, OnDestroy {
@@ -58,6 +61,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
   loading = false;
   error   = '';
   viewingArchived = false;
+  isNewChatModalOpen = false;
 
   activeTab: 'conversations' | 'contacts' = 'conversations';
 
@@ -191,6 +195,23 @@ export class SidebarListComponent implements OnInit, OnDestroy {
   openArchives(): void {
     this.viewingArchived = true;
     void this.load();
+  }
+
+  openNewChatModal(): void {
+    if (this.bluvyContacts.length === 0) {
+      void this.loadContacts();
+    }
+    this.isNewChatModalOpen = true;
+  }
+
+  closeNewChatModal(): void {
+    this.isNewChatModalOpen = false;
+  }
+
+  onNewConversationCreated(conv: ConversationListItem | { id: string }): void {
+    this.isNewChatModalOpen = false;
+    void this.load();
+    void this.router.navigate([ROUTES.conversation(conv.id)]);
   }
 
   closeArchives(): void {

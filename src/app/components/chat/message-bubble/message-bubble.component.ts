@@ -8,6 +8,7 @@ import type { LinkPreviewMeta } from '../../../core/link-preview/link-preview.ty
 import { EmbedRegistry } from '../../../core/embed/embed-registry.service';
 import { extractAllUrls, classifyMessageLink } from '../../../core/message-link/detect-message-link.util';
 import { EmbedPreviewBlockComponent, type EmbedPreviewEmbed } from '../embed-preview-block/embed-preview-block.component';
+import { AvatarComponent } from '../../ui/avatar/avatar.component';
 
 // One slot per link found in the message, in the same left-to-right order
 // they appear in the text -- populated in place as each resolves (some
@@ -40,7 +41,7 @@ export interface ReactionEntry {
   selector: 'app-message-bubble',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent, TranslatePipe],
+  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent, TranslatePipe, AvatarComponent],
   templateUrl: './message-bubble.component.html',
   styleUrls: ['./message-bubble.component.scss'],
 })
@@ -55,6 +56,8 @@ export class MessageBubbleComponent implements OnChanges {
   @Input() replyTo: MessageReplyTo | null = null;
   @Input() reactions: ReactionMap | undefined = undefined;
   @Input() currentUserId = '';
+  @Input() senderName: string | null = null;
+  @Input() senderAvatarUrl: string | null = null;
 
   @Output() reply = new EventEmitter<void>();
   @Output() toggleReaction = new EventEmitter<string>();
@@ -103,6 +106,12 @@ export class MessageBubbleComponent implements OnChanges {
     const userDids = this.reactions[emoji];
     const names = userDids.map(did => (did === this.currentUserId ? 'Vous' : 'Membre'));
     return names.join(', ');
+  }
+
+  // Only the run's leading bubble shows the sender's avatar/name -- every
+  // "theirs" row still reserves the avatar column so bubbles stay aligned.
+  get showSenderInfo(): boolean {
+    return !this.isMine && (this.position === 'first' || this.position === 'single');
   }
 
   private linkPreviewSvc = inject(LinkPreviewService);
@@ -248,4 +257,3 @@ export class MessageBubbleComponent implements OnChanges {
     this.touchStartX = 0;
   }
 }
-

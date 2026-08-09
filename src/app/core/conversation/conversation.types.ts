@@ -24,18 +24,19 @@ export interface ConversationParticipant {
 export interface ConversationListItem {
   id:                   string;
   type:                 string;
+  name?:                string | null;
+  avatarUrl?:           string | null;
+  ownerDid?:            string | null;
   createdAt:            number;
   lastMessageAt:        number | null;
   lastMessageId:        string | null;
   lastMessageSenderDid: string | null;
   unreadCount:          number;
   participant:          ConversationParticipant;
+  members?:             ConversationParticipant[];
+  memberCount?:         number;
   archived?:            boolean;
   supersededByConversationId?: string | null;
-  // Reverse of supersededByConversationId: set when THIS conversation is
-  // itself the successor of an older recreated one (see backend
-  // getConversationById()). Lets a device that never saw the old
-  // conversation's URL or the live socket event still splice its history in.
   predecessorConversationId?: string | null;
 }
 

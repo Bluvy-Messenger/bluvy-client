@@ -118,9 +118,10 @@ export class KeyPackageService {
     try {
       return await operation();
     } catch (err) {
+      const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
       if (
         err instanceof HttpErrorResponse &&
-        (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES'
+        errCode === 'NO_KEY_PACKAGES'
       ) {
         if (!environment.production) console.warn('[KeyPackageService] NO_KEY_PACKAGES — refilling pool and retrying once');
         await this.refillPool(userDid, deviceId, KP_THRESHOLD);

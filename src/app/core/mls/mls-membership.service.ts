@@ -108,7 +108,8 @@ export class MlsMembershipService {
     try {
       consumed = await this.mlsRepo.consumeOwnKeyPackage(newDeviceId);
     } catch (err) {
-      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
+      const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
+      if (err instanceof HttpErrorResponse && errCode === 'NO_KEY_PACKAGES') {
         console.warn('[MLS] provisionDevice: no key packages for', newDeviceId, '— cannot provision conv', conversationId);
       }
       throw err;
@@ -182,10 +183,10 @@ export class MlsMembershipService {
     // Network: post Welcome and Commit atomically (after the storage lock).
     let stored;
     try {
-      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
+      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, [{
         targetDeviceId: newDeviceId,
         welcome: welcomeB64,
-      });
+      }]);
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 409) {
         console.warn('[MLS] provisionDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
@@ -287,7 +288,8 @@ export class MlsMembershipService {
     try {
       consumed = await this.mlsRepo.consumeOwnKeyPackage(staleDeviceId);
     } catch (err) {
-      if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
+      const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
+      if (err instanceof HttpErrorResponse && errCode === 'NO_KEY_PACKAGES') {
         console.warn('[MLS] reprovisionLostStateDevice: no key packages for', staleDeviceId, '— cannot reprovision conv', conversationId);
       }
       throw err;
@@ -383,10 +385,10 @@ export class MlsMembershipService {
     // Network: post Welcome and Commit atomically (after the storage lock).
     let stored;
     try {
-      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
+      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, [{
         targetDeviceId: staleDeviceId,
         welcome: welcomeB64,
-      });
+      }]);
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 409) {
         console.warn('[MLS] reprovisionLostStateDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);

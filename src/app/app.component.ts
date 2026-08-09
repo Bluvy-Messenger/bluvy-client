@@ -30,6 +30,7 @@ import {
   logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
   // native Bluesky post card
   heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
+  createOutline, closeOutline, closeCircle, alertCircleOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { SocketService } from './core/infrastructure/socket.service';
@@ -97,6 +98,7 @@ export class AppComponent implements OnInit, OnDestroy {
       archiveOutline, folderOpenOutline, notificationsOutline, close,
       logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
       heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
+      createOutline, closeOutline, closeCircle, alertCircleOutline,
     });
   }
 

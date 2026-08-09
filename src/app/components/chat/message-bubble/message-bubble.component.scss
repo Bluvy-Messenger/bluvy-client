@@ -2,14 +2,39 @@
 
 .row {
   display: flex;
-  padding: 3px 0;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 2px 0;
 
   &--mine { justify-content: flex-end; }
 }
 
+.row__avatar {
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.row__col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 72%;
+}
+
+.row__sender-name {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  margin: 0 0 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .bubble-wrapper {
   position: relative;
-  max-width: 76%;
+  width: 100%;
   display: flex;
   flex-direction: column;
 
@@ -181,10 +206,22 @@
   --bubble-pad-y: 10px;
   --bubble-pad-x: 14px;
   padding: var(--bubble-pad-y) var(--bubble-pad-x);
-  overflow: hidden;
+  overflow: hidden; // lets the full-bleed embed below clip to the bubble's own rounded corners
   display: flex;
   flex-direction: column;
   transition: background-color 0.4s ease;
+
+  // A bubble containing a GIF has no reserved bottom inset -- the GIF (and
+  // the overlaid footer pill, see .bubble__footer below) reach the true
+  // bottom edge instead of leaving an empty gap under them. Other embed
+  // types (video/audio players) keep the bubble's normal padding.
+  // Targets app-embed-preview-block (its data-provider mirrors the inner
+  // app-message-embed's) rather than app-message-embed directly -- the
+  // latter is nested one level too deep for this selector to reach under
+  // Angular's emulated view encapsulation.
+  &:has(app-embed-preview-block[data-provider='gif']) {
+    padding-bottom: 0;
+  }
 
   &--highlight {
     animation: flashHighlight 1.5s ease-out;
@@ -319,6 +356,9 @@ app-embed-preview-block {
   margin-top: 8px;
 }
 
+// GIFs only: no border/background/inset of its own (see MessageEmbedComponent)
+// -- pulled out past the bubble's own padding so it reads as part of the
+// bubble, not a card floating inside it.
 app-embed-preview-block[data-provider='gif'] {
   margin: 8px calc(var(--bubble-pad-x) * -1) calc(var(--bubble-pad-y) * -1);
 
@@ -344,7 +384,14 @@ app-embed-preview-block[data-provider='gif'] {
   margin-top: 4px;
 }
 
+// When the footer directly follows a full-bleed GIF, it overlaps the
+// media's bottom edge (see app-embed-preview-block's negative bottom margin
+// above) -- give it a scrim pill so the timestamp stays legible over it.
 app-embed-preview-block[data-provider='gif'] + .bubble__footer {
+  // No bottom margin -- the bubble has no padding-bottom in this case (see
+  // .bubble:has(...) above), so any margin here would show as a strip of
+  // bare bubble background beneath the pill instead of sitting flush on
+  // the true bottom edge.
   margin: 0 6px 0 0;
   padding: 2px 7px;
   border-radius: var(--radius-full);
