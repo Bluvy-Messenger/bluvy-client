@@ -6,6 +6,7 @@ import type { LinkPreviewMeta } from '../../../core/link-preview/link-preview.ty
 import { EmbedRegistry } from '../../../core/embed/embed-registry.service';
 import { extractAllUrls, classifyMessageLink } from '../../../core/message-link/detect-message-link.util';
 import { EmbedPreviewBlockComponent, type EmbedPreviewEmbed } from '../embed-preview-block/embed-preview-block.component';
+import { AvatarComponent } from '../../ui/avatar/avatar.component';
 
 // One slot per link found in the message, in the same left-to-right order
 // they appear in the text -- populated in place as each resolves (some
@@ -28,7 +29,7 @@ const EMPTY_SLOT: Omit<EmbedPreviewSlot, 'key'> = {
   selector: 'app-message-bubble',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent],
+  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent, AvatarComponent],
   templateUrl: './message-bubble.component.html',
   styleUrls: ['./message-bubble.component.scss'],
 })
@@ -39,6 +40,14 @@ export class MessageBubbleComponent implements OnChanges {
   @Input() pending = false;
   @Input() position: 'first' | 'middle' | 'last' | 'single' = 'single';
   @Input() receiptStatus: 'read' | 'delivered' | 'sent' | null = null;
+  @Input() senderName: string | null = null;
+  @Input() senderAvatarUrl: string | null = null;
+
+  // Only the run's leading bubble shows the sender's avatar/name -- every
+  // "theirs" row still reserves the avatar column so bubbles stay aligned.
+  get showSenderInfo(): boolean {
+    return !this.isMine && (this.position === 'first' || this.position === 'single');
+  }
 
   private linkPreviewSvc = inject(LinkPreviewService);
   private embedRegistry  = inject(EmbedRegistry);

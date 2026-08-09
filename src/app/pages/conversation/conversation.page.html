@@ -80,6 +80,8 @@
             [pending]="msg.pending"
             [position]="getMessagePosition(i)"
             [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+            [senderName]="senderNameFor(msg)"
+            [senderAvatarUrl]="senderAvatarFor(msg)"
           ></app-message-bubble>
         }
       </div>
@@ -87,7 +89,7 @@
 
     @if ((typingUsers$ | async)?.length) {
       <app-typing-indicator
-        [name]="conversation?.participant?.displayName || conversation?.participant?.handle || ''"
+        [name]="(typingNames$ | async) || ''"
       ></app-typing-indicator>
     }
 

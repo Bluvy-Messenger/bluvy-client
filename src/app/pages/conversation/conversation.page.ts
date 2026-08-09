@@ -4,6 +4,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import { firstValueFrom, Observable, Subscription } from 'rxjs';
+import { map } from 'rxjs/operators';
 import {
   IonHeader, IonToolbar, IonTitle, IonContent,
   IonFooter,
@@ -20,7 +21,7 @@ import { TypingIndicatorComponent } from '../../components/chat/typing-indicator
 import { PresenceService } from '../../core/presence/presence.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ConversationsService } from '../../core/conversation/conversations.service';
-import type { ConversationListItem } from '../../core/conversation/conversation.types';
+import type { ConversationListItem, ConversationParticipant } from '../../core/conversation/conversation.types';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { SocketService } from '../../core/infrastructure/socket.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../core/infrastructure/socket.types';
@@ -91,6 +92,7 @@ export class ConversationPage implements OnDestroy {
   mlsGroupReady    = true;
   reestablishing   = false;
   typingUsers$!:   Observable<string[]>;
+  typingNames$!:   Observable<string>;
   get receiptStatusForLast(): 'read' | 'delivered' | 'sent' {
     if (this.isLastMessageRead) return 'read';
     if (this.isLastMessageDelivered) return 'delivered';
@@ -130,6 +132,12 @@ export class ConversationPage implements OnDestroy {
       return;
     }
     this.typingUsers$ = this.typingSvc.typingUsers$(currentConvId);
+    this.typingNames$ = this.typingUsers$.pipe(
+      map(dids => dids
+        .map(did => this.resolveMember(did)?.displayName || this.resolveMember(did)?.handle)
+        .filter((n): n is string => !!n)
+        .join(', ')),
+    );
 
     // Reset for the (possibly different) conversation this page instance is now
     // showing — before the MLS catch-up calls below, so a FAILED detected during
@@ -642,6 +650,15 @@ export class ConversationPage implements OnDestroy {
     return null;
   }
 
+  // "Mine" messages are always the same sender (self) regardless of whether
+  // senderDid happens to be populated yet (e.g. an optimistic pending entry) --
+  // only messages from OTHERS need the senderDid check, which is what breaks
+  // a run correctly when a group conversation has multiple non-mine senders.
+  private isSameSender(a: DisplayMessage, b: DisplayMessage): boolean {
+    if (a.isMine !== b.isMine) return false;
+    return a.isMine || a.senderDid === b.senderDid;
+  }
+
   getMessagePosition(index: number): 'first' | 'middle' | 'last' | 'single' {
     const current = this.displayMessages[index];
     if (!current) return 'single';
@@ -649,8 +666,8 @@ export class ConversationPage implements OnDestroy {
     const prev = this.displayMessages[index - 1];
     const next = this.displayMessages[index + 1];
 
-    const isPrevSame = prev && prev.isMine === current.isMine;
-    const isNextSame = next && next.isMine === current.isMine;
+    const isPrevSame = !!prev && this.isSameSender(prev, current);
+    const isNextSame = !!next && this.isSameSender(next, current);
 
     if (isPrevSame && isNextSame) return 'middle';
     if (isPrevSame) return 'last';
@@ -684,6 +701,22 @@ export class ConversationPage implements OnDestroy {
       .filter(m => m.did !== selfDid)
       .map(m => m.displayName || m.handle)
       .join(', ');
+  }
+
+  resolveMember(did: string | undefined): ConversationParticipant | undefined {
+    if (!did) return undefined;
+    return this.conversation?.members?.find(m => m.did === did);
+  }
+
+  senderNameFor(msg: DisplayMessage): string | null {
+    if (msg.isMine || this.conversation?.type !== 'group') return null;
+    const member = this.resolveMember(msg.senderDid);
+    return member?.displayName || member?.handle || null;
+  }
+
+  senderAvatarFor(msg: DisplayMessage): string | null {
+    if (msg.isMine) return null;
+    return this.resolveMember(msg.senderDid)?.avatarUrl ?? null;
   }
 
   openMembersModal(): void {
@@ -924,6 +957,7 @@ export class ConversationPage implements OnDestroy {
       isMine:      msg.isMine,
       createdAt:   msg.createdAt,
       pending:     false,
+      senderDid:   msg.senderDid,
     };
   }
 

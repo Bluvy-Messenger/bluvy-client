@@ -2,13 +2,38 @@
 
 .row {
   display: flex;
+  align-items: flex-end;
+  gap: 6px;
   padding: 2px 0;
 
   &--mine { justify-content: flex-end; }
 }
 
-.bubble {
+.row__avatar {
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.row__col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   max-width: 72%;
+}
+
+.row__sender-name {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  margin: 0 0 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bubble {
+  max-width: 100%;
   --bubble-pad-y: 10px;
   --bubble-pad-x: 14px;
   padding: var(--bubble-pad-y) var(--bubble-pad-x);

@@ -79,4 +79,5 @@ export interface DisplayMessage {
   isMine:      boolean;
   createdAt:   number;
   pending:     boolean;
+  senderDid?:  string;
 }
