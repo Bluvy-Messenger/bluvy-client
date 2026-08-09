@@ -9,6 +9,7 @@ import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import type { GiphyGifSummary } from '../../../core/giphy/giphy.types';
 import { ComposerLinkPreviewComponent } from '../composer-link-preview/composer-link-preview.component';
+import type { MessageReplyTo } from '../../../core/conversation/conversation.types';
 
 @Component({
   selector: 'app-message-composer',
@@ -21,12 +22,14 @@ import { ComposerLinkPreviewComponent } from '../composer-link-preview/composer-
 export class MessageComposerComponent implements OnChanges, OnDestroy {
   @Input() conversationId = '';
   @Input() disabled = false;
+  @Input() replyTo: MessageReplyTo | null = null;
   // A draft recovered from the outbox (see OutboxRepository) after this device
   // was killed between sending a message and confirming it locally. Only
   // applied on an actual change so it doesn't clobber text the user has
   // already started typing since the conversation opened.
   @Input() initialText = '';
   @Output() send = new EventEmitter<string>();
+  @Output() cancelReply = new EventEmitter<void>();
 
   inputText = '';
   readonly gifPickerOpen = signal(false);
