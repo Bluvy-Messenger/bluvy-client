@@ -302,20 +302,16 @@ export class MlsService {
     const commitB64 = this.bytesToBase64(encodeMlsMessage(commit));
     const currentEpoch = Number(initialGroupState.groupContext.epoch); // This is 0!
 
-    await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch, welcomeB64 ? {
-      targetDeviceId: consumedList[0].deviceId,
-      welcome: welcomeB64,
-    } : undefined);
+    // Every invited member's Welcome is stored in the same transaction as the
+    // commit (mirrors the single-recipient DM case, generalized to N) — a
+    // partial delivery (some members added to the tree but never Welcomed)
+    // is no longer possible; storeMlsCommit either stores all of them or the
+    // whole request fails and nothing was added.
+    const welcomes = welcomeB64
+      ? consumedList.map(c => ({ targetDeviceId: c.deviceId, welcome: welcomeB64 }))
+      : undefined;
 
-    if (welcomeB64) {
-      for (let i = 1; i < consumedList.length; i++) {
-        try {
-          await this.mlsRepo.postWelcome(consumedList[i].deviceId, welcomeB64, conversationId);
-        } catch (err) {
-          console.warn(`[MLS] Failed to post welcome to device ${consumedList[i].deviceId}:`, err);
-        }
-      }
-    }
+    await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch, welcomes);
 
     // ── Atomic state write ────────────────────────────────────────────────────
 

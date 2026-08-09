@@ -38,6 +38,16 @@ ion-content {
     font-family: var(--font-sans);
     font-weight: var(--weight-medium);
   }
+
+  &__chevron {
+    flex-shrink: 0;
+    font-size: var(--icon-size-sm, 16px);
+    color: var(--color-text-secondary);
+  }
+
+  &--clickable {
+    cursor: pointer;
+  }
 }
 
 .header-btn {

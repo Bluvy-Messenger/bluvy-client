@@ -183,10 +183,10 @@ export class MlsMembershipService {
     // Network: post Welcome and Commit atomically (after the storage lock).
     let stored;
     try {
-      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
+      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, [{
         targetDeviceId: newDeviceId,
         welcome: welcomeB64,
-      });
+      }]);
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 409) {
         console.warn('[MLS] provisionDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);
@@ -385,10 +385,10 @@ export class MlsMembershipService {
     // Network: post Welcome and Commit atomically (after the storage lock).
     let stored;
     try {
-      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, {
+      stored = await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch!, [{
         targetDeviceId: staleDeviceId,
         welcome: welcomeB64,
-      });
+      }]);
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 409) {
         console.warn('[MLS] reprovisionLostStateDevice: Epoch Conflict (409) detected. Clearing local state to force self-healing.', err);

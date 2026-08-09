@@ -13,6 +13,7 @@ import {
   ToastController,
 } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
+import { GroupMembersModalComponent } from '../../components/chat/group-members-modal/group-members-modal.component';
 import { MessageBubbleComponent } from '../../components/chat/message-bubble/message-bubble.component';
 import { MessageComposerComponent } from '../../components/chat/message-composer/message-composer.component';
 import { TypingIndicatorComponent } from '../../components/chat/typing-indicator/typing-indicator.component';
@@ -48,6 +49,7 @@ import { ROUTES } from '../../core/routes';
     IonButtons, IonBackButton, IonButton,
     IonPopover, IonIcon,
     AvatarComponent,
+    GroupMembersModalComponent,
     MessageBubbleComponent, MessageComposerComponent, TypingIndicatorComponent,
     TranslatePipe,
   ],
@@ -668,6 +670,30 @@ export class ConversationPage implements OnDestroy {
     if (partnerDid) {
       void this.router.navigate([ROUTES.contact(partnerDid)]);
     }
+  }
+
+  showMembersModal = false;
+
+  get selfDid(): string {
+    return this.authSvc.currentUser()?.did ?? '';
+  }
+
+  get groupParticipantNames(): string {
+    const selfDid = this.selfDid;
+    return (this.conversation?.members ?? [])
+      .filter(m => m.did !== selfDid)
+      .map(m => m.displayName || m.handle)
+      .join(', ');
+  }
+
+  openMembersModal(): void {
+    if (this.conversation?.type === 'group') {
+      this.showMembersModal = true;
+    }
+  }
+
+  closeMembersModal(): void {
+    this.showMembersModal = false;
   }
 
   isMuted(): boolean {
