@@ -155,6 +155,14 @@ export class OAuthService {
    * is tracked centrally and surfaced to the user (see AppComponent) rather
    * than failing silently at each call site.
    */
+  /**
+   * Ensures a live ATProto OAuth session for `did`, attempting a restore if
+   * none is cached in memory, and updates `sessionUnavailable` accordingly.
+   * PDS-touching callers (AtprotoRepoService consumers) should use this
+   * instead of reading `session` directly, so a missing/unrestorable session
+   * is tracked centrally and surfaced to the user (see AppComponent) rather
+   * than failing silently at each call site.
+   */
   async ensureSession(did: string): Promise<OAuthSession | null> {
     if (this._session) {
       this.sessionUnavailable.set(false);
@@ -163,6 +171,46 @@ export class OAuthService {
     const restored = await this.tryRestore(did);
     this.sessionUnavailable.set(!restored);
     return restored;
+  }
+
+  /**
+   * ATProto Session Guardian: Guarantees a fully active, refreshed OAuthSession.
+   * Proactively triggers token refresh ('auto') and attempts restore if session is missing.
+   * Throws an explicit error if session cannot be established, preventing silent failures.
+   */
+  async ensureActiveSession(did?: string): Promise<OAuthSession> {
+    let session = this._session;
+    if (!session && did) {
+      session = await this.tryRestore(did);
+    }
+    if (!session) {
+      session = await this.tryHandleInit();
+    }
+    if (!session) {
+      this.sessionUnavailable.set(true);
+      throw new Error('[OAuthService] Aucune session ATProto active disponible. Veuillez vous reconnecter.');
+    }
+
+    try {
+      // Proactively refresh token if near expiry ('auto' handles token expiration check & refresh)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (session as any)['getTokenSet']('auto');
+      this._session = session;
+      this.sessionUnavailable.set(false);
+      return session;
+    } catch (err) {
+      if (!environment.production) console.warn('[OAuthService] Token refresh auto failed, attempting restore for DID:', did, err);
+      if (did) {
+        const restored = await this.tryRestore(did);
+        if (restored) {
+          this._session = restored;
+          this.sessionUnavailable.set(false);
+          return restored;
+        }
+      }
+      this.sessionUnavailable.set(true);
+      throw new Error('[OAuthService] Impossible de rafraîchir la session ATProto.');
+    }
   }
 
   /**

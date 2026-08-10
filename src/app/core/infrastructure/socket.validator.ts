@@ -1,4 +1,4 @@
-import type { ConversationNewPayload, ConversationSupersededPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload, MbkRotatedPayload } from './socket.types';
+import type { ConversationNewPayload, ConversationUpdatedPayload, ConversationSupersededPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload, MbkRotatedPayload } from './socket.types';
 import { isObject } from './validation.util';
 
 export function validateMessageNewPayload(data: MessageNewPayload): MessageNewPayload {
@@ -106,6 +106,12 @@ export function validateConversationNewPayload(data: ConversationNewPayload): Co
   const p = data['participant'];
   if (typeof p['did'] !== 'string') throw new Error('ConversationNewPayload.participant.did: expected string');
   if (typeof p['handle'] !== 'string') throw new Error('ConversationNewPayload.participant.handle: expected string');
+  return data;
+}
+
+export function validateConversationUpdatedPayload(data: ConversationUpdatedPayload): ConversationUpdatedPayload {
+  if (!isObject(data)) throw new Error('ConversationUpdatedPayload: expected object');
+  if (typeof data['id'] !== 'string') throw new Error('ConversationUpdatedPayload.id: expected string');
   return data;
 }
 

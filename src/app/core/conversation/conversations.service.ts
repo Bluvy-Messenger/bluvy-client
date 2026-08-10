@@ -68,6 +68,10 @@ export class ConversationsService {
     return this.repo.createGroupConversation(participantDids, name);
   }
 
+  updateGroupName(id: string, name: string): Observable<ConversationListItem> {
+    return this.repo.updateGroupName(id, name);
+  }
+
   fetchServerConfig(): Observable<{ maxGroupMembers: number }> {
     return this.repo.fetchServerConfig();
   }

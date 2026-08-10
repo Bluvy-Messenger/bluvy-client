@@ -73,6 +73,12 @@ export class ConversationRepository {
     );
   }
 
+  updateGroupName(id: string, name: string): Observable<ConversationListItem> {
+    return from(this.apiClient.patch<ConversationListItem>(`/v1/conversations/${encodeURIComponent(id)}/name`, { name })).pipe(
+      map(mapConversationListItem),
+    );
+  }
+
   fetchServerConfig(): Observable<{ maxGroupMembers: number }> {
     return from(this.apiClient.get<{ maxGroupMembers: number }>('/v1/conversations/config'));
   }

@@ -70,6 +70,31 @@ export interface ConversationNewPayload {
   };
 }
 
+export interface ConversationUpdatedPayload {
+  id:                   string;
+  type:                 string;
+  name?:                string | null;
+  avatarUrl?:           string | null;
+  ownerDid?:            string | null;
+  createdAt:            number;
+  lastMessageAt:        number | null;
+  lastMessageId:        string | null;
+  lastMessageSenderDid: string | null;
+  unreadCount:          number;
+  participant?: {
+    did:         string;
+    handle:      string;
+    displayName: string | null;
+    avatarUrl:   string | null;
+  };
+  members?: Array<{
+    did:         string;
+    handle:      string;
+    displayName: string | null;
+    avatarUrl:   string | null;
+  }>;
+}
+
 // Emitted to every member's currently-connected devices when a conversation
 // is recreated (Root Cause #3 fallback — see AUDIT_02/04/05, Phase 9).
 export interface ConversationSupersededPayload {

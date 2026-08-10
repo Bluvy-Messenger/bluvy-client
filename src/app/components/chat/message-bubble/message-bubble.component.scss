@@ -5,6 +5,12 @@
   align-items: flex-end;
   gap: 6px;
   padding: 2px 0;
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  will-change: transform;
+
+  &--swiping {
+    transition: none !important;
+  }
 
   &--mine { justify-content: flex-end; }
 }
@@ -417,3 +423,46 @@ app-embed-preview-block[data-provider='gif'] + .bubble__footer {
     color: rgba(255, 255, 255, 0.85);
   }
 }
+
+// Mobile responsiveness: keep action bar and emoji pickers within screen bounds
+@media (max-width: 768px) {
+  .row__col {
+    max-width: 85%;
+  }
+
+  .action-bar {
+    left: auto;
+    right: 0;
+
+    &--mine {
+      left: 0;
+      right: auto;
+    }
+  }
+
+  .emoji-popover {
+    top: calc(100% + 4px);
+    bottom: auto;
+    left: 0;
+    right: auto;
+
+    &--mine {
+      left: auto;
+      right: 0;
+    }
+  }
+
+  .emoji-grid-popover {
+    top: calc(100% + 4px);
+    bottom: auto;
+    left: 0;
+    right: auto;
+    width: 190px;
+
+    &--mine {
+      left: auto;
+      right: 0;
+    }
+  }
+}
+

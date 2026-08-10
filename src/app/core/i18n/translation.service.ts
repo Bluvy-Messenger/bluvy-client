@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { TRANSLATIONS } from './translations';
 
-type Locale = 'fr' | 'en';
+export type Locale = 'fr' | 'en';
 
 @Injectable({ providedIn: 'root' })
 export class TranslationService {
@@ -14,6 +14,10 @@ export class TranslationService {
     } else {
       this.locale = navigator.language.toLowerCase().startsWith('fr') ? 'fr' : 'en';
     }
+  }
+
+  currentLocale(): Locale {
+    return this.locale;
   }
 
   setLocale(locale: Locale): void {

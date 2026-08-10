@@ -91,7 +91,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   // chance at the softer fetchAndProcessPendingWelcome self-heal below before
   // escalating to a full FAILED reset.
   private readonly decryptionFailures = new Map<string, number>();
-  private static readonly MAX_DECRYPTION_FAILURES = 1;
+  private static readonly MAX_DECRYPTION_FAILURES = 3;
 
   // Tracks the timestamp when a conversation state became READY on this device.
   // Used to distinguish historical messages (which a new device naturally cannot decrypt)
@@ -599,6 +599,20 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
           return { messageId, conversationId: convId, state: 'pending_decrypt' as const, plaintext: '', errorKind: classified.kind, operationId };
         }
 
+        // Before marking as failed or undecryptable, attempt to fetch & process any pending Welcome for this conversation.
+        try {
+          const healed = await this.fetchAndProcessPendingWelcome(convId, user, device);
+          if (healed) {
+            if (!environment.production) console.log('[MLS:coordinator] decryptMessage: group healed via Welcome, retrying decryption for', messageId);
+            const retriedPlaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
+            this.transitionState(convId, ConversationMlsState.Ready);
+            this.decryptionFailures.set(convId, 0);
+            return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext: retriedPlaintext, operationId };
+          }
+        } catch (healErr) {
+          if (!environment.production) console.warn('[MLS:coordinator] decryptMessage Welcome heal attempt failed:', healErr);
+        }
+
         const readyTime = this.readyTimestamps.get(convId);
         const isHistorical = readyTime !== undefined && createdAt < readyTime - 5000;
 
@@ -612,19 +626,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
             console.warn('[MLS:coordinator]', failures, 'consecutive decryption failures for', convId, '— triggering self-healing recovery');
             this.transitionState(convId, ConversationMlsState.Failed);
             this.scheduleFailedRecovery(convId, user, device);
-          } else {
-            // Trigger background welcome check in case the group was reset or we missed a Welcome.
-            void this.fetchAndProcessPendingWelcome(convId, user, device)
-              .then((ok) => {
-                if (ok) {
-                  if (!environment.production) console.log('[MLS:coordinator] decryptMessage: successfully healed group from pending welcome after decryption failure', convId);
-                  this.transitionState(convId, ConversationMlsState.Ready);
-                  void this.replayPendingDecrypts(convId, user, device);
-                }
-              })
-              .catch((e) => {
-                console.warn('[MLS:coordinator] decryptMessage background welcome check failed', e);
-              });
           }
         }
 

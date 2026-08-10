@@ -298,6 +298,16 @@ export class SidebarListComponent implements OnInit, OnDestroy {
   private setupSocketSubs(): void {
     this.subs.add(this.socketSvc.messageNew$.subscribe(msg => this.onMessageNew(msg)));
     this.subs.add(this.socketSvc.conversationNew$.subscribe(conv => this.onConversationNew(conv)));
+    this.subs.add(
+      this.socketSvc.conversationUpdated$.subscribe(updated => {
+        const idx = this.conversations.findIndex(c => c.id === updated.id);
+        if (idx !== -1) {
+          this.conversations[idx] = { ...this.conversations[idx]!, name: updated.name ?? this.conversations[idx]!.name };
+        } else {
+          void this.load();
+        }
+      }),
+    );
     this.subs.add(this.socketSvc.reconnect$.subscribe(() => void this.load()));
     // Root Cause #3 fallback (see AUDIT_02/04/05): a conversation was just
     // recreated. conversation:new (handled above) adds the successor, but
