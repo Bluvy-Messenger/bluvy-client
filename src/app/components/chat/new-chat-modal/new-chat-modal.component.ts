@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, inject, signal, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ViewChild, inject, signal, OnInit } from '@angular/core';
 import { IonModal, IonIcon, IonSpinner } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -26,6 +26,8 @@ import type { ConversationListItem, ConversationResult } from '../../../core/con
 export class NewChatModalComponent implements OnInit {
   @Input() isOpen = false;
   @Input() bluvyContacts: Contact[] = [];
+
+  @ViewChild(IonModal) private modal?: IonModal;
 
   @Output() closed = new EventEmitter<void>();
   @Output() conversationCreated = new EventEmitter<ConversationListItem | ConversationResult>();
@@ -164,6 +166,16 @@ export class NewChatModalComponent implements OnInit {
     this.groupName.set('');
     this.selectedDids.set([]);
     this.error.set(null);
+    // Dismiss the overlay directly via Ionic's imperative API, rather than
+    // relying solely on the [isOpen] input flowing back down from the parent.
+    // On native Android, closing the modal via the reactive binding while a
+    // router.navigate() fires almost simultaneously (see submitConversation's
+    // success handlers) can race: the parent's `isNewChatModalOpen = false`
+    // update never gets flushed to this component before the outlet swaps
+    // views, leaving the modal's overlay stuck on screen, unusable, on top
+    // of the newly-navigated page underneath. dismiss() acts immediately and
+    // doesn't depend on that binding round-trip.
+    void this.modal?.dismiss();
     this.closed.emit();
   }
 }

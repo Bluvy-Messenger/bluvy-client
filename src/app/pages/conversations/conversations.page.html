@@ -17,6 +17,9 @@
 
       @if (!sidebarList?.viewingArchived) {
         <ion-buttons slot="end">
+          <ion-button (click)="sidebarList?.openNewChatModal()" aria-label="Nouvelle conversation">
+            <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+          </ion-button>
           <ion-button (click)="sidebarList?.openArchives()" [attr.aria-label]="'conversations.archives' | translate">
             <ion-icon slot="icon-only" name="archive-outline"></ion-icon>
           </ion-button>
