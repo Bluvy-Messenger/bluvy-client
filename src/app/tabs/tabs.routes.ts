@@ -66,6 +66,12 @@ export const routes: Routes = [
             .then(m => m.SettingsPrivacyPage),
       },
       {
+        path: 'settings/privacy/badge',
+        loadComponent: () =>
+          import('../pages/settings-badge/settings-badge.page')
+            .then(m => m.SettingsBadgePage),
+      },
+      {
         path: 'settings/privacy/embeds',
         loadComponent: () =>
           import('../pages/settings-embeds/settings-embeds.page')

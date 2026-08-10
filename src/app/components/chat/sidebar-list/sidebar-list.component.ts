@@ -15,6 +15,7 @@ import { ReceiptsService } from '../../../core/receipts/receipts.service';
 import { SocketService } from '../../../core/infrastructure/socket.service';
 import type { MessageNewPayload, ConversationNewPayload } from '../../../core/infrastructure/socket.service';
 import { MessageCacheService } from '../../../core/conversation/message-cache.service';
+import { MessagePayloadHelper } from '../../../core/conversation/message-payload.helper';
 import { BreakpointService } from '../../../core/layout/breakpoint.service';
 import { ContactsService } from '../../../core/contact/contacts.service';
 import type { Contact, BlueskyProfile } from '../../../core/contact/contact.types';
@@ -23,6 +24,8 @@ import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { TranslationService } from '../../../core/i18n/translation.service';
 import { ROUTES } from '../../../core/routes';
 import { environment } from '../../../../environments/environment';
+
+import { NewChatModalComponent } from '../new-chat-modal/new-chat-modal.component';
 
 const SYNC_INTERVAL_MS = 3 * 60 * 1000;
 
@@ -38,6 +41,7 @@ const SYNC_INTERVAL_MS = 3 * 60 * 1000;
     ConversationItemComponent,
     AvatarComponent,
     TranslatePipe,
+    NewChatModalComponent,
   ],
 })
 export class SidebarListComponent implements OnInit, OnDestroy {
@@ -57,6 +61,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
   loading = false;
   error   = '';
   viewingArchived = false;
+  isNewChatModalOpen = false;
 
   activeTab: 'conversations' | 'contacts' = 'conversations';
 
@@ -192,6 +197,23 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     void this.load();
   }
 
+  openNewChatModal(): void {
+    if (this.bluvyContacts.length === 0) {
+      void this.loadContacts();
+    }
+    this.isNewChatModalOpen = true;
+  }
+
+  closeNewChatModal(): void {
+    this.isNewChatModalOpen = false;
+  }
+
+  onNewConversationCreated(conv: ConversationListItem | { id: string }): void {
+    this.isNewChatModalOpen = false;
+    void this.load();
+    void this.router.navigate([ROUTES.conversation(conv.id)]);
+  }
+
   closeArchives(): void {
     this.viewingArchived = false;
     void this.load();
@@ -292,7 +314,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     this.subs.add(
       this.cacheSvc.stored$.subscribe(msg => {
         const conv = this.conversations.find(c => c.lastMessageId === msg.id);
-        if (conv) this.previews.set(msg.id, msg.plaintext);
+        if (conv) this.previews.set(msg.id, this.formatPreview(msg.plaintext));
       }),
     );
   }
@@ -307,7 +329,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     this.sortConversations();
     if (this.cacheSvc.isInitialized()) {
       void this.cacheSvc.getById(msg.id).then(cached => {
-        if (cached) this.previews.set(msg.id, cached.plaintext);
+        if (cached) this.previews.set(msg.id, this.formatPreview(cached.plaintext));
       }).catch(() => {});
     }
   }
@@ -338,8 +360,19 @@ export class SidebarListComponent implements OnInit, OnDestroy {
       if (!conv.lastMessageId) continue;
       const msgId = conv.lastMessageId;
       void this.cacheSvc.getById(msgId).then(cached => {
-        if (cached) this.previews.set(msgId, cached.plaintext);
+        if (cached) this.previews.set(msgId, this.formatPreview(cached.plaintext));
       }).catch(() => {});
     }
+  }
+
+  private formatPreview(plaintext: string): string {
+    const parsed = MessagePayloadHelper.parseMessagePayload(plaintext);
+    if (parsed.type === 'chat') {
+      return parsed.text;
+    }
+    if (parsed.type === 'reaction') {
+      return `A réagi ${parsed.reaction.emoji}`;
+    }
+    return plaintext;
   }
 }

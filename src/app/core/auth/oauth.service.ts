@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
@@ -22,6 +22,18 @@ const OAUTH_SCOPE = `atproto transition:generic rpc:${SERVICE_AUTH_LXM}?aud=${en
 @Injectable({ providedIn: 'root' })
 export class OAuthService {
   private _session: OAuthSession | null = null;
+
+  /**
+   * True once we've confirmed there's no restorable ATProto OAuth session
+   * for the currently authenticated account. Distinct from "not logged in":
+   * AuthService's backend session (Capacitor Preferences-backed) and this
+   * OAuth session (IndexedDB-backed, via @atproto/oauth-client-browser's own
+   * store) are independent credentials that can desync -- e.g. IndexedDB
+   * evicted while Preferences survived. PDS-touching features
+   * (AtprotoRepoService) silently no-op without this session, so
+   * AppComponent watches this signal to prompt the user to reconnect.
+   */
+  readonly sessionUnavailable = signal(false);
 
   async getClient(): Promise<BrowserOAuthClient> {
     if (!_client) {
@@ -107,7 +119,15 @@ export class OAuthService {
     try {
       const client = await this.getClient();
       if (did) {
-        const session = await client.restore(did).catch(() => null);
+        const session = await client.restore(did).catch(err => {
+          // Previously swallowed unconditionally, which made a genuine
+          // failure (revoked/expired refresh_token, DPoP nonce mismatch,
+          // CORS on the PDS's token endpoint, ...) indistinguishable from
+          // "no stored session at all" -- log it so the actual cause is
+          // visible instead of just "restore failed".
+          if (!environment.production) console.error('[OAuthService] client.restore() failed:', err);
+          return null;
+        });
         if (session) {
           this._session = session;
           return session;
@@ -118,10 +138,31 @@ export class OAuthService {
         this._session = result.session;
         return result.session;
       }
-    } catch {
-      // No stored session — normal on first launch.
+    } catch (err) {
+      // No stored session — normal on first launch. But also logged, since
+      // "no stored session" and "found one but restore() threw" look
+      // identical from the caller's side otherwise.
+      if (!environment.production) console.error('[OAuthService] tryRestore() failed:', err);
     }
     return null;
+  }
+
+  /**
+   * Ensures a live ATProto OAuth session for `did`, attempting a restore if
+   * none is cached in memory, and updates `sessionUnavailable` accordingly.
+   * PDS-touching callers (AtprotoRepoService consumers) should use this
+   * instead of reading `session` directly, so a missing/unrestorable session
+   * is tracked centrally and surfaced to the user (see AppComponent) rather
+   * than failing silently at each call site.
+   */
+  async ensureSession(did: string): Promise<OAuthSession | null> {
+    if (this._session) {
+      this.sessionUnavailable.set(false);
+      return this._session;
+    }
+    const restored = await this.tryRestore(did);
+    this.sessionUnavailable.set(!restored);
+    return restored;
   }
 
   /**

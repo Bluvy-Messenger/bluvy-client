@@ -1,8 +1,4 @@
-import {
-  nativeGetBytes,
-  nativeRemoveItem,
-  nativeSetBytes,
-} from '../conversation/cache/native-secure-storage';
+import { nativeSecureStorage } from '../conversation/cache/native-secure-storage';
 import type { SecureLocalStorage, StoredMbk } from './secure-local-storage.interface';
 
 function mbkKey(userDid: string): string {
@@ -20,11 +16,11 @@ export class NativeSecureLocalStorage implements SecureLocalStorage {
     const combined = new Uint8Array(GENERATION_PREFIX_LENGTH + mbkBytes.length);
     new DataView(combined.buffer).setUint32(0, keyGeneration, false);
     combined.set(mbkBytes, GENERATION_PREFIX_LENGTH);
-    await nativeSetBytes(mbkKey(userDid), combined);
+    await nativeSecureStorage.nativeSetBytes(mbkKey(userDid), combined);
   }
 
   async loadMbk(userDid: string): Promise<StoredMbk | null> {
-    const combined = await nativeGetBytes(mbkKey(userDid));
+    const combined = await nativeSecureStorage.nativeGetBytes(mbkKey(userDid));
     if (!combined) return null;
 
     // Entries written before keyGeneration existed are shorter than the
@@ -39,11 +35,11 @@ export class NativeSecureLocalStorage implements SecureLocalStorage {
   }
 
   async clearMbk(userDid: string): Promise<void> {
-    await nativeRemoveItem(mbkKey(userDid));
+    await nativeSecureStorage.nativeRemoveItem(mbkKey(userDid));
   }
 
   async hasMbk(userDid: string): Promise<boolean> {
-    const bytes = await nativeGetBytes(mbkKey(userDid));
+    const bytes = await nativeSecureStorage.nativeGetBytes(mbkKey(userDid));
     return bytes !== null;
   }
 }

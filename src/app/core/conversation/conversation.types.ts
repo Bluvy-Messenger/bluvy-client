@@ -24,18 +24,19 @@ export interface ConversationParticipant {
 export interface ConversationListItem {
   id:                   string;
   type:                 string;
+  name?:                string | null;
+  avatarUrl?:           string | null;
+  ownerDid?:            string | null;
   createdAt:            number;
   lastMessageAt:        number | null;
   lastMessageId:        string | null;
   lastMessageSenderDid: string | null;
   unreadCount:          number;
   participant:          ConversationParticipant;
+  members?:             ConversationParticipant[];
+  memberCount?:         number;
   archived?:            boolean;
   supersededByConversationId?: string | null;
-  // Reverse of supersededByConversationId: set when THIS conversation is
-  // itself the successor of an older recreated one (see backend
-  // getConversationById()). Lets a device that never saw the old
-  // conversation's URL or the live socket event still splice its history in.
   predecessorConversationId?: string | null;
 }
 
@@ -52,6 +53,22 @@ export interface MessageItem {
 
 export type MessagesPage = Paginated<MessageItem>;
 
+export interface MessageReplyTo {
+  messageId:       string;
+  senderDid:       string;
+  senderHandle?:   string;
+  textSnippet:     string;
+  mediaThumbnail?: string;
+}
+
+export interface ReactionPayload {
+  targetMessageId: string;
+  emoji:           string;
+  action:          'add' | 'remove';
+}
+
+export type ReactionMap = Record<string, string[]>; // emoji -> array of user DIDs
+
 export interface CachedMessage {
   id:                string;
   conversationId:    string;
@@ -65,6 +82,8 @@ export interface CachedMessage {
   deletedAt:         number | null;
   createdAt:         number;
   cachedAt:          number;
+  replyTo?:          MessageReplyTo | null;
+  reactions?:        ReactionMap;
 }
 
 export interface MessageCacheReadResult {
@@ -78,4 +97,8 @@ export interface DisplayMessage {
   isMine:      boolean;
   createdAt:   number;
   pending:     boolean;
+  senderDid?:  string;
+  replyTo?:    MessageReplyTo | null;
+  reactions?:  ReactionMap;
 }
+

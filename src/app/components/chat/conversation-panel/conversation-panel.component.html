@@ -4,16 +4,18 @@
       <span class="panel__name">Chargement...</span>
     } @else if (conversation) {
       <app-avatar
-        [src]="conversation.participant.avatarUrl ?? null"
-        [handle]="conversation.participant.handle"
+        [src]="conversation.type === 'group' ? (conversation.avatarUrl ?? null) : (conversation.participant.avatarUrl ?? null)"
+        [handle]="conversation.type === 'group' ? ((conversation.memberCount || conversation.members?.length || 0) + ' membres') : conversation.participant.handle"
         size="sm"
       ></app-avatar>
       <div class="panel__info">
         <span class="panel__name">
-          {{ conversation.participant.displayName || conversation.participant.handle }}
+          {{ conversation.type === 'group' ? (conversation.name || 'Groupe de discussion') : (conversation.participant.displayName || conversation.participant.handle) }}
         </span>
-        @if ((presenceSvc.status$(conversation.participant.did) | async) === 'online') {
+        @if (conversation.type === 'dm' && (presenceSvc.status$(conversation.participant.did) | async) === 'online') {
           <span class="panel__status">En ligne</span>
+        } @else if (conversation.type === 'group') {
+          <span class="panel__status">{{ conversation.memberCount || conversation.members?.length || 0 }} membres</span>
         }
       </div>
     }
@@ -30,11 +32,18 @@
           <div class="panel__date-sep">{{ label }}</div>
         }
         <app-message-bubble
+          [messageId]="msg.id"
           [text]="msg.displayText"
           [isMine]="msg.isMine"
           [timestamp]="msg.createdAt"
           [pending]="msg.pending"
+          [replyTo]="msg.replyTo ?? null"
+          [reactions]="msg.reactions"
+          [currentUserId]="currentUserId"
           [receiptStatus]="msg.isMine && msg.id === lastSentMessageId && !msg.pending ? receiptStatusForLast : null"
+          (reply)="onReplyToMessage(msg)"
+          (toggleReaction)="onToggleReaction(msg, $event)"
+          (jumpToReply)="onJumpToReply($event)"
         ></app-message-bubble>
       }
 
@@ -64,6 +73,8 @@
     <app-message-composer
       [conversationId]="conversationId"
       [disabled]="sending"
+      [replyTo]="replyingTo"
+      (cancelReply)="replyingTo = null"
       (send)="sendMessage($event)"
     ></app-message-composer>
   </div>

@@ -1,4 +1,4 @@
-import { nativeGetBytes, nativeSetBytes, nativeRemoveItem } from './native-secure-storage';
+import { nativeSecureStorage } from './native-secure-storage';
 import type { IKeyStore } from './message-cache.types';
 
 export class NativeKeyStore implements IKeyStore {
@@ -15,12 +15,12 @@ export class NativeKeyStore implements IKeyStore {
   async getOrCreateKey(): Promise<CryptoKey> {
     if (this.cachedKey) return this.cachedKey;
 
-    let keyBytes = await nativeGetBytes(this.scope);
+    let keyBytes = await nativeSecureStorage.nativeGetBytes(this.scope);
 
     if (!keyBytes) {
       // First run: generate and persist raw key bytes.
       keyBytes = crypto.getRandomValues(new Uint8Array(32)) as Uint8Array<ArrayBuffer>;
-      await nativeSetBytes(this.scope, keyBytes);
+      await nativeSecureStorage.nativeSetBytes(this.scope, keyBytes);
     }
 
     // Import as non-extractable CryptoKey — raw bytes stay in Keystore/Keychain.
@@ -35,7 +35,7 @@ export class NativeKeyStore implements IKeyStore {
   }
 
   async clearKey(): Promise<void> {
-    await nativeRemoveItem(this.scope);
+    await nativeSecureStorage.nativeRemoveItem(this.scope);
     this.cachedKey = null;
   }
 }

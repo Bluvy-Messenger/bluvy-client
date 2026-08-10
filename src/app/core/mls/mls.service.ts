@@ -144,6 +144,7 @@ export class MlsService {
     device:         SessionDevice,
     signal?:        AbortSignal,
     preConsumedKeyPackage?: { keyPackage: string; deviceId: string },
+    memberDids?:    string[],
   ): Promise<void> {
     const scope = this.makeScope(user.did, device.id);
 
@@ -233,35 +234,57 @@ export class MlsService {
     const groupId = new TextEncoder().encode(conversationId);
     const initialGroupState = await createGroup(groupId, selfKP.publicPackage, selfKP.privatePackage, [], cs);
 
-    let consumed: { keyPackage: string; deviceId: string };
-    if (preConsumedKeyPackage) {
-      consumed = preConsumedKeyPackage;
-    } else {
-      try {
-        consumed = await this.mlsRepo.consumeKeyPackage(participantDid);
-      } catch (err) {
-        if (err instanceof HttpErrorResponse && (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES') {
-          throw new Error("This contact hasn't set up encrypted messaging yet. Ask them to open the app.");
+    // Determine target DIDs for MLS group creation
+    let targetDids: string[] = [];
+    if (memberDids && memberDids.length > 0) {
+      targetDids = memberDids.filter(d => d !== user.did);
+    }
+    if (targetDids.length === 0 && participantDid) {
+      targetDids = [participantDid];
+    }
+
+    const consumedList: Array<{ keyPackage: string; deviceId: string; did: string }> = [];
+    const addProposals: ProposalAdd[] = [];
+
+    for (const did of targetDids) {
+      let consumed: { keyPackage: string; deviceId: string };
+      if (preConsumedKeyPackage && did === participantDid) {
+        consumed = preConsumedKeyPackage;
+      } else {
+        try {
+          consumed = await this.mlsRepo.consumeKeyPackage(did);
+        } catch (err) {
+          const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
+          if (err instanceof HttpErrorResponse && errCode === 'NO_KEY_PACKAGES') {
+            if (targetDids.length === 1) {
+              throw new Error("This contact hasn't set up encrypted messaging yet. Ask them to open the app.");
+            }
+            console.warn(`[MLS] Contact ${did} has no key packages uploaded yet.`);
+            continue;
+          }
+          if (targetDids.length === 1) throw err;
+          console.warn(`[MLS] Failed to consume key package for ${did}:`, err);
+          continue;
         }
-        throw err;
+      }
+
+      const decodedKP = decodeMlsMessage(this.base64ToBytes(consumed.keyPackage), 0)?.[0];
+      if (decodedKP && decodedKP.wireformat === 'mls_key_package') {
+        addProposals.push({
+          proposalType: 'add',
+          add:          { keyPackage: decodedKP.keyPackage },
+        });
+        consumedList.push({ ...consumed, did });
       }
     }
 
-    const decodedKP = decodeMlsMessage(this.base64ToBytes(consumed.keyPackage), 0)?.[0];
-    if (!decodedKP || decodedKP.wireformat !== 'mls_key_package') {
-      throw new Error('Invalid key package received from server');
+    if (addProposals.length === 0) {
+      throw new Error("No valid key packages available for participants. Ask them to open the app.");
     }
-    const _sha256_6a = await this._sha256hex(this.base64ToBytes(consumed.keyPackage));
-    if (!environment.production) console.log(`[MLS:trace:6a] consumed KP from backend  deviceId=${consumed.deviceId}  sha256=${_sha256_6a}  b64fp=${consumed.keyPackage.substring(0, 48)}`);
 
-    const addProposal: ProposalAdd = {
-      proposalType: 'add',
-      add:          { keyPackage: decodedKP.keyPackage },
-    };
-    if (!environment.production) console.log(`[MLS:trace:6b] createCommit using addProposal  b64fp=${consumed.keyPackage.substring(0, 48)}`);
     const { newState: groupState, welcome, commit } = await createCommit(
       { state: initialGroupState, cipherSuite: cs },
-      { extraProposals: [addProposal], wireAsPublicMessage: true, ratchetTreeExtension: true },
+      { extraProposals: addProposals, wireAsPublicMessage: true, ratchetTreeExtension: true },
     );
 
     if (welcome) {
@@ -279,10 +302,16 @@ export class MlsService {
     const commitB64 = this.bytesToBase64(encodeMlsMessage(commit));
     const currentEpoch = Number(initialGroupState.groupContext.epoch); // This is 0!
 
-    await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch, welcomeB64 ? {
-      targetDeviceId: consumed.deviceId,
-      welcome: welcomeB64,
-    } : undefined);
+    // Every invited member's Welcome is stored in the same transaction as the
+    // commit (mirrors the single-recipient DM case, generalized to N) — a
+    // partial delivery (some members added to the tree but never Welcomed)
+    // is no longer possible; storeMlsCommit either stores all of them or the
+    // whole request fails and nothing was added.
+    const welcomes = welcomeB64
+      ? consumedList.map(c => ({ targetDeviceId: c.deviceId, welcome: welcomeB64 }))
+      : undefined;
+
+    await this.mlsRepo.postCommit(conversationId, commitB64, currentEpoch, welcomes);
 
     // ── Atomic state write ────────────────────────────────────────────────────
 

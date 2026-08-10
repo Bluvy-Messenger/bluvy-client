@@ -5,6 +5,29 @@ import { environment } from '../../../environments/environment';
 import type { EmbedPreferencesRecord } from '../embed/embed-preferences.types';
 
 const EMBED_PREFERENCES_COLLECTION = 'com.bluvy.preferences.embeds';
+const EMOJI_PREFERENCES_COLLECTION = 'com.bluvy.preferences.emojis';
+const DECLARATION_COLLECTION = 'com.bluvy.declaration';
+
+// Single source of truth for the URL published in com.bluvy.declaration --
+// always bluvy.app, dev included (see publishDeclaration), so this is also
+// what KeyPackageService.syncDeclaration() checks the live PDS record
+// against when verifying it hasn't drifted (e.g. a stale dev-origin URL
+// published before this constant existed).
+export const BLUVY_MESSAGE_URL = 'https://bluvy.app/message';
+
+export interface BluvyDeclarationRecord {
+  version?: string;
+  messageMe?: {
+    showButtonTo?: string;
+    messageMeUrl?: string;
+  };
+}
+
+export interface EmojiPreferencesRecord {
+  $type?: typeof EMOJI_PREFERENCES_COLLECTION;
+  emojis: string[];
+  updatedAt: string;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AtprotoRepoService {
@@ -20,10 +43,14 @@ export class AtprotoRepoService {
 
   /**
    * Publishes or updates the com.bluvy.declaration record in the user's ATProto repository.
+   *
+   * showButtonTo values must match what bsky-app's BluvyButton reads
+   * (bsky-app/src/state/queries/bluvy.ts) -- 'mutual' means mutual followers
+   * with the profile owner, same population as this app's "contacts".
    */
   async publishDeclaration(
     currentKey: Uint8Array,
-    showButtonTo: 'none' | 'usersIFollow' | 'everyone' = 'everyone'
+    showButtonTo: 'nothing' | 'mutual' | 'everyone' = 'everyone'
   ): Promise<void> {
     const agent = this.getAgent();
     if (!agent || !this.oauth.session?.sub) {
@@ -31,8 +58,11 @@ export class AtprotoRepoService {
     }
 
     const repo = this.oauth.session.sub;
-    const cleanOrigin = window.location.origin.endsWith('/') ? window.location.origin.slice(0, -1) : window.location.origin;
-    const messageMeUrl = environment.production ? 'https://bluvy.app/message' : `${cleanOrigin}/message`;
+    // Always bluvy.app, even in dev: this URL is published publicly on the
+    // user's PDS and read by third-party clients (e.g. bsky-app), which have
+    // no notion of "this dev server's origin" -- a loopback URL here would be
+    // dead on arrival for anyone but the developer's own machine.
+    const messageMeUrl = BLUVY_MESSAGE_URL;
 
     const record = {
       version: environment.version,
@@ -45,7 +75,7 @@ export class AtprotoRepoService {
 
     await agent.com.atproto.repo.putRecord({
       repo,
-      collection: 'com.bluvy.declaration',
+      collection: DECLARATION_COLLECTION,
       rkey: 'self',
       record
     });
@@ -64,11 +94,33 @@ export class AtprotoRepoService {
     try {
       await agent.com.atproto.repo.deleteRecord({
         repo,
-        collection: 'com.bluvy.declaration',
+        collection: DECLARATION_COLLECTION,
         rkey: 'self'
       });
     } catch (err) {
       // Ignore if record already deleted or doesn't exist
+    }
+  }
+
+  /**
+   * Fetches the com.bluvy.declaration record from the user's ATProto
+   * repository. Returns null both when the record doesn't exist yet and when
+   * it can't be reached (network/PDS failure) -- callers fall back to
+   * whatever they already have cached locally.
+   */
+  async getDeclaration(): Promise<BluvyDeclarationRecord | null> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) return null;
+
+    try {
+      const res = await agent.com.atproto.repo.getRecord({
+        repo: this.oauth.session.sub,
+        collection: DECLARATION_COLLECTION,
+        rkey: 'self',
+      });
+      return res.data.value as unknown as BluvyDeclarationRecord;
+    } catch {
+      return null;
     }
   }
 
@@ -109,6 +161,48 @@ export class AtprotoRepoService {
     await agent.com.atproto.repo.putRecord({
       repo: this.oauth.session.sub,
       collection: EMBED_PREFERENCES_COLLECTION,
+      rkey: 'self',
+      record: record as unknown as Record<string, unknown>,
+    });
+  }
+
+  /**
+   * Fetches the com.bluvy.preferences.emojis record from the user's ATProto repository.
+   */
+  async getEmojiPreferences(): Promise<EmojiPreferencesRecord | null> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) return null;
+
+    try {
+      const res = await agent.com.atproto.repo.getRecord({
+        repo: this.oauth.session.sub,
+        collection: EMOJI_PREFERENCES_COLLECTION,
+        rkey: 'self',
+      });
+      return res.data.value as unknown as EmojiPreferencesRecord;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Writes the com.bluvy.preferences.emojis record to the user's ATProto repository.
+   */
+  async putEmojiPreferences(emojis: string[]): Promise<void> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) {
+      throw new Error('No active ATProto session');
+    }
+
+    const record: EmojiPreferencesRecord = {
+      $type: EMOJI_PREFERENCES_COLLECTION,
+      emojis,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await agent.com.atproto.repo.putRecord({
+      repo: this.oauth.session.sub,
+      collection: EMOJI_PREFERENCES_COLLECTION,
       rkey: 'self',
       record: record as unknown as Record<string, unknown>,
     });

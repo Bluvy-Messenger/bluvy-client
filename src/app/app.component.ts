@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform, ToastController } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform, ToastController, AlertController } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
@@ -30,8 +30,10 @@ import {
   logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
   // native Bluesky post card
   heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
+  createOutline, closeOutline, closeCircle, alertCircleOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
+import { OAuthService } from './core/auth/oauth.service';
 import { SocketService } from './core/infrastructure/socket.service';
 import { DeviceProvisioningService } from './core/device/device-provisioning.service';
 import { KeyPackageService } from './core/mls/key-package/key-package.service';
@@ -57,6 +59,8 @@ import type { WelcomeNewPayload } from './core/infrastructure/socket.types';
 })
 export class AppComponent implements OnInit, OnDestroy {
   private authSvc      = inject(AuthService);
+  private oauthSvc     = inject(OAuthService);
+  private alertCtrl    = inject(AlertController);
   private socketSvc    = inject(SocketService);
   private provisionSvc = inject(DeviceProvisioningService);
   private kpSvc        = inject(KeyPackageService);
@@ -97,9 +101,25 @@ export class AppComponent implements OnInit, OnDestroy {
       archiveOutline, folderOpenOutline, notificationsOutline, close,
       logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
       heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
+      createOutline, closeOutline, closeCircle, alertCircleOutline,
+    });
+
+    // OAuthService.sessionUnavailable flips true when a PDS-touching feature
+    // (declaration sync, embed prefs, badge visibility) found the backend
+    // session valid but couldn't restore an ATProto OAuth session for it --
+    // two independent credentials that can desync. Only a fresh interactive
+    // OAuth authorization (PKCE redirect) can fix that, so prompt once per
+    // app session rather than failing silently at each call site.
+    effect(() => {
+      const unavailable = this.oauthSvc.sessionUnavailable();
+      if (unavailable && this.authSvc.isAuthenticated() && !this.reconnectPrompted) {
+        this.reconnectPrompted = true;
+        void this.promptReconnectAtproto();
+      }
     });
   }
 
+  private reconnectPrompted = false;
   private subs = new Subscription();
 
   ngOnInit(): void {
@@ -278,5 +298,31 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subs.unsubscribe();
+  }
+
+  private async promptReconnectAtproto(): Promise<void> {
+    const handle = this.authSvc.currentUser()?.handle;
+    if (!handle) return;
+
+    const alert = await this.alertCtrl.create({
+      header:  this.i18n.t('atproto.reconnect.title'),
+      message: this.i18n.t('atproto.reconnect.message'),
+      buttons: [
+        {
+          text: this.i18n.t('atproto.reconnect.later'),
+          role: 'cancel',
+        },
+        {
+          text: this.i18n.t('atproto.reconnect.confirm'),
+          handler: () => {
+            // Allow re-prompting if this attempt doesn't actually resolve it
+            // (e.g. the user cancels the OAuth redirect).
+            this.reconnectPrompted = false;
+            void this.oauthSvc.signIn(handle);
+          },
+        },
+      ],
+    });
+    await alert.present();
   }
 }

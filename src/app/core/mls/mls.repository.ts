@@ -59,10 +59,6 @@ export class MlsRepository {
     return validateConsumedKeyPackageResponse(raw);
   }
 
-  postWelcome(targetDeviceId: string, welcome: string, conversationId: string): Promise<unknown> {
-    return this.apiClient.post('/v1/welcome', { targetDeviceId, welcome, conversationId });
-  }
-
   async getPendingWelcomes(conversationId: string): Promise<PendingWelcomesResponse> {
     const raw = await this.apiClient.get<PendingWelcomesResponse>(
       '/v1/welcome/pending',
@@ -95,11 +91,11 @@ export class MlsRepository {
     conversationId: string,
     commit: string,
     epoch: number,
-    welcome?: { targetDeviceId: string; welcome: string },
+    welcomes?: Array<{ targetDeviceId: string; welcome: string }>,
   ): Promise<MlsCommitItem> {
     const raw = await this.apiClient.post(
       `/v1/conversations/${encodeURIComponent(conversationId)}/mls-commit`,
-      { commit, epoch, welcome },
+      { commit, epoch, welcomes },
     );
     return validatePostCommitResponse(raw);
   }

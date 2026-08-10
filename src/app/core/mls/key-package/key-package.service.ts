@@ -13,7 +13,11 @@ import { environment } from '../../../../environments/environment';
 import { KeyPackageRepository } from './key-package.repository';
 import { MlsStateStorageService } from '../mls-state-storage.service';
 import { MlsCryptoContextService } from '../mls-crypto-context.service';
-import { AtprotoRepoService } from '../../auth/atproto-repo.service';
+import { AtprotoRepoService, BLUVY_MESSAGE_URL } from '../../auth/atproto-repo.service';
+import { OAuthService } from '../../auth/oauth.service';
+import { BadgeVisibilityCacheRepository } from '../../badge/badge-visibility-cache.repository';
+import { DEFAULT_BADGE_VISIBILITY } from '../../badge/badge-visibility.types';
+import { DeclarationVerificationCacheRepository } from '../../badge/declaration-verification-cache.repository';
 import type { KeyPackageCountResponse, KeyPackagePoolStatus } from './key-package.types';
 import type { StoredKeyPackageRecord, StoredMlsState } from '../mls.types';
 
@@ -22,12 +26,21 @@ export type { KeyPackageCountResponse, KeyPackagePoolStatus } from './key-packag
 const KP_TARGET    = 20;
 const KP_THRESHOLD = 10;
 
+// How often syncDeclaration() is allowed to actually read the declaration
+// back from the PDS to verify it hasn't drifted (wrong URL, stale
+// visibility, etc.) when the local device key hasn't changed. Keeps launch
+// time free of an unconditional network round trip on every app open.
+const DECLARATION_VERIFY_INTERVAL_MS = 60 * 60 * 1000; // 1h
+
 @Injectable({ providedIn: 'root' })
 export class KeyPackageService {
-  private readonly kpRepo      = inject(KeyPackageRepository);
-  private readonly cryptoCtx   = inject(MlsCryptoContextService);
-  private readonly atprotoRepo = inject(AtprotoRepoService);
-  private readonly storage     = inject(MlsStateStorageService);
+  private readonly kpRepo        = inject(KeyPackageRepository);
+  private readonly cryptoCtx     = inject(MlsCryptoContextService);
+  private readonly atprotoRepo   = inject(AtprotoRepoService);
+  private readonly oauth         = inject(OAuthService);
+  private readonly storage       = inject(MlsStateStorageService);
+  private readonly badgeCache    = inject(BadgeVisibilityCacheRepository);
+  private readonly verifyCache   = inject(DeclarationVerificationCacheRepository);
 
   private _poolStatus:   KeyPackagePoolStatus = 'idle';
   private ensurePromise?: Promise<void>;
@@ -72,33 +85,110 @@ export class KeyPackageService {
     await this.appendKeyPackagesToState(userDid, deviceId, generated);
   }
 
+  /**
+   * Keeps com.bluvy.declaration in sync with this device's current MLS key
+   * and the user's saved badge-visibility preference. Called at every app
+   * launch / session restore (see AuthService), so it's split into two
+   * cheap-by-default checks rather than one unconditional network call:
+   *
+   *  1. Local key-hash comparison (sessionStorage) -- catches key rotation
+   *     within this session and publishes unconditionally when it fires,
+   *     since we already know the record must change.
+   *  2. Throttled PDS verification (DeclarationVerificationCacheRepository,
+   *     persisted across relaunches) -- actually reads the live record back
+   *     at most once per hour and republishes if it has drifted from what
+   *     it should be (wrong URL -- e.g. a stale dev-origin messageMeUrl
+   *     published before a prod release -- or a stale showButtonTo). This
+   *     is what guarantees the published URL is eventually always correct
+   *     even if step 1 never fires (key unchanged) or a previous publish
+   *     wrote a bad value.
+   */
   async syncDeclaration(userDid: string, deviceId: string): Promise<void> {
+    const log = (...args: unknown[]) => {
+      if (!environment.production) console.log('[KeyPackageService:syncDeclaration]', ...args);
+    };
+
     try {
-      const state = await this.storage.load<StoredMlsState>(this.cryptoCtx.getStorageScope(userDid, deviceId));
-      if (!state) return;
+      const signatureKey = await this.getCurrentSignatureKey(userDid, deviceId);
+      if (!signatureKey) {
+        log('skipped: no local MLS signature key yet for', userDid, deviceId);
+        return;
+      }
 
-      const rec = state.keyPackages?.find(k => k.serverId !== null);
-      if (!rec) return;
+      // publishDeclaration()/getDeclaration() both silently no-op without a
+      // live ATProto OAuth session (a credential separate from -- and that
+      // can lag behind -- the app's own backend login session). ensureSession()
+      // proactively restores it and flips OAuthService.sessionUnavailable when
+      // it can't, which AppComponent watches to prompt the user to reconnect.
+      const session = await this.oauth.ensureSession(userDid);
+      if (!session) {
+        log('skipped: no ATProto OAuth session available -- cannot read or write the declaration');
+        return;
+      }
 
-      const binary = this.base64ToBytes(rec.serializedKeyPackage);
-      const decoded = decodeMlsMessage(binary, 0);
-      const msg = decoded?.[0];
-      if (!msg || msg.wireformat !== 'mls_key_package') return;
-
-      const signatureKey = msg.keyPackage?.leafNode?.signaturePublicKey;
-      if (!signatureKey) return;
-
-      const cacheKey = `bluvy-published-key-${userDid}`;
-      const cachedHex = sessionStorage.getItem(cacheKey);
+      const keyCacheKey = `bluvy-published-key-${userDid}`;
+      const cachedHex = sessionStorage.getItem(keyCacheKey);
       const currentHex = (Array.from(signatureKey) as number[]).map(x => x.toString(16).padStart(2, '0')).join('');
+      const keyChanged = cachedHex !== currentHex;
 
-      if (cachedHex === currentHex) return;
+      const showButtonTo = (await this.badgeCache.getCached(userDid)) ?? DEFAULT_BADGE_VISIBILITY;
 
-      await this.atprotoRepo.publishDeclaration(signatureKey, 'everyone');
-      sessionStorage.setItem(cacheKey, currentHex);
+      if (keyChanged) {
+        // Key rotated -- we know the record must be rewritten, no need to
+        // read it first.
+        log('device key changed, publishing declaration');
+        await this.atprotoRepo.publishDeclaration(signatureKey, showButtonTo);
+        sessionStorage.setItem(keyCacheKey, currentHex);
+        await this.verifyCache.setVerifiedNow(userDid);
+        return;
+      }
+
+      const lastVerifiedAt = await this.verifyCache.getLastVerifiedAt(userDid);
+      const msSinceVerified = Date.now() - lastVerifiedAt;
+      if (msSinceVerified < DECLARATION_VERIFY_INTERVAL_MS) {
+        log(`skipped: verified ${Math.round(msSinceVerified / 1000)}s ago, within the 1h window`);
+        return;
+      }
+
+      log('verification window elapsed, reading declaration from PDS');
+      const record = await this.atprotoRepo.getDeclaration();
+      const isCorrect =
+        !!record &&
+        record.messageMe?.messageMeUrl === BLUVY_MESSAGE_URL &&
+        record.messageMe?.showButtonTo === showButtonTo;
+
+      if (!isCorrect) {
+        log('declaration drifted (record:', record, ') -- republishing');
+        await this.atprotoRepo.publishDeclaration(signatureKey, showButtonTo);
+      } else {
+        log('declaration already correct');
+      }
+      await this.verifyCache.setVerifiedNow(userDid);
     } catch (err) {
       if (!environment.production) console.error('[KeyPackageService] syncDeclaration failed:', err);
     }
+  }
+
+  /**
+   * Extracts the current device's MLS leaf-node signature public key (the
+   * same value syncDeclaration() publishes as com.bluvy.declaration's
+   * currentKey) without touching the PDS. Used by BadgeVisibilityService to
+   * republish the declaration immediately when the user changes their
+   * visibility preference, independent of the key-rotation-triggered sync.
+   */
+  async getCurrentSignatureKey(userDid: string, deviceId: string): Promise<Uint8Array | null> {
+    const state = await this.storage.load<StoredMlsState>(this.cryptoCtx.getStorageScope(userDid, deviceId));
+    if (!state) return null;
+
+    const rec = state.keyPackages?.find(k => k.serverId !== null);
+    if (!rec) return null;
+
+    const binary = this.base64ToBytes(rec.serializedKeyPackage);
+    const decoded = decodeMlsMessage(binary, 0);
+    const msg = decoded?.[0];
+    if (!msg || msg.wireformat !== 'mls_key_package') return null;
+
+    return msg.keyPackage?.leafNode?.signaturePublicKey ?? null;
   }
 
   private base64ToBytes(value: string): Uint8Array {
@@ -118,9 +208,10 @@ export class KeyPackageService {
     try {
       return await operation();
     } catch (err) {
+      const errCode = (err as { error?: { error?: { code?: string }; code?: string } })?.error?.error?.code || (err as { error?: { code?: string } })?.error?.code;
       if (
         err instanceof HttpErrorResponse &&
-        (err.error as { code?: string })?.code === 'NO_KEY_PACKAGES'
+        errCode === 'NO_KEY_PACKAGES'
       ) {
         if (!environment.production) console.warn('[KeyPackageService] NO_KEY_PACKAGES — refilling pool and retrying once');
         await this.refillPool(userDid, deviceId, KP_THRESHOLD);

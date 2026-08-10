@@ -21,4 +21,8 @@ export class SettingsPrivacyPage {
   openEmbeds(): void {
     void this.router.navigate([ROUTES.settingsEmbeds]);
   }
+
+  openBadge(): void {
+    void this.router.navigate([ROUTES.settingsBadge]);
+  }
 }
