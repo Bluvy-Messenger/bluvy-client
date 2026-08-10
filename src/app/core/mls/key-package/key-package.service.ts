@@ -15,6 +15,7 @@ import { MlsStateStorageService } from '../mls-state-storage.service';
 import { MlsCryptoContextService } from '../mls-crypto-context.service';
 import { AtprotoRepoService, BLUVY_MESSAGE_URL } from '../../auth/atproto-repo.service';
 import { OAuthService } from '../../auth/oauth.service';
+import { DidSignerService } from '../../auth/did-signer.service';
 import { BadgeVisibilityCacheRepository } from '../../badge/badge-visibility-cache.repository';
 import { DEFAULT_BADGE_VISIBILITY } from '../../badge/badge-visibility.types';
 import { DeclarationVerificationCacheRepository } from '../../badge/declaration-verification-cache.repository';
@@ -38,6 +39,7 @@ export class KeyPackageService {
   private readonly cryptoCtx     = inject(MlsCryptoContextService);
   private readonly atprotoRepo   = inject(AtprotoRepoService);
   private readonly oauth         = inject(OAuthService);
+  private readonly didSigner      = inject(DidSignerService);
   private readonly storage       = inject(MlsStateStorageService);
   private readonly badgeCache    = inject(BadgeVisibilityCacheRepository);
   private readonly verifyCache   = inject(DeclarationVerificationCacheRepository);
@@ -68,7 +70,13 @@ export class KeyPackageService {
     const generated = await this.generateKeyPackages(userDid, deviceId, count);
     if (generated.length === 0) return;
 
-    const uploaded = await this.kpRepo.upload(generated.map(r => r.serializedKeyPackage));
+    const kpList = generated.map(r => r.serializedKeyPackage);
+    const signedPayload = await this.didSigner.signPayload(kpList, userDid).catch(err => {
+      if (!environment.production) console.warn('[KeyPackageService] DID signature creation skipped/failed:', err);
+      return undefined;
+    });
+
+    const uploaded = await this.kpRepo.upload(kpList, signedPayload);
 
     const idsByPayload = new Map(uploaded.data.map(item => [item.keyPackage, item.id]));
     generated.forEach(r => {
@@ -76,7 +84,7 @@ export class KeyPackageService {
     });
 
     if (!environment.production) {
-      console.log(`[MLS:trace:3] refillPool  uploading ${generated.length} KP(s)`);
+      console.log(`[MLS:trace:3] refillPool  uploading ${generated.length} KP(s) (signed: ${!!signedPayload})`);
       generated.forEach((r, i) => {
         console.log(`[MLS:trace:3]   index=${i}  serverId=${r.serverId}  b64fp=${r.serializedKeyPackage.substring(0, 48)}`);
       });

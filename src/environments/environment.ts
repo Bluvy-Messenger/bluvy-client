@@ -1,6 +1,6 @@
 export const environment = {
   production:    false,
-  version:       '1.0.15.1',
+  version:       '1.0.15.2',
   apiUrl:        'http://localhost:3000',
   socketUrl:     'http://localhost:3000',
   oauthClientId: 'http://localhost',

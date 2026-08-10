@@ -736,6 +736,20 @@ export class ConversationPage implements OnDestroy {
     this.showMembersModal = false;
   }
 
+  onRenameGroup(newName: string): void {
+    if (!this.conversationId || !this.conversation || this.conversation.type !== 'group') return;
+    this.convSvc.updateGroupName(this.conversationId, newName).subscribe({
+      next: (updated) => {
+        if (this.conversation) {
+          this.conversation = { ...this.conversation, name: updated.name };
+        }
+      },
+      error: (err) => {
+        if (!environment.production) console.error('[ConversationPage] updateGroupName failed:', err);
+      },
+    });
+  }
+
   isMuted(): boolean {
     return localStorage.getItem('muted_conv_' + this.conversationId) === 'true';
   }
@@ -923,6 +937,14 @@ export class ConversationPage implements OnDestroy {
           await this.loadHistory();
         } catch (err) {
           if (!environment.production) console.error('[MLS] processWelcome failed:', err);
+        }
+      }),
+    );
+
+    this.subs.add(
+      this.socketSvc.conversationUpdated$.subscribe(updated => {
+        if (updated.id === this.conversationId && this.conversation) {
+          this.conversation = { ...this.conversation, name: updated.name };
         }
       }),
     );

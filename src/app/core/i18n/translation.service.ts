@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { TRANSLATIONS } from './translations';
 
-type Locale = 'fr' | 'en';
+export type Locale = 'fr' | 'en';
 
 @Injectable({ providedIn: 'root' })
 export class TranslationService {
@@ -16,9 +16,17 @@ export class TranslationService {
     }
   }
 
-  setLocale(locale: Locale): void {
+  currentLocale(): Locale {
+    return this.locale;
+  }
+
+  setLocale(locale: Locale, reload = true): void {
+    if (this.locale === locale) return;
+    this.locale = locale;
     localStorage.setItem('bluvy_locale', locale);
-    window.location.reload();
+    if (reload) {
+      window.location.reload();
+    }
   }
 
   t(key: string, params?: Record<string, string | number>): string {

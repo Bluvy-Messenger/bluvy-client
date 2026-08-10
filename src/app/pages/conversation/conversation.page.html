@@ -185,6 +185,8 @@
     [isOpen]="showMembersModal"
     [members]="conversation?.members ?? []"
     [selfDid]="selfDid"
+    [groupName]="conversation?.name ?? null"
     (closed)="closeMembersModal()"
+    (renameGroup)="onRenameGroup($event)"
   ></app-group-members-modal>
 }

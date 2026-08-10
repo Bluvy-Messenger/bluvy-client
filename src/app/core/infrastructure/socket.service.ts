@@ -7,7 +7,7 @@ import type {
   MessageNewPayload, WelcomeNewPayload, DeviceNewPayload, MlsCommitPayload,
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
-  ConversationNewPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
+  ConversationNewPayload, ConversationUpdatedPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
   MbkRotatedPayload,
   SendAck,
 } from './socket.types';
@@ -24,6 +24,7 @@ import {
   validateReceiptUpdatePayload,
   validateReceiptDeliveredPayload,
   validateConversationNewPayload,
+  validateConversationUpdatedPayload,
   validateConversationSupersededPayload,
   validateMlsRefillKeyPackagesPayload,
   validateDeviceRevokedPayload,
@@ -57,6 +58,7 @@ export class SocketService {
   private readonly _receiptUpdate       = new Subject<ReceiptUpdatePayload>();
   private readonly _receiptDelivered    = new Subject<ReceiptDeliveredPayload>();
   private readonly _conversationNew     = new Subject<ConversationNewPayload>();
+  private readonly _conversationUpdated = new Subject<ConversationUpdatedPayload>();
   private readonly _conversationSuperseded = new Subject<ConversationSupersededPayload>();
   private readonly _reconnect           = new Subject<void>();
   private readonly _connectError        = new Subject<Error>();
@@ -77,6 +79,7 @@ export class SocketService {
   readonly receiptUpdate$:       Observable<ReceiptUpdatePayload>       = this._receiptUpdate.asObservable();
   readonly receiptDelivered$:    Observable<ReceiptDeliveredPayload>    = this._receiptDelivered.asObservable();
   readonly conversationNew$:     Observable<ConversationNewPayload>     = this._conversationNew.asObservable();
+  readonly conversationUpdated$: Observable<ConversationUpdatedPayload> = this._conversationUpdated.asObservable();
   readonly conversationSuperseded$: Observable<ConversationSupersededPayload> = this._conversationSuperseded.asObservable();
   readonly reconnect$:           Observable<void>                       = this._reconnect.asObservable();
   readonly connectError$:        Observable<Error>                      = this._connectError.asObservable();
@@ -174,6 +177,12 @@ export class SocketService {
       let data: ConversationNewPayload;
       try { data = validateConversationNewPayload(raw); } catch { return; }
       this.zone.run(() => this._conversationNew.next(data));
+    });
+
+    this.socket.on(SOCKET_EVENTS.CONVERSATION_UPDATED, (raw: ConversationUpdatedPayload) => {
+      let data: ConversationUpdatedPayload;
+      try { data = validateConversationUpdatedPayload(raw); } catch { return; }
+      this.zone.run(() => this._conversationUpdated.next(data));
     });
 
     this.socket.on(SOCKET_EVENTS.CONVERSATION_SUPERSEDED, (raw: ConversationSupersededPayload) => {

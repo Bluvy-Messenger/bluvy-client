@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -8,9 +8,11 @@ import { TokenRepository } from '../infrastructure/token.repository';
 import { AuthService } from '../auth/auth.service';
 import { ROUTES } from '../routes';
 import { KeyPackageService } from '../mls/key-package/key-package.service';
+import { AppPreferencesSyncService } from '../services/app-preferences-sync.service';
 
 @Injectable({ providedIn: 'root' })
 export class PushNotificationService {
+  private readonly injector  = inject(Injector);
   private readonly apiClient = inject(ApiClientService);
   private readonly tokenRepo = inject(TokenRepository);
   private readonly authSvc   = inject(AuthService);
@@ -148,6 +150,7 @@ export class PushNotificationService {
 
   async setPushEnabled(enabled: boolean): Promise<void> {
     localStorage.setItem('notifications_push_enabled', String(enabled));
+    try { this.injector.get(AppPreferencesSyncService).scheduleSave(); } catch { /* ignore */ }
     if (!Capacitor.isNativePlatform()) {
       return;
     }
@@ -166,6 +169,14 @@ export class PushNotificationService {
 
   isPushEnabled(): boolean {
     return localStorage.getItem('notifications_push_enabled') !== 'false';
+  }
+
+  setPushNotificationsEnabled(enabled: boolean): void {
+    void this.setPushEnabled(enabled);
+  }
+
+  isPushNotificationsEnabled(): boolean {
+    return this.isPushEnabled();
   }
 
   /**
