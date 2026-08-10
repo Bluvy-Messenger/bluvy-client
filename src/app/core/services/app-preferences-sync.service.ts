@@ -45,8 +45,8 @@ export class AppPreferencesSyncService {
         }
 
         // Apply Locale / Language
-        if (pdsRecord.locale) {
-          this.translationSvc.setLocale(pdsRecord.locale as Locale);
+        if (pdsRecord.locale && pdsRecord.locale !== this.translationSvc.currentLocale()) {
+          this.translationSvc.setLocale(pdsRecord.locale as Locale, false);
         }
 
         // Apply Notifications

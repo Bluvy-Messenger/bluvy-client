@@ -20,9 +20,13 @@ export class TranslationService {
     return this.locale;
   }
 
-  setLocale(locale: Locale): void {
+  setLocale(locale: Locale, reload = true): void {
+    if (this.locale === locale) return;
+    this.locale = locale;
     localStorage.setItem('bluvy_locale', locale);
-    window.location.reload();
+    if (reload) {
+      window.location.reload();
+    }
   }
 
   t(key: string, params?: Record<string, string | number>): string {
