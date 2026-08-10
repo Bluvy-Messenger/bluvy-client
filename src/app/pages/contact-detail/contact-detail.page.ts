@@ -126,17 +126,15 @@ export class ContactDetailPage {
     if (!this.blueskyProfile) return;
     
     const userDid = this.authSvc.currentUser()?.did || '';
-    const cleanOrigin = window.location.origin.endsWith('/') ? window.location.origin.slice(0, -1) : window.location.origin;
-    
+
+    // Always bluvy.app, even in dev: these links are shared/scanned by other
+    // people's devices and clients, which have no notion of "this dev server".
+
     // Direct invite containing only the inviter's DID (so others can start a conversation)
-    this.directInviteUrl = environment.production
-      ? `https://bluvy.app/message#${userDid}`
-      : `${cleanOrigin}/message#${userDid}`;
+    this.directInviteUrl = `https://bluvy.app/message#${userDid}`;
 
     // Personal invite linking both user DIDs together
-    this.personalInviteUrl = environment.production
-      ? `https://bluvy.app/message#${userDid}+${this.did}`
-      : `${cleanOrigin}/message#${userDid}+${this.did}`;
+    this.personalInviteUrl = `https://bluvy.app/message#${userDid}+${this.did}`;
 
     this.qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(this.directInviteUrl)}`;
     

@@ -6,7 +6,6 @@ import { AuthService } from '../../core/auth/auth.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
 import { ROUTES } from '../../core/routes';
-import { environment } from '../../../environments/environment';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Browser } from '@capacitor/browser';
@@ -55,10 +54,9 @@ export class ProfilePage {
     const user = this.authSvc.currentUser();
     if (!user) return;
 
-    const cleanOrigin = window.location.origin.endsWith('/') ? window.location.origin.slice(0, -1) : window.location.origin;
-    this.directInviteUrl = environment.production
-      ? `https://bluvy.app/message#${user.did}`
-      : `${cleanOrigin}/message#${user.did}`;
+    // Always bluvy.app, even in dev: shared/scanned by other people's
+    // devices and clients, which have no notion of "this dev server".
+    this.directInviteUrl = `https://bluvy.app/message#${user.did}`;
     this.qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(this.directInviteUrl)}`;
 
     this.loadingBio = true;

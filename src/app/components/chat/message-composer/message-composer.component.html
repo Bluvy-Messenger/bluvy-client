@@ -1,5 +1,28 @@
 <app-composer-link-preview [text]="inputText"></app-composer-link-preview>
 
+@if (replyTo) {
+  <div class="composer__reply-banner">
+    @if (replyTo.mediaThumbnail) {
+      <img [src]="replyTo.mediaThumbnail" class="composer__reply-thumb" alt="Thumbnail" />
+    }
+    <div class="composer__reply-info">
+      <div class="composer__reply-header">
+        <ion-icon name="return-up-back-outline"></ion-icon>
+        <span class="composer__reply-label">{{ 'composer.replyingTo' | translate }} <strong>{{ replyTo.senderHandle || replyTo.senderDid }}</strong></span>
+      </div>
+      <div class="composer__reply-snippet">{{ replyTo.textSnippet }}</div>
+    </div>
+    <button
+      class="composer__reply-cancel"
+      type="button"
+      (click)="cancelReply.emit()"
+      [attr.aria-label]="'common.cancel' | translate"
+    >
+      <ion-icon name="close-outline"></ion-icon>
+    </button>
+  </div>
+}
+
 <div class="composer">
   <button
     class="composer__attach composer__attach--gif"

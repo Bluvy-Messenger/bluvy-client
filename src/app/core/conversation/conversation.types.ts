@@ -53,6 +53,22 @@ export interface MessageItem {
 
 export type MessagesPage = Paginated<MessageItem>;
 
+export interface MessageReplyTo {
+  messageId:       string;
+  senderDid:       string;
+  senderHandle?:   string;
+  textSnippet:     string;
+  mediaThumbnail?: string;
+}
+
+export interface ReactionPayload {
+  targetMessageId: string;
+  emoji:           string;
+  action:          'add' | 'remove';
+}
+
+export type ReactionMap = Record<string, string[]>; // emoji -> array of user DIDs
+
 export interface CachedMessage {
   id:                string;
   conversationId:    string;
@@ -66,6 +82,8 @@ export interface CachedMessage {
   deletedAt:         number | null;
   createdAt:         number;
   cachedAt:          number;
+  replyTo?:          MessageReplyTo | null;
+  reactions?:        ReactionMap;
 }
 
 export interface MessageCacheReadResult {
@@ -79,4 +97,8 @@ export interface DisplayMessage {
   isMine:      boolean;
   createdAt:   number;
   pending:     boolean;
+  senderDid?:  string;
+  replyTo?:    MessageReplyTo | null;
+  reactions?:  ReactionMap;
 }
+

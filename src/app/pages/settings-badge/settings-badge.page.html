@@ -1,0 +1,23 @@
+<div class="ss-header">
+  <button class="ss-back" (click)="goBack()" [attr.aria-label]="'common.back' | translate">
+    <ion-icon name="chevron-back-outline"></ion-icon>
+  </button>
+  <h1>{{ 'badge.settings.title' | translate }}</h1>
+</div>
+
+<ion-content class="ion-padding">
+  <div class="ss-content">
+    <p class="settings-desc">{{ 'badge.settings.desc' | translate }}</p>
+
+    <div class="ss-block">
+      @for (option of options; track option) {
+        <button class="settings-row" (click)="select(option)">
+          <span class="settings-row__label">{{ 'badge.option.' + option + '.label' | translate }}</span>
+          @if (badgeSvc.showButtonTo() === option) {
+            <ion-icon name="checkmark-outline" class="settings-row__chevron"></ion-icon>
+          }
+        </button>
+      }
+    </div>
+  </div>
+</ion-content>

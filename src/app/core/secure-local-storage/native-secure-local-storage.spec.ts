@@ -1,5 +1,5 @@
 import { NativeSecureLocalStorage } from './native-secure-local-storage';
-import * as nativeSecureStorage from '../conversation/cache/native-secure-storage';
+import { nativeSecureStorage } from '../conversation/cache/native-secure-storage';
 
 describe('NativeSecureLocalStorage', () => {
   let storage: NativeSecureLocalStorage;

@@ -1,16 +1,23 @@
 import { Component, Input, OnChanges, SimpleChanges, ChangeDetectionStrategy, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { IonIcon } from '@ionic/angular/standalone';
+import { addIcons } from 'ionicons';
+import { happyOutline, returnUpBackOutline, checkmarkOutline, checkmarkDoneOutline, checkmarkDone } from 'ionicons/icons';
 import { LinkPreviewService } from '../../../core/link-preview/link-preview.service';
 import type { LinkPreviewMeta } from '../../../core/link-preview/link-preview.types';
 import { EmbedRegistry } from '../../../core/embed/embed-registry.service';
 import { extractAllUrls, classifyMessageLink } from '../../../core/message-link/detect-message-link.util';
 import { EmbedPreviewBlockComponent, type EmbedPreviewEmbed } from '../embed-preview-block/embed-preview-block.component';
+import { AvatarComponent } from '../../ui/avatar/avatar.component';
 
 // One slot per link found in the message, in the same left-to-right order
 // they appear in the text -- populated in place as each resolves (some
 // synchronously, the generic OG-scrape case asynchronously) so the stack of
 // cards never reorders itself once a later link's fetch beats an earlier one.
+import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import type { MessageReplyTo, ReactionMap } from '../../../core/conversation/conversation.types';
+import { Output, EventEmitter } from '@angular/core';
+
 interface EmbedPreviewSlot {
   key: string;
   bskyPostUrl: string | null;
@@ -24,21 +31,88 @@ const EMPTY_SLOT: Omit<EmbedPreviewSlot, 'key'> = {
   bskyPostUrl: null, popfeedReviewUrl: null, embed: null, preview: null, previewImageSrc: null,
 };
 
+export interface ReactionEntry {
+  emoji: string;
+  count: number;
+  hasReacted: boolean;
+}
+
 @Component({
   selector: 'app-message-bubble',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent],
+  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent, TranslatePipe, AvatarComponent],
   templateUrl: './message-bubble.component.html',
   styleUrls: ['./message-bubble.component.scss'],
 })
 export class MessageBubbleComponent implements OnChanges {
+  @Input() messageId = '';
   @Input() text = '';
   @Input() isMine = false;
   @Input() timestamp = 0;
   @Input() pending = false;
   @Input() position: 'first' | 'middle' | 'last' | 'single' = 'single';
   @Input() receiptStatus: 'read' | 'delivered' | 'sent' | null = null;
+  @Input() replyTo: MessageReplyTo | null = null;
+  @Input() reactions: ReactionMap | undefined = undefined;
+  @Input() currentUserId = '';
+  @Input() senderName: string | null = null;
+  @Input() senderAvatarUrl: string | null = null;
+
+  @Output() reply = new EventEmitter<void>();
+  @Output() toggleReaction = new EventEmitter<string>();
+  @Output() jumpToReply = new EventEmitter<string>();
+
+  readonly showEmojiPicker = signal(false);
+  readonly showFullPicker  = signal(false);
+  showActions = false;
+  isLongPressActive = false;
+  swipeOffset = 0;
+  private touchStartX = 0;
+  private lastTapTime = 0;
+
+  readonly expandedEmojis = [
+    '😀', '😂', '😍', '🥳', '🤩', '😎', '💩', '🤡', '👻', '🤖',
+    '👍', '👎', '👏', '🙌', '🤝', '👊', '✌️', '🤞', '🤟', '🙏',
+    '❤️', '💔', '💖', '🔥', '✨', '🌟', '💯', '🎉', '🚀', '💡',
+  ];
+
+  constructor() {
+    addIcons({ happyOutline, returnUpBackOutline, checkmarkOutline, checkmarkDoneOutline, checkmarkDone });
+  }
+
+  toggleEmojiPicker(): void {
+    this.showEmojiPicker.update(v => !v);
+    if (!this.showEmojiPicker()) this.showFullPicker.set(false);
+  }
+
+  toggleFullPicker(e: MouseEvent): void {
+    e.stopPropagation();
+    this.showFullPicker.update(v => !v);
+  }
+
+  onBubbleClick(): void {
+    const now = Date.now();
+    if (now - this.lastTapTime < 320) {
+      this.toggleReaction.emit('❤️');
+      this.lastTapTime = 0;
+    } else {
+      this.lastTapTime = now;
+    }
+  }
+
+  getReactorsTooltip(emoji: string): string {
+    if (!this.reactions || !this.reactions[emoji]) return '';
+    const userDids = this.reactions[emoji];
+    const names = userDids.map(did => (did === this.currentUserId ? 'Vous' : 'Membre'));
+    return names.join(', ');
+  }
+
+  // Only the run's leading bubble shows the sender's avatar/name -- every
+  // "theirs" row still reserves the avatar column so bubbles stay aligned.
+  get showSenderInfo(): boolean {
+    return !this.isMine && (this.position === 'first' || this.position === 'single');
+  }
 
   private linkPreviewSvc = inject(LinkPreviewService);
   private embedRegistry  = inject(EmbedRegistry);
@@ -122,5 +196,64 @@ export class MessageBubbleComponent implements OnChanges {
     this.links.update(arr => arr.map((s, i) => i === index ? { ...s, ...patch } : s));
     this.pendingText = this.pendingText.replace(rawMatch, '');
     this.displayText.set(this.pendingText.trim());
+  }
+
+  get reactionEntries(): ReactionEntry[] {
+    if (!this.reactions) return [];
+    const entries: ReactionEntry[] = [];
+    for (const [emoji, users] of Object.entries(this.reactions)) {
+      if (Array.isArray(users) && users.length > 0) {
+        entries.push({
+          emoji,
+          count: users.length,
+          hasReacted: this.currentUserId ? users.includes(this.currentUserId) : false,
+        });
+      }
+    }
+    return entries;
+  }
+
+  onReactionSelect(emoji: string): void {
+    this.toggleReaction.emit(emoji);
+    this.showActions = false;
+    this.showEmojiPicker.set(false);
+    this.showFullPicker.set(false);
+  }
+
+  onReplyClick(): void {
+    this.reply.emit();
+    this.showActions = false;
+    this.showEmojiPicker.set(false);
+    this.showFullPicker.set(false);
+  }
+
+  onQuoteClick(e: MouseEvent): void {
+    e.stopPropagation();
+    if (this.replyTo?.messageId) {
+      this.jumpToReply.emit(this.replyTo.messageId);
+    }
+  }
+
+  onTouchStart(e: TouchEvent): void {
+    if (e.touches.length === 1) {
+      this.touchStartX = e.touches[0].clientX;
+    }
+  }
+
+  onTouchMove(e: TouchEvent): void {
+    if (this.touchStartX > 0 && e.touches.length === 1) {
+      const deltaX = e.touches[0].clientX - this.touchStartX;
+      if (deltaX > 0 && deltaX < 90) {
+        this.swipeOffset = deltaX;
+      }
+    }
+  }
+
+  onTouchEnd(): void {
+    if (this.swipeOffset > 45) {
+      this.onReplyClick();
+    }
+    this.swipeOffset = 0;
+    this.touchStartX = 0;
   }
 }
