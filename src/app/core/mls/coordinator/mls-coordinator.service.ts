@@ -580,6 +580,28 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
           console.error('[MLS:coordinator] decryptMessage error for', messageId, '->', classified.kind, ':', err);
         }
 
+        // FIRST: Before enqueuing as transient or marking as undecryptable, attempt to fetch & process any pending Welcome for this conversation.
+        // If no Welcome is pending, attempt MBK Cloud Restore fallback to recover the group state from another device.
+        try {
+          let healed = await this.fetchAndProcessPendingWelcome(convId, user, device);
+          if (!healed && this.backupRegistry.backupService?.isMbkAvailable()) {
+            const result = await this.backupRegistry.backupService.restore() as any;
+            if (result?.restoredGroupStates && result.restoredGroupStates[convId]) {
+              await this.injectRestoredGroupStates(result.restoredGroupStates, user, device);
+              healed = true;
+            }
+          }
+          if (healed) {
+            if (!environment.production) console.log('[MLS:coordinator] decryptMessage: group healed via Welcome/MBK, retrying decryption for', messageId);
+            const retriedPlaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
+            this.transitionState(convId, ConversationMlsState.Ready);
+            this.decryptionFailures.set(convId, 0);
+            return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext: retriedPlaintext, operationId };
+          }
+        } catch (healErr) {
+          if (!environment.production) console.warn('[MLS:coordinator] decryptMessage Welcome/MBK heal attempt failed:', healErr);
+        }
+
         if (classified instanceof TransientMlsError) {
           await this.pendingRepo.enqueue({
             messageId,
@@ -597,20 +619,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
             conversationId: convId, messageId, errorKind: classified.kind, operationId,
           });
           return { messageId, conversationId: convId, state: 'pending_decrypt' as const, plaintext: '', errorKind: classified.kind, operationId };
-        }
-
-        // Before marking as failed or undecryptable, attempt to fetch & process any pending Welcome for this conversation.
-        try {
-          const healed = await this.fetchAndProcessPendingWelcome(convId, user, device);
-          if (healed) {
-            if (!environment.production) console.log('[MLS:coordinator] decryptMessage: group healed via Welcome, retrying decryption for', messageId);
-            const retriedPlaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
-            this.transitionState(convId, ConversationMlsState.Ready);
-            this.decryptionFailures.set(convId, 0);
-            return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext: retriedPlaintext, operationId };
-          }
-        } catch (healErr) {
-          if (!environment.production) console.warn('[MLS:coordinator] decryptMessage Welcome heal attempt failed:', healErr);
         }
 
         const readyTime = this.readyTimestamps.get(convId);
