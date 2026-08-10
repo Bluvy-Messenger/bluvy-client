@@ -9,6 +9,11 @@
   <div class="ss-content">
     <div class="ss-section">
       <div class="ss-block">
+        <button class="settings-row" (click)="openBadge()">
+          <ion-icon name="eye-outline" class="settings-row__icon"></ion-icon>
+          <span class="settings-row__label">{{ 'privacy.settings.badge_row' | translate }}</span>
+          <ion-icon name="chevron-forward-outline" class="settings-row__chevron"></ion-icon>
+        </button>
         <button class="settings-row" (click)="openEmbeds()">
           <ion-icon name="link-outline" class="settings-row__icon"></ion-icon>
           <span class="settings-row__label">{{ 'privacy.settings.embeds_row' | translate }}</span>

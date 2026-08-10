@@ -26,6 +26,7 @@ export const ROUTES = {
   settingsNotifications: '/settings/notifications',
   settingsPrivacy:    '/settings/privacy',
   settingsEmbeds:     '/settings/privacy/embeds',
+  settingsBadge:      '/settings/privacy/badge',
   settingsSync:       '/settings/sync',
   security:           '/security',
   devices:            '/devices',
