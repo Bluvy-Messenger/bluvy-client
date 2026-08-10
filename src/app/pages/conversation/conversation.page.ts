@@ -702,6 +702,7 @@ export class ConversationPage implements OnDestroy {
   }
 
   get groupParticipantNames(): string {
+    if (this.conversation?.name) return this.conversation.name;
     const selfDid = this.selfDid;
     return (this.conversation?.members ?? [])
       .filter(m => m.did !== selfDid)
