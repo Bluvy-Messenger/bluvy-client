@@ -224,7 +224,19 @@ export class ConversationPage implements OnDestroy {
         try {
           const hadWelcome = await this.coordinator.fetchAndProcessPendingWelcome(currentConvId, user, device);
           if (this.conversationId !== currentConvId) return;
-          if (hadWelcome && this.syncSvc.isMbkAvailable()) {
+
+          // Even with no pending Welcome, this device may simply have no local
+          // MLS group state for this conversation (EMPTY/lost-state case). MBK
+          // restore is an independent recovery path for exactly that -- attempt
+          // it here too, not only after a Welcome. Skip conversations already
+          // known FAILED: those have their own dedicated self-heal path, and a
+          // restore would be a no-op there anyway.
+          const missingGroupState = !hadWelcome
+            && !this.coordinator.isConversationFailed(currentConvId)
+            && !(await this.coordinator.canProvision(currentConvId, user, device));
+          if (this.conversationId !== currentConvId) return;
+
+          if ((hadWelcome || missingGroupState) && this.syncSvc.isMbkAvailable()) {
             const restoreResult = await this.syncSvc.restore();
             if (this.conversationId !== currentConvId) return;
             // AUDIT_01 W2 fast-follow: inject any recovered GroupState snapshot
