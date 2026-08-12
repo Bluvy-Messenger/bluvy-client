@@ -835,14 +835,41 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       'injectRestoredGroupStates: groupStates must be an object');
 
     const operationId = crypto.randomUUID();
+
+    // AUDIT_08 P0: a conversation with a real processWelcome()/ensureGroupReady()
+    // in flight already holds InitializationBarrier -- injecting a restored
+    // candidate for it here would let TRANSITION_REASON_RESTORE force READY
+    // before that real operation has verified anything. Drop those
+    // conversations from this pass entirely rather than injecting a candidate
+    // that could briefly sit in storage un-marked-ready: MlsService's own
+    // "never overwrite an existing groupStates[convId]" check means nothing
+    // is lost by waiting, and the next restore/sweep will retry them once the
+    // real operation releases the barrier.
+    const candidates: Record<string, string> = {};
+    for (const [convId, gs] of Object.entries(groupStates)) {
+      if (this.barrier.isInitializing(convId)) continue;
+      candidates[convId] = gs;
+    }
+
     // Only the conversationIds MlsService actually injected -- it can refuse
     // a candidate whose epoch would regress below what this device already
     // reached (see MlsService.injectRestoredGroupStates), and marking those
     // READY here would paper over that refusal.
-    const injectedIds = await this.mlsSvc.injectRestoredGroupStates(groupStates, user, device);
+    const injectedIds = Object.keys(candidates).length > 0
+      ? await this.mlsSvc.injectRestoredGroupStates(candidates, user, device)
+      : [];
 
     // Mark restored conversations as READY, bypassing normal transition rules.
+    let readyCount = 0;
     for (const convId of injectedIds) {
+      // Second check: a real join/init may have started registering its
+      // barrier during the await above (after the first filter ran). The
+      // group state was already written to storage by MlsService, but the
+      // real operation's own unconditional write will still supersede it
+      // once it completes -- the abstract READY label must not be forced
+      // here while that operation is now in flight for convId.
+      if (this.barrier.isInitializing(convId)) continue;
+
       const from = this.states.get(convId) ?? ConversationMlsState.Empty;
       this.transitionState(convId, ConversationMlsState.Ready, TRANSITION_REASON_RESTORE);
       if (!this.readyTimestamps.has(convId)) {
@@ -850,10 +877,11 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       }
       this.watchdog.watch(convId, ConversationMlsState.Ready);
       this._conversationReady$$.next({ conversationId: convId, from, operationId });
+      readyCount++;
     }
 
     this._restoreCompleted$$.next({
-      conversationCount: injectedIds.length,
+      conversationCount: readyCount,
       operationId,
     });
   }
