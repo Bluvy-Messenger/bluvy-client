@@ -9,6 +9,7 @@ import { PendingDecryptRepository } from '../repositories/pending-decrypt.reposi
 import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
+import type { WelcomeProcessingResult } from '../mls.types';
 
 // Regression coverage for AUDIT_08's P0 finding: MlsCoordinatorService.injectRestoredGroupStates()
 // (mls-coordinator.service.ts:829-859) used to be able to force a conversation
@@ -89,7 +90,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     // this test until we explicitly release it below -- standing in for
     // joinGroup()'s real HPKE crypto work, which runs outside the storage lock
     // and can take real wall-clock time.
-    const welcomeJoin = deferred<void>();
+    const welcomeJoin = deferred<WelcomeProcessingResult>();
     mockMlsSvc.processWelcomeForConversation.and.returnValue(welcomeJoin.promise);
 
     // T0-T4: processWelcome() starts, registers the InitializationBarrier,
@@ -133,7 +134,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     // The real join now finishes -- READY is reached through the NORMAL,
     // fully-validated JOINING -> READY transition (transitionState() with no
     // `reason`, mls-coordinator.service.ts:248), not through the RESTORE bypass.
-    welcomeJoin.resolve();
+    welcomeJoin.resolve('joined');
     tick();
 
     expect(processWelcomeSettled).toBe(true);
@@ -144,7 +145,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     const convId = 'conv-race-a-retry';
 
     mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(false));
-    const welcomeJoin = deferred<void>();
+    const welcomeJoin = deferred<WelcomeProcessingResult>();
     mockMlsSvc.processWelcomeForConversation.and.returnValue(welcomeJoin.promise);
 
     service.processWelcome(null, 'welcome-b64', convId, mockUser, mockDevice).then(() => {});
@@ -158,7 +159,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     expect(mockMlsSvc.injectRestoredGroupStates).not.toHaveBeenCalled();
 
     // Real join finishes normally.
-    welcomeJoin.resolve();
+    welcomeJoin.resolve('joined');
     tick();
     expect(service.getConversationState(convId)).toBe(ConversationMlsState.Ready);
 
@@ -200,7 +201,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     // READY and takes the idempotent branch: it re-invokes
     // processWelcomeForConversation() directly without transitioning through
     // JOINING again, and must not throw.
-    mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve());
+    mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve('joined'));
 
     let processWelcomeSettled = false;
     let processWelcomeThrew: unknown;
@@ -222,7 +223,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     const convId = 'conv-welcome-then-restore';
 
     mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(false));
-    mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve());
+    mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve('joined'));
 
     service.processWelcome(null, 'welcome-b64', convId, mockUser, mockDevice);
     tick();
@@ -252,7 +253,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     const freeConvId = 'conv-free';
 
     mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(false));
-    const welcomeJoin = deferred<void>();
+    const welcomeJoin = deferred<WelcomeProcessingResult>();
     mockMlsSvc.processWelcomeForConversation.and.returnValue(welcomeJoin.promise);
 
     service.processWelcome(null, 'welcome-b64', busyConvId, mockUser, mockDevice);
@@ -277,7 +278,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     expect(service.getConversationState(freeConvId)).toBe(ConversationMlsState.Ready);
     expect(service.getConversationState(busyConvId)).toBe(ConversationMlsState.Joining);
 
-    welcomeJoin.resolve();
+    welcomeJoin.resolve('joined');
     tick();
     expect(service.getConversationState(busyConvId)).toBe(ConversationMlsState.Ready);
   }));
@@ -286,7 +287,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     const convId = 'conv-encrypt-guard';
 
     mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(false));
-    const welcomeJoin = deferred<void>();
+    const welcomeJoin = deferred<WelcomeProcessingResult>();
     mockMlsSvc.processWelcomeForConversation.and.returnValue(welcomeJoin.promise);
 
     service.processWelcome(null, 'welcome-b64', convId, mockUser, mockDevice);
@@ -304,7 +305,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     expect(service.canEncrypt(convId)).toBe(false);
     expect(service.canDecrypt(convId)).toBe(true); // JOINING: not FAILED, decrypt attempts queue via the barrier instead
 
-    welcomeJoin.resolve();
+    welcomeJoin.resolve('joined');
     tick();
     expect(service.canEncrypt(convId)).toBe(true);
   }));
@@ -326,7 +327,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     const convId = 'conv-d-e';
 
     mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(false));
-    const welcomeJoin = deferred<void>();
+    const welcomeJoin = deferred<WelcomeProcessingResult>();
     mockMlsSvc.processWelcomeForConversation.and.returnValue(welcomeJoin.promise);
 
     service.processWelcome(null, 'welcome-b64', convId, mockUser, mockDevice);
@@ -340,7 +341,7 @@ describe('MlsCoordinatorService — restore vs. Welcome race (AUDIT_08 P0 regres
     expect(mockMlsSvc.injectRestoredGroupStates).not.toHaveBeenCalled();
     expect(service.getConversationState(convId)).toBe(ConversationMlsState.Joining);
 
-    welcomeJoin.resolve();
+    welcomeJoin.resolve('joined');
     tick();
     expect(service.getConversationState(convId)).toBe(ConversationMlsState.Ready);
   }));

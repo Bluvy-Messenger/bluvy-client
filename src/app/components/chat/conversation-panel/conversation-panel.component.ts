@@ -260,7 +260,11 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       if (user && device) {
         await this.messageCacheSvc.initialize(user.did, device.id);
         try {
-          const hadWelcome = await this.coordinator.fetchAndProcessPendingWelcome(this.conversationId, user, device);
+          // Type-mechanical adaptation only (P1 fix): see conversation.page.ts
+          // for the identical rationale -- preserves the exact prior boolean
+          // meaning (any outcome other than 'none').
+          const welcomeResult = await this.coordinator.fetchAndProcessPendingWelcome(this.conversationId, user, device);
+          const hadWelcome = welcomeResult !== 'none';
           if (hadWelcome && this.syncSvc.isMbkAvailable()) await this.syncSvc.restore();
         } catch (err) { if (!environment.production) console.warn('[MLS] fetchAndProcessPendingWelcome failed:', err); }
         try {

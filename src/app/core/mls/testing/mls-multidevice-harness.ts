@@ -36,9 +36,17 @@ import { MlsMessageCryptoService } from '../mls-message-crypto.service';
 import { MlsPendingCommitTracker } from '../mls-pending-commit-tracker.service';
 import { MlsBackupRegistry } from '../mls-backup-registry.service';
 import { MlsEpochConflictBus } from '../mls-epoch-conflict-bus.service';
+import { MlsWelcomeService } from '../mls-welcome.service';
+import { MlsService } from '../mls.service';
+import { MlsCoordinatorService } from '../coordinator/mls-coordinator.service';
+import { MessageCacheService } from '../../conversation/message-cache.service';
+import { ConversationsService } from '../../conversation/conversations.service';
+import { PendingDecryptRepository } from '../repositories/pending-decrypt.repository';
+import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
+import { of } from 'rxjs';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
-import type { StoredMlsState, ConsumedKeyPackageResponse } from '../mls.types';
+import type { StoredMlsState, ConsumedKeyPackageResponse, PendingReprovisionRecord, PendingRemovalRecord, PendingGenesisRecord, StoredKeyPackageRecord } from '../mls.types';
 import type {
   AcquireCommitLockResponse,
   EnsureGroupResponse,
@@ -124,6 +132,18 @@ export class FakeMlsBackend {
   private seq = 0;
   private welcomeSeq = 0;
 
+  // AUDIT P0 crash/restart (genesis) test support: minimal mirror of the
+  // real backend's claimInitiatorSlot()/mlsInitializedAt contract, just
+  // enough to exercise ensureGroupReady()'s Phase 1 role negotiation and
+  // its one-way "never re-initiate once confirmed" guarantee -- NOT a full
+  // reimplementation of every claimInitiatorSlot() branch (the
+  // device_never_welcomed/lost_state nudge branches are backend-internal
+  // logic already proven by direct source reading in the design report,
+  // not re-tested here).
+  private initiatorClaims = new Map<string, string>(); // conversationId -> deviceId
+  private initializedConvs = new Set<string>();         // mirrors mlsInitializedAt !== null
+  private didToDeviceId = new Map<string, string>();    // test setup: registerParticipant()
+
   // Artificial network latency, varied per test run to exercise different
   // interleavings — set via delayRangeMs. [0,0] (default) means "as fast as
   // possible", still genuinely concurrent since callers are not awaited
@@ -143,6 +163,35 @@ export class FakeMlsBackend {
     if (holder && holder !== deviceId) return { acquired: false };
     this.locks.set(conversationId, deviceId);
     return { acquired: true };
+  }
+
+  // Registers which real device a participant DID resolves to, so
+  // consumeKeyPackage(participantDid) can generate a real, joinable key
+  // package for that exact device (mirrors production's
+  // devices-by-DID lookup, simplified to the harness's single-device-per-
+  // test-user convention already used everywhere else in this file).
+  registerParticipant(did: string, deviceId: string): void {
+    this.didToDeviceId.set(did, deviceId);
+  }
+
+  async ensureGroup(conversationId: string, deviceId: string): Promise<EnsureGroupResponse> {
+    await this.latency();
+    if (this.initializedConvs.has(conversationId)) return { role: 'already_initialized' };
+    const existingClaim = this.initiatorClaims.get(conversationId);
+    if (!existingClaim || existingClaim === deviceId) {
+      // Idempotent re-claim by the SAME device -- mirrors claimInitiatorSlot()'s
+      // `OR eq(mlsInitDeviceId, deviceId)` clause exactly.
+      this.initiatorClaims.set(conversationId, deviceId);
+      return { role: 'initiator' };
+    }
+    return { role: 'joiner' };
+  }
+
+  async consumeKeyPackageForDid(did: string): Promise<ConsumedKeyPackageResponse> {
+    await this.latency();
+    const deviceId = this.didToDeviceId.get(did);
+    if (!deviceId) throw new Error(`harness: no deviceId registered for DID ${did} -- call backend.registerParticipant() first`);
+    return generateDeviceIdentityKeyPackage(deviceId);
   }
 
   // Mirrors storeMlsCommit's exact contract (mls.service.ts:439-610):
@@ -182,6 +231,14 @@ export class FakeMlsBackend {
         list.push({ id: `welcome-${++this.welcomeSeq}`, conversationId, welcome: w.welcome, createdAt: Date.now() });
         this.welcomesByTarget.set(w.targetDeviceId, list);
       }
+      // Mirrors storeMlsCommit calling markGroupInitialized() whenever
+      // welcomes are present (mls.service.ts:585-598, backend) --
+      // unconditional and idempotent (a one-way latch, same as production's
+      // isNull(mlsInitializedAt) guard), regardless of whether this is a
+      // genesis commit or a later provisionDevice()/reprovisionLostStateDevice()
+      // commit that also happens to carry a welcome.
+      this.initializedConvs.add(conversationId);
+      if (this.initiatorClaims.get(conversationId) === senderDeviceId) this.initiatorClaims.delete(conversationId);
     }
 
     return row;
@@ -292,10 +349,17 @@ class FakeDeviceRepository extends MlsRepository {
     return Promise.resolve();
   }
 
-  // Not exercised by the scenarios in this harness; provided so the real
-  // type is satisfied without touching production MlsRepository at all.
-  override async ensureGroup(): Promise<EnsureGroupResponse> { throw new Error('not used by harness'); }
-  override async consumeKeyPackage(): Promise<ConsumedKeyPackageResponse> { throw new Error('not used by harness'); }
+  // AUDIT P0 crash/restart (genesis) test support: real role negotiation
+  // and real (fresh, joinable) key packages for participants, needed to
+  // exercise ensureGroupReady() genuinely -- see FakeMlsBackend.ensureGroup()/
+  // consumeKeyPackageForDid()'s own doc comments for exactly what is and
+  // isn't modeled.
+  override async ensureGroup(conversationId: string): Promise<EnsureGroupResponse> {
+    return this.backend.ensureGroup(conversationId, this.deviceId);
+  }
+  override async consumeKeyPackage(participantDid: string): Promise<ConsumedKeyPackageResponse> {
+    return this.backend.consumeKeyPackageForDid(participantDid);
+  }
   override async getKeyPackagesForParticipant(): Promise<never> { throw new Error('not used by harness'); }
   override async getMyDevices(): Promise<MlsMyDevicesResponse> { throw new Error('not used by harness'); }
 
@@ -317,6 +381,8 @@ export class Device {
   readonly membershipSvc: MlsMembershipService;
   readonly messageCryptoSvc: MlsMessageCryptoService;
   readonly pendingCommitTracker: MlsPendingCommitTracker;
+  readonly mlsSvc: MlsService;
+  readonly coordinator: MlsCoordinatorService;
 
   constructor(
     readonly backend: FakeMlsBackend,
@@ -349,6 +415,45 @@ export class Device {
         MlsCommitService,
         MlsMembershipService,
         MlsMessageCryptoService,
+        MlsWelcomeService,
+        MlsService,
+        // MlsCoordinatorService itself is the real thing (real InitializationBarrier,
+        // real state machine) wrapping the real MlsService above -- only its
+        // OWN unrelated dependencies (decrypt-replay queue, cache, watchdog,
+        // conversation history fetch) are stubbed, since no test exercising
+        // ensureGroupReady() through this harness touches those paths (an
+        // empty pendingRepo.getAll() short-circuits replayPendingDecrypts
+        // before messageCacheSvc/watchdog/convSvc would ever be used for
+        // anything beyond the no-op calls stubbed below).
+        {
+          provide: MessageCacheService,
+          useValue: {
+            exists: async () => false,
+            store: async () => {},
+            getAllIds: async () => new Set<string>(),
+            getMessagesPage: async () => [],
+            getById: async () => null,
+          } as unknown as MessageCacheService,
+        },
+        {
+          provide: PendingDecryptRepository,
+          useValue: {
+            getAll: async () => [],
+            remove: async () => {},
+            markAttempt: async () => {},
+            enqueue: async () => {},
+            clear: async () => {},
+          } as unknown as PendingDecryptRepository,
+        },
+        {
+          provide: MlsWatchdogService,
+          useValue: { watch: () => {}, unwatch: () => {} } as unknown as MlsWatchdogService,
+        },
+        {
+          provide: ConversationsService,
+          useValue: { getMessages: () => of({ data: [], cursor: null, hasMore: false }) } as unknown as ConversationsService,
+        },
+        MlsCoordinatorService,
       ],
     });
 
@@ -356,6 +461,8 @@ export class Device {
     this.membershipSvc        = this.injector.get(MlsMembershipService);
     this.messageCryptoSvc     = this.injector.get(MlsMessageCryptoService);
     this.pendingCommitTracker = this.injector.get(MlsPendingCommitTracker);
+    this.mlsSvc               = this.injector.get(MlsService);
+    this.coordinator          = this.injector.get(MlsCoordinatorService);
   }
 
   get scope(): string {
@@ -371,6 +478,51 @@ export class Device {
 
   getGroupStateB64(conversationId: string): string | undefined {
     return this.storage.raw(this.scope)?.groupStates[conversationId];
+  }
+
+  // AUDIT P1 crash/restart test support: lets a test simulate the raw
+  // persisted state left behind by a crash between reprovisionLostStateDevice()'s
+  // storage.update() and postCommit() -- production writes the marker in
+  // the SAME storage.update() call as the Group State (see
+  // mls-membership.service.ts), so this pairing mirrors that atomicity
+  // exactly. Requires seedGroupState() to have already run for this scope.
+  seedPendingReprovision(conversationId: string, record: PendingReprovisionRecord): void {
+    const existing = this.storage.raw(this.scope);
+    if (!existing) throw new Error('harness: seedPendingReprovision requires existing state -- call seedGroupState first');
+    const pendingReprovisions = { ...(existing.pendingReprovisions ?? {}), [conversationId]: record };
+    this.storage.seed(this.scope, { ...existing, pendingReprovisions });
+  }
+
+  getPendingReprovision(conversationId: string): PendingReprovisionRecord | undefined {
+    return this.storage.raw(this.scope)?.pendingReprovisions?.[conversationId];
+  }
+
+  // AUDIT P0 crash/restart test support: same rationale as
+  // seedPendingReprovision(), for removeRevokedDeviceFromAllGroups()'s
+  // pendingRemovals marker (mls-membership.service.ts).
+  seedPendingRemoval(conversationId: string, record: PendingRemovalRecord): void {
+    const existing = this.storage.raw(this.scope);
+    if (!existing) throw new Error('harness: seedPendingRemoval requires existing state -- call seedGroupState first');
+    const pendingRemovals = { ...(existing.pendingRemovals ?? {}), [conversationId]: record };
+    this.storage.seed(this.scope, { ...existing, pendingRemovals });
+  }
+
+  getPendingRemoval(conversationId: string): PendingRemovalRecord | undefined {
+    return this.storage.raw(this.scope)?.pendingRemovals?.[conversationId];
+  }
+
+  // AUDIT P0 crash/restart test support: same rationale as
+  // seedPendingReprovision(), for ensureGroupReady() genesis Phase 2's
+  // pendingGenesises marker (mls.service.ts).
+  seedPendingGenesis(conversationId: string, record: PendingGenesisRecord): void {
+    const existing = this.storage.raw(this.scope);
+    if (!existing) throw new Error('harness: seedPendingGenesis requires existing state -- call seedGroupState first');
+    const pendingGenesises = { ...(existing.pendingGenesises ?? {}), [conversationId]: record };
+    this.storage.seed(this.scope, { ...existing, pendingGenesises });
+  }
+
+  getPendingGenesis(conversationId: string): PendingGenesisRecord | undefined {
+    return this.storage.raw(this.scope)?.pendingGenesises?.[conversationId];
   }
 
   // Fetches this device's own pending Welcome from the backend (posted by
@@ -401,6 +553,44 @@ export class Device {
     const joinedState = await joinGroup(decoded.welcome, cachedKp.publicPackage, cachedKp.privatePackage, emptyPskIndex, cs);
     this.seedGroupState(conversationId, bytesToBase64(encodeGroupState(joinedState)));
     this.backend.ackWelcome(this.device.id, item.id);
+  }
+
+  // Seeds this device's OWN storage.keyPackages with the private key package
+  // generateDeviceIdentityKeyPackage() cached for this exact deviceId --
+  // mirrors what a real device's own key-package generation/upload would
+  // have stored locally BEFORE any other device ever consumed the public
+  // half. Needed to exercise MlsWelcomeService.processWelcomeForConversation()'s
+  // REAL KeyPackage-matching path (its preState.keyPackages loop) -- until
+  // this existed, only joinViaPendingWelcome()'s own bypass (reading
+  // straight from the private cache) could complete a join in this harness,
+  // since nothing else here ever populated a device's own storage.keyPackages.
+  // Call this AFTER whatever consumeKeyPackage() call actually generated
+  // this device's key package (the cache holds only the most recent
+  // generation per deviceId), so the seeded record matches what a real
+  // Welcome was actually built against.
+  seedOwnKeyPackage(): void {
+    const cachedKp = privateKeyPackageCache.get(this.device.id);
+    if (!cachedKp) {
+      throw new Error(`harness: no cached private key package for device ${this.device.id} -- was it ever generated via generateDeviceIdentityKeyPackage?`);
+    }
+    const serializedKeyPackage = bytesToBase64(encodeMlsMessage({
+      version: 'mls10', wireformat: 'mls_key_package', keyPackage: cachedKp.publicPackage,
+    }));
+    const record: StoredKeyPackageRecord = {
+      serverId:             null,
+      deviceId:             this.device.id,
+      serializedKeyPackage,
+      privatePackage: {
+        initPrivateKey:      bytesToBase64(cachedKp.privatePackage.initPrivateKey),
+        hpkePrivateKey:      bytesToBase64(cachedKp.privatePackage.hpkePrivateKey),
+        signaturePrivateKey: bytesToBase64(cachedKp.privatePackage.signaturePrivateKey),
+      },
+      createdAt: Date.now(),
+    };
+    const existing = this.storage.raw(this.scope);
+    if (!existing) throw new Error(`harness: seedOwnKeyPackage() called before initializeForSession() for device ${this.device.id}`);
+    const keyPackages = [...existing.keyPackages, record];
+    this.storage.seed(this.scope, { ...existing, keyPackages });
   }
 
   // Decodes this device's own current ClientState for a conversation --

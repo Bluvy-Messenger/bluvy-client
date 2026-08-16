@@ -76,7 +76,7 @@ describe('MLS multi-device invariants — idempotence (Section 7)', () => {
 
     it('processWelcome(): 1 call vs 2 sequential calls vs 10 concurrent calls all converge to READY, no throw, no duplicate side effect', fakeAsync(() => {
       mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(false));
-      mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve());
+      mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve('joined'));
 
       // 1 call.
       const convId1 = 'conv-1x';

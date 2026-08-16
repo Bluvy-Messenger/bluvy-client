@@ -13,7 +13,19 @@ import { MlsStateStorageService } from './mls-state-storage.service';
 import { MlsRepository } from './mls.repository';
 import { MlsCryptoContextService } from './mls-crypto-context.service';
 import { MlsBackupRegistry } from './mls-backup-registry.service';
-import type { SessionDevice, StoredMlsState } from './mls.types';
+import type { SessionDevice, StoredMlsState, WelcomeProcessingResult } from './mls.types';
+
+// Priority order used to pick the single most significant outcome when
+// fetchAndProcessPendingWelcome() examines multiple pending Welcomes in one
+// call: a real join always wins, then a correctly-rejected obsolete Welcome
+// (still meaningful -- distinct from "nothing happened"), then an
+// idempotent already-processed re-delivery, then finally "no Welcome at all".
+const WELCOME_RESULT_PRIORITY: Record<WelcomeProcessingResult, number> = {
+  joined:              3,
+  obsolete:            2,
+  'already-processed': 1,
+  none:                0,
+};
 
 // Welcome ingestion: fetching pending Welcomes, joining the corresponding MLS
 // group, and acking consumed Welcomes on the server. Extracted from
@@ -25,26 +37,35 @@ export class MlsWelcomeService {
   private readonly cryptoCtx      = inject(MlsCryptoContextService);
   private readonly backupRegistry = inject(MlsBackupRegistry);
 
-  // Fetches unconsumed Welcomes from the server and processes them.
+  // Fetches unconsumed Welcomes from the server and processes them. Returns
+  // the single most significant outcome (see WELCOME_RESULT_PRIORITY) --
+  // ONLY 'joined' means a local GroupState was actually established/modified
+  // by this call. 'obsolete', 'already-processed' and 'none' must never be
+  // treated as a join by any caller (P1 fix: the previous boolean contract
+  // collapsed all four into "true"/"false", letting a correctly-rejected
+  // obsolete Welcome or an idempotent re-delivery be misread as a genuine
+  // join -- proven empirically to skip catchUpMissedCommits() in
+  // ensureGroupReady() and to let recoverFromFailed() declare a conversation
+  // Ready without ever reaching its real repair fallback).
   async fetchAndProcessPendingWelcome(
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
-  ): Promise<boolean> {
+  ): Promise<WelcomeProcessingResult> {
     const response = await this.mlsRepo.getPendingWelcomes(conversationId);
 
-    if (response.data.length === 0) return false;
+    if (response.data.length === 0) return 'none';
 
-    let processed = false;
+    let best: WelcomeProcessingResult = 'none';
     for (const item of response.data) {
       try {
-        await this.processWelcomeForConversation(item.id, item.welcome, conversationId, user, device);
-        processed = true;
+        const result = await this.processWelcomeForConversation(item.id, item.welcome, conversationId, user, device);
+        if (WELCOME_RESULT_PRIORITY[result] > WELCOME_RESULT_PRIORITY[best]) best = result;
       } catch (err) {
         console.warn('[MLS] fetchAndProcessPendingWelcome: failed to process Welcome', item.id, ':', err);
       }
     }
-    return processed;
+    return best;
   }
 
   // Processes an incoming Welcome and joins the corresponding MLS group.
@@ -55,7 +76,7 @@ export class MlsWelcomeService {
     conversationId: string,
     user:           UserProfile,
     device:         SessionDevice,
-  ): Promise<void> {
+  ): Promise<WelcomeProcessingResult> {
     const scope = this.cryptoCtx.makeScope(user.did, device.id);
 
     // Parse the Welcome outside the lock (no state dependency).
@@ -84,7 +105,7 @@ export class MlsWelcomeService {
     if (preState.processedWelcomeDigests?.includes(welcomeDigest)) {
       if (!environment.production) console.log('[MLS] processWelcomeForConversation: Welcome already processed, ACKing:', welcomeId);
       if (welcomeId) this.ackWelcome(welcomeId);
-      return;
+      return 'already-processed';
     }
 
     const _toHex = (b: Uint8Array) =>
@@ -161,10 +182,71 @@ export class MlsWelcomeService {
 
     const newStateB64wfc      = this.cryptoCtx.bytesToBase64(encodeGroupState(joinedGroupState));
     const consumedKpB64       = matchedKpB64;
+    const incomingEpoch       = Number(joinedGroupState.groupContext.epoch);
     let   previousStateB64wfc: string | undefined;
+    let   obsolete             = false;
 
+    // AUDIT CIBLÉ P1 fix: two structurally different Welcomes for the same
+    // (targetDeviceId, conversationId) can genuinely both be in flight (e.g.
+    // reprovisionLostStateDevice() re-Welcoming a device before it consumed
+    // an earlier Welcome -- see device_welcomes' UNIQUE(targetDeviceId,
+    // conversationId) UPSERT: it prevents two DB ROWS, not two socket
+    // events with different content already delivered). Without this guard,
+    // whichever storage.update() call landed LAST won unconditionally --
+    // proven empirically (real ts-mls crypto) to regress a device from a
+    // confirmed epoch N+1 state back to a stale epoch N state, breaking
+    // decryption of anything sent at N+1. The comparison AND the write must
+    // happen inside the SAME storage.update() callback: storage.update()
+    // reloads fresh state and serializes per scope (see
+    // MlsStateStorageService's own doc comment), so this is the only point
+    // where "read current epoch" and "decide whether to write" can be
+    // atomic against a concurrent processWelcomeForConversation() call for
+    // the same scope -- a pre-lock check-then-write would have exactly the
+    // same TOCTOU gap this fix closes.
     await this.storage.update<StoredMlsState>(scope, async (state) => {
       if (!state) throw new Error('MLS not initialized');
+
+      const existingEncoded = state.groupStates[conversationId];
+      if (existingEncoded) {
+        let existingEpoch: number | undefined;
+        try {
+          existingEpoch = Number(this.cryptoCtx.restoreClientState(existingEncoded).groupContext.epoch);
+        } catch (err) {
+          console.warn('[MLS] processWelcomeForConversation: failed to decode existing state for epoch guard -- proceeding with the Welcome', conversationId, err);
+        }
+
+        // Only a STRICTLY OLDER incoming epoch is rejected. Equal epoch
+        // keeps the exact pre-existing digest/idempotence behavior
+        // (a different Welcome landing on the same epoch is not something
+        // this guard arbitrates -- unchanged from before). A higher
+        // incoming epoch is always accepted: joinGroup() above already
+        // cryptographically verified this Welcome is well-formed, and a
+        // higher epoch is, by construction, a more recent invitation into
+        // the group -- there is no MLS invariant under which adopting it
+        // over a strictly older local state would be unsafe.
+        if (existingEpoch !== undefined && incomingEpoch < existingEpoch) {
+          console.log('[MLS:observability] processWelcomeForConversation obsolete Welcome ignored', {
+            conversationId, deviceId: device.id, incomingEpoch, existingEpoch,
+          });
+          obsolete = true;
+          // The key package was genuinely consumed server-side for this
+          // (now-superseded) historical commit regardless -- it can never
+          // match a future Welcome, so it is removed here too.
+          state.keyPackages = state.keyPackages.filter(kp => kp.serializedKeyPackage !== consumedKpB64);
+          // Recorded so a repeated delivery of this exact obsolete Welcome
+          // short-circuits via the digest guard instead of redoing
+          // KeyPackage-matching/joinGroup() crypto every time.
+          const digests = state.processedWelcomeDigests ?? [];
+          if (!digests.includes(welcomeDigest)) {
+            digests.push(welcomeDigest);
+            if (digests.length > 200) digests.splice(0, digests.length - 200);
+          }
+          state.processedWelcomeDigests = digests;
+          state.updatedAt = Date.now();
+          return state;
+        }
+      }
+
       previousStateB64wfc = state.groupStates[conversationId];
       // Remove the consumed key package by identity (index-independent, idempotent).
       state.keyPackages = state.keyPackages.filter(
@@ -182,10 +264,22 @@ export class MlsWelcomeService {
       return state;
     });
 
+    if (obsolete) {
+      // Do not ACK: this call may only have processed a stale socket
+      // snapshot -- the server-side row (same id across an UPSERT) may
+      // already hold newer content that a separate, successful
+      // processWelcomeForConversation() call will ack itself. Not a fatal
+      // error, not a state change, not a transition -- a cleanly ignored
+      // no-op from the caller's perspective (the promise still resolves).
+      // P1 fix: this is NOT a join -- callers must not treat it as one.
+      return 'obsolete';
+    }
+
     if (welcomeId) this.ackWelcome(welcomeId);
     if (newStateB64wfc !== previousStateB64wfc) {
       this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64wfc);
     }
+    return 'joined';
   }
 
   // Marks a Welcome consumed on the server with up to 5 retries (backoff: 1s, 2s, 4s, 8s).

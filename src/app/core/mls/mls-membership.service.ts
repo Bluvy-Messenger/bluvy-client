@@ -18,7 +18,7 @@ import { MlsPendingCommitTracker } from './mls-pending-commit-tracker.service';
 import { MlsCommitService } from './mls-commit.service';
 import { MlsEpochConflictBus } from './mls-epoch-conflict-bus.service';
 import { environment } from '../../../environments/environment';
-import type { SessionDevice, StoredMlsState } from './mls.types';
+import type { SessionDevice, StoredMlsState, PendingReprovisionRecord, PendingRemovalRecord } from './mls.types';
 
 // Membership mutations: adding a device (provisionDevice), re-adding a
 // device that lost its local state (reprovisionLostStateDevice), fanning
@@ -412,6 +412,24 @@ export class MlsMembershipService {
       newStateB64pd      = this.cryptoCtx.bytesToBase64(encodeGroupState(newState));
 
       state.groupStates[conversationId] = newStateB64pd;
+      // AUDIT P1 crash/restart: persist enough to survive a crash between
+      // this write and postCommit() confirmation -- previousStateB64pd is
+      // the confirmed state from immediately before this Remove+Add; the
+      // MLS ratchet is one-way, so it can never be reconstructed from
+      // newStateB64pd after the fact. Written in the SAME storage.update()
+      // call as the Group State write itself, so IndexedDB's single-put
+      // atomicity (see AUDIT_08) guarantees the two can never exist
+      // independently of each other after a crash. See
+      // recoverPendingReprovisions() and mls.types.ts's
+      // PendingReprovisionRecord doc comment.
+      const pendingReprovisions = state.pendingReprovisions ?? {};
+      pendingReprovisions[conversationId] = {
+        staleDeviceId,
+        previousEpoch:    currentEpoch,
+        previousStateB64: previousStateB64pd,
+        newEpoch,
+      };
+      state.pendingReprovisions = pendingReprovisions;
       state.updatedAt = Date.now();
       return state;
     });
@@ -431,6 +449,23 @@ export class MlsMembershipService {
         console.log('[MLS:observability] clearConversationGroup caller', { conversationId, caller: 'reprovisionLostStateDevice 409 handler' });
         await this.clearConversationGroup(conversationId, user, device);
         this.epochConflictBus.epochConflict$.next({ conversationId });
+      } else {
+        // AUDIT P1-A: same reconciliation as provisionDevice() -- rollback
+        // (CAS-guarded) to the pre-write state, then let
+        // catchUpMissedCommits() ask the server directly whether the
+        // Remove+Add commit actually landed. Empirically verified (see
+        // mls-invariants-reprovision-divergence.spec.ts) that self-replaying
+        // a Remove+Add commit via processPublicMessage produces a state
+        // byte-identical to createCommit()'s own newState, exactly like the
+        // pure-Add case -- and that the local optimistic write already
+        // breaks the stale device's OLD (untouched) session's ability to
+        // decrypt A's traffic even before any server round trip, so this
+        // rollback additionally restores THAT interoperability, not just
+        // administrative epoch agreement. Crash/restart detection for this
+        // method remains explicitly out of scope (see that file's own
+        // finding: isDeviceMemberLocally() cannot distinguish "correct
+        // leaf" from "phantom-replaced leaf" here) -- a separate task.
+        await this.reconcileAfterPostCommitFailure(conversationId, scope, newStateB64pd, previousStateB64pd, user, device, 'reprovisionLostStateDevice');
       }
       throw err;
     }
@@ -454,12 +489,28 @@ export class MlsMembershipService {
         }
         if (previousStateB64pd === undefined) delete s.groupStates[conversationId];
         else s.groupStates[conversationId] = previousStateB64pd;
+        // AUDIT P1 crash/restart: this device is no longer in-flight for
+        // this conversation (either rolled back above, or about to adopt
+        // the winning commit below) -- clear the marker in the same write.
+        if (s.pendingReprovisions?.[conversationId]) delete s.pendingReprovisions[conversationId];
         s.updatedAt = Date.now();
         return s;
       });
       await this.commitSvc.processIncomingCommit(conversationId, stored.commit, stored.epoch, user, device);
       return;
     }
+
+    // Confirmed: the crash/restart marker written above is no longer
+    // needed -- an orphaned marker after a successful commit is harmless
+    // regardless (recoverPendingReprovisions() re-validates newEpoch
+    // against the CURRENT epoch before ever touching previousStateB64, see
+    // Invariant 7), but there is no reason to leave it lying around.
+    await this.storage.update<StoredMlsState>(scope, async (s) => {
+      if (!s?.pendingReprovisions?.[conversationId]) return null;
+      delete s.pendingReprovisions[conversationId];
+      s.updatedAt = Date.now();
+      return s;
+    });
 
     if (newStateB64pd !== previousStateB64pd) {
       this.backupRegistry.backupService?.backupGroupState(conversationId, newStateB64pd);
@@ -647,6 +698,24 @@ export class MlsMembershipService {
         newStateB64rrd       = this.cryptoCtx.bytesToBase64(encodeGroupState(newState));
 
         current.groupStates[convId] = newStateB64rrd;
+        // AUDIT P0 crash/restart: persist enough to survive a crash
+        // between this write and postCommit() confirmation --
+        // previousStateB64rrd is the confirmed state from immediately
+        // before this Remove; the MLS ratchet is one-way, so it can never
+        // be reconstructed from newStateB64rrd after the fact. Written in
+        // the SAME storage.update() call as the Group State write itself
+        // (no `await` in between), so IndexedDB's single-put atomicity
+        // (see AUDIT_08) guarantees the two can never exist independently
+        // of each other after a crash. See recoverPendingRemovals() and
+        // mls.types.ts's PendingRemovalRecord doc comment.
+        const pendingRemovals = current.pendingRemovals ?? {};
+        pendingRemovals[convId] = {
+          revokedDeviceId,
+          previousEpoch:    currentEpoch,
+          previousStateB64: previousStateB64rrd,
+          newEpoch:         Number(newState.groupContext.epoch),
+        };
+        current.pendingRemovals = pendingRemovals;
         current.updatedAt = Date.now();
         return current;
       });
@@ -663,6 +732,19 @@ export class MlsMembershipService {
           console.log('[MLS:observability] clearConversationGroup caller', { conversationId: convId, caller: 'removeRevokedDeviceFromAllGroups 409 handler' });
           await this.clearConversationGroup(convId, user, device);
           this.epochConflictBus.epochConflict$.next({ conversationId: convId });
+        } else {
+          // AUDIT GLOBAL P0: same reconciliation as provisionDevice() /
+          // reprovisionLostStateDevice() -- a network failure here after
+          // the optimistic Remove already wrote locally previously left
+          // the revoked device believed-removed locally while the server
+          // (and every other member) never applied anything, so the
+          // "revoked" device's OLD session kept working -- empirically
+          // confirmed (real ts-mls decrypt) it could still read traffic
+          // from an unaware survivor. Roll back (CAS-guarded) and let
+          // catchUpMissedCommits() (unmodified) determine whether the
+          // Remove actually landed server-side, exactly as for the other
+          // two membership-mutating methods.
+          await this.reconcileAfterPostCommitFailure(convId, scope, newStateB64rrd, previousStateB64rrd, user, device, 'removeRevokedDeviceFromAllGroups');
         }
         console.error('[MLS] removeRevokedDevice: failed to post Remove commit for conv', convId, err);
         continue;
@@ -689,12 +771,29 @@ export class MlsMembershipService {
           }
           if (previousStateB64rrd === undefined) delete s.groupStates[convId];
           else s.groupStates[convId] = previousStateB64rrd;
+          // AUDIT P0 crash/restart: this device is no longer in-flight for
+          // this conversation (either rolled back above, or about to adopt
+          // the winning commit below) -- clear the marker in the same write.
+          if (s.pendingRemovals?.[convId]) delete s.pendingRemovals[convId];
           s.updatedAt = Date.now();
           return s;
         });
         void this.commitSvc.processIncomingCommit(convId, stored.commit, stored.epoch, user, device)
           .catch(err => console.warn('[MLS] removeRevokedDevice: resync after lost race failed for conv', convId, err));
+        continue;
       }
+
+      // Confirmed: the crash/restart marker written above is no longer
+      // needed -- an orphaned marker after a successful commit is harmless
+      // regardless (recoverOnePendingRemoval() re-validates newEpoch
+      // against the CURRENT epoch before ever touching previousStateB64),
+      // but there is no reason to leave it lying around.
+      await this.storage.update<StoredMlsState>(scope, async (s) => {
+        if (!s?.pendingRemovals?.[convId]) return null;
+        delete s.pendingRemovals[convId];
+        s.updatedAt = Date.now();
+        return s;
+      });
     }
   }
 
@@ -734,6 +833,23 @@ export class MlsMembershipService {
       }
       if (previousStateB64 === undefined) delete s.groupStates[conversationId];
       else s.groupStates[conversationId] = previousStateB64;
+      // AUDIT P1 crash/restart: clear any reprovisionLostStateDevice()
+      // marker for this conversation together with the rollback itself --
+      // a harmless no-op for provisionDevice() callers, which never write
+      // one. Safe to clear here (rather than only after
+      // catchUpMissedCommits() below resolves) because once the rollback
+      // above lands, local state is back to an ORDINARY "possibly behind
+      // the server" epoch -- exactly the condition catchUpMissedCommits()
+      // already handles correctly on every other normal reconnect/message
+      // flow, marker or not. The marker's only job was making the correct
+      // epoch queryable while local was still phantom-advanced; that job
+      // is done the instant the rollback itself succeeds.
+      if (s.pendingReprovisions?.[conversationId]) delete s.pendingReprovisions[conversationId];
+      // AUDIT P0 crash/restart: same reasoning, applied to
+      // removeRevokedDeviceFromAllGroups()'s marker -- harmless no-op for
+      // provisionDevice()/reprovisionLostStateDevice() callers, which
+      // never write one.
+      if (s.pendingRemovals?.[conversationId]) delete s.pendingRemovals[conversationId];
       s.updatedAt = Date.now();
       rolledBack = true;
       return s;
@@ -777,5 +893,199 @@ export class MlsMembershipService {
     if (!encoded) return false;
     const clientState = this.cryptoCtx.restoreClientState(encoded);
     return this.cryptoCtx.isDeviceMember(clientState, deviceId);
+  }
+
+  // AUDIT P1 crash/restart (reprovisionLostStateDevice() only, see the
+  // design report -- deliberately NOT generalized to provisionDevice() in
+  // this task): resolves any reprovisionLostStateDevice() operations left
+  // in pendingReprovisions by a crash between the local optimistic write
+  // and postCommit() confirmation, where reconcileAfterPostCommitFailure()
+  // never got a chance to run and no in-memory previousStateB64pd survived.
+  // Called from DeviceProvisioningService.checkAndProvisionOnConnect() on
+  // reconnect -- iterates ONLY this map (normally empty, cheap), never a
+  // blind sweep of every conversation.
+  async recoverPendingReprovisions(
+    user:   UserProfile,
+    device: SessionDevice,
+  ): Promise<void> {
+    const scope = this.cryptoCtx.makeScope(user.did, device.id);
+    const state = await this.storage.load<StoredMlsState>(scope);
+    const pending = state?.pendingReprovisions;
+    if (!pending) return;
+
+    for (const conversationId of Object.keys(pending)) {
+      await this.recoverOnePendingReprovision(conversationId, scope, user, device);
+    }
+  }
+
+  private async recoverOnePendingReprovision(
+    conversationId: string,
+    scope:          string,
+    user:           UserProfile,
+    device:         SessionDevice,
+  ): Promise<void> {
+    let rolledBack = false;
+
+    // Single atomic storage.update() does both the re-validation and the
+    // rollback-or-drop decision -- no separate pre-check/act pair, so
+    // there is no TOCTOU gap between reading "is this marker still
+    // current" and acting on it (matches every other CAS pattern in this
+    // file).
+    await this.storage.update<StoredMlsState>(scope, async (s) => {
+      const marker: PendingReprovisionRecord | undefined = s?.pendingReprovisions?.[conversationId];
+      if (!s || !marker) return null; // nothing pending, or already resolved (e.g. a concurrent call)
+
+      const encoded = s.groupStates[conversationId];
+      let currentEpoch: number | undefined;
+      if (encoded) {
+        try {
+          currentEpoch = Number(this.cryptoCtx.restoreClientState(encoded).groupContext.epoch);
+        } catch (err) {
+          console.warn('[MLS] recoverPendingReprovisions: failed to decode current state for', conversationId, '-- dropping marker without acting on it', err);
+        }
+      }
+
+      if (currentEpoch !== marker.newEpoch) {
+        // The conversation has already moved past the phantom write this
+        // marker describes (a real incoming commit, a different operation,
+        // or a second reprovision that already resolved it) -- or the
+        // state is missing/undecodable entirely. NEVER roll back over a
+        // more recent state (Invariant 4/7): just drop the now-obsolete
+        // marker without touching groupStates at all.
+        console.log('[MLS:observability] recoverPendingReprovisions marker obsolete', {
+          conversationId, deviceId: device.id, currentEpoch, markerNewEpoch: marker.newEpoch,
+        });
+        delete s.pendingReprovisions![conversationId];
+        s.updatedAt = Date.now();
+        return s;
+      }
+
+      console.log('[MLS:observability] recoverPendingReprovisions rolling back', {
+        conversationId, deviceId: device.id, staleDeviceId: marker.staleDeviceId, previousEpoch: marker.previousEpoch, newEpoch: marker.newEpoch,
+      });
+      s.groupStates[conversationId] = marker.previousStateB64;
+      delete s.pendingReprovisions![conversationId];
+      s.updatedAt = Date.now();
+      rolledBack = true;
+      return s;
+    });
+
+    if (!rolledBack) return;
+
+    // Same reasoning as reconcileAfterPostCommitFailure(): once the
+    // rollback lands, local state is an ORDINARY "possibly behind the
+    // server" epoch -- catchUpMissedCommits() (unmodified) now correctly
+    // distinguishes Case A (0 commits, rollback stands) from Case B (our
+    // own commit found, adopted via the normal incoming-commit path,
+    // byte-identical to createCommit()'s own result -- already proven
+    // empirically for this exact Remove+Add shape).
+    try {
+      const applied = await this.commitSvc.catchUpMissedCommits(conversationId, user, device);
+      console.log('[MLS:observability] recoverPendingReprovisions reconciled', { conversationId, deviceId: device.id, applied });
+    } catch (err) {
+      console.warn('[MLS] recoverPendingReprovisions: reconciliation attempt failed for conv', conversationId, '-- rollback still stands, an ordinary catch-up will pick it up later', err);
+    }
+  }
+
+  // AUDIT P0 crash/restart (removeRevokedDeviceFromAllGroups() only):
+  // resolves any Remove operations left in pendingRemovals by a crash
+  // between the local optimistic write and postCommit() confirmation,
+  // where reconcileAfterPostCommitFailure() never got a chance to run.
+  // Called from DeviceProvisioningService.checkAndProvisionOnConnect() on
+  // reconnect -- iterates ONLY this map (normally empty, cheap), never a
+  // blind sweep of every conversation.
+  async recoverPendingRemovals(
+    user:   UserProfile,
+    device: SessionDevice,
+  ): Promise<void> {
+    const scope = this.cryptoCtx.makeScope(user.did, device.id);
+    const state = await this.storage.load<StoredMlsState>(scope);
+    const pending = state?.pendingRemovals;
+    if (!pending) return;
+
+    for (const conversationId of Object.keys(pending)) {
+      await this.recoverOnePendingRemoval(conversationId, scope, user, device);
+    }
+  }
+
+  private async recoverOnePendingRemoval(
+    conversationId: string,
+    scope:          string,
+    user:           UserProfile,
+    device:         SessionDevice,
+  ): Promise<void> {
+    let rolledBack = false;
+
+    // Same single-atomic-storage.update() shape as recoverOnePendingReprovision()
+    // for the same TOCTOU reason -- but this is NOT a mechanical copy: a
+    // Remove has no Welcome, no re-added identity, and its failure mode is
+    // a revocation that silently never took effect rather than a stalled
+    // provisioning. The epoch-equality check below is deliberately treated
+    // as a TRIGGER to re-verify with the server, never as proof by itself
+    // -- confirmed empirically (AUDIT READ-ONLY crash/restart investigation,
+    // Section 5 Case C) that currentEpoch === marker.newEpoch can be
+    // produced by a completely unrelated real commit from another device
+    // landing at the same target epoch number, not just by this marker's
+    // own phantom write. Safety here comes entirely from the fact that the
+    // rollback is ALWAYS followed by catchUpMissedCommits() -- an actual
+    // server round trip -- never from trusting the epoch match as a
+    // verdict on its own.
+    await this.storage.update<StoredMlsState>(scope, async (s) => {
+      const marker: PendingRemovalRecord | undefined = s?.pendingRemovals?.[conversationId];
+      if (!s || !marker) return null; // nothing pending, or already resolved (e.g. a concurrent call)
+
+      const encoded = s.groupStates[conversationId];
+      let currentEpoch: number | undefined;
+      if (encoded) {
+        try {
+          currentEpoch = Number(this.cryptoCtx.restoreClientState(encoded).groupContext.epoch);
+        } catch (err) {
+          console.warn('[MLS] recoverPendingRemovals: failed to decode current state for', conversationId, '-- dropping marker without acting on it', err);
+        }
+      }
+
+      if (currentEpoch !== marker.newEpoch) {
+        // The conversation has already moved past the phantom write this
+        // marker describes (a real incoming commit, a different
+        // operation, or a second Remove attempt that already resolved
+        // it) -- or the state is missing/undecodable entirely. NEVER roll
+        // back over a more recent state: just drop the now-obsolete
+        // marker without touching groupStates at all.
+        console.log('[MLS:observability] recoverPendingRemovals marker obsolete', {
+          conversationId, deviceId: device.id, currentEpoch, markerNewEpoch: marker.newEpoch,
+        });
+        delete s.pendingRemovals![conversationId];
+        s.updatedAt = Date.now();
+        return s;
+      }
+
+      console.log('[MLS:observability] recoverPendingRemovals rolling back', {
+        conversationId, deviceId: device.id, revokedDeviceId: marker.revokedDeviceId, previousEpoch: marker.previousEpoch, newEpoch: marker.newEpoch,
+      });
+      s.groupStates[conversationId] = marker.previousStateB64;
+      delete s.pendingRemovals![conversationId];
+      s.updatedAt = Date.now();
+      rolledBack = true;
+      return s;
+    });
+
+    if (!rolledBack) return;
+
+    // Same reasoning as reconcileAfterPostCommitFailure(): once the
+    // rollback lands, local state is an ORDINARY "possibly behind the
+    // server" epoch -- catchUpMissedCommits() (unmodified) now correctly
+    // distinguishes Case A (0 commits, rollback stands, the revoked
+    // device keeps its access since it was never actually revoked) from
+    // Case B (our own Remove commit found server-side, adopted via the
+    // normal incoming-commit path -- the revoked device genuinely loses
+    // access) or Case C (a DIFFERENT real commit from another device is
+    // found and adopted instead, correctly, since it's what the server
+    // round trip actually returns regardless of what this marker assumed).
+    try {
+      const applied = await this.commitSvc.catchUpMissedCommits(conversationId, user, device);
+      console.log('[MLS:observability] recoverPendingRemovals reconciled', { conversationId, deviceId: device.id, applied });
+    } catch (err) {
+      console.warn('[MLS] recoverPendingRemovals: reconciliation attempt failed for conv', conversationId, '-- rollback still stands, an ordinary catch-up will pick it up later', err);
+    }
   }
 }

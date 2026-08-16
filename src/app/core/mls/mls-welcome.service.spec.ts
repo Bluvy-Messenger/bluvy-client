@@ -157,28 +157,28 @@ describe('MlsWelcomeService', () => {
       service = TestBed.inject(MlsWelcomeService);
     });
 
-    it('returns false and processes nothing when there are no pending Welcomes', async () => {
+    it('returns \'none\' and processes nothing when there are no pending Welcomes', async () => {
       mockRepo.getPendingWelcomes.and.returnValue(Promise.resolve({ data: [] }));
       const processSpy = spyOn(service, 'processWelcomeForConversation');
 
       const result = await service.fetchAndProcessPendingWelcome(CONV_ID, USER, DEVICE);
 
-      expect(result).toBe(false);
+      expect(result).toBe('none');
       expect(processSpy).not.toHaveBeenCalled();
     });
 
-    it('processes every pending Welcome and returns true when all succeed', async () => {
+    it('processes every pending Welcome and returns \'joined\' when all succeed', async () => {
       mockRepo.getPendingWelcomes.and.returnValue(Promise.resolve({
         data: [
           { id: 'w1', conversationId: CONV_ID, welcome: 'b64-1', createdAt: 1 },
           { id: 'w2', conversationId: CONV_ID, welcome: 'b64-2', createdAt: 2 },
         ],
       }));
-      const processSpy = spyOn(service, 'processWelcomeForConversation').and.returnValue(Promise.resolve());
+      const processSpy = spyOn(service, 'processWelcomeForConversation').and.returnValue(Promise.resolve('joined'));
 
       const result = await service.fetchAndProcessPendingWelcome(CONV_ID, USER, DEVICE);
 
-      expect(result).toBe(true);
+      expect(result).toBe('joined');
       expect(processSpy).toHaveBeenCalledTimes(2);
       expect(processSpy).toHaveBeenCalledWith('w1', 'b64-1', CONV_ID, USER, DEVICE);
       expect(processSpy).toHaveBeenCalledWith('w2', 'b64-2', CONV_ID, USER, DEVICE);
@@ -192,16 +192,16 @@ describe('MlsWelcomeService', () => {
         ],
       }));
       const processSpy = spyOn(service, 'processWelcomeForConversation').and.callFake((id: string | null) =>
-        id === 'w1' ? Promise.reject(new Error('boom')) : Promise.resolve(),
+        id === 'w1' ? Promise.reject(new Error('boom')) : Promise.resolve('joined'),
       );
 
       const result = await service.fetchAndProcessPendingWelcome(CONV_ID, USER, DEVICE);
 
-      expect(result).toBe(true);
+      expect(result).toBe('joined');
       expect(processSpy).toHaveBeenCalledTimes(2);
     });
 
-    it('returns false if every pending Welcome fails to process', async () => {
+    it('returns \'none\' if every pending Welcome fails to process', async () => {
       mockRepo.getPendingWelcomes.and.returnValue(Promise.resolve({
         data: [{ id: 'w1', conversationId: CONV_ID, welcome: 'b64-1', createdAt: 1 }],
       }));
@@ -209,7 +209,39 @@ describe('MlsWelcomeService', () => {
 
       const result = await service.fetchAndProcessPendingWelcome(CONV_ID, USER, DEVICE);
 
-      expect(result).toBe(false);
+      expect(result).toBe('none');
+    });
+
+    it('picks the highest-priority outcome across multiple Welcomes: \'joined\' wins over \'obsolete\' regardless of order', async () => {
+      mockRepo.getPendingWelcomes.and.returnValue(Promise.resolve({
+        data: [
+          { id: 'w1', conversationId: CONV_ID, welcome: 'b64-1', createdAt: 1 },
+          { id: 'w2', conversationId: CONV_ID, welcome: 'b64-2', createdAt: 2 },
+        ],
+      }));
+      spyOn(service, 'processWelcomeForConversation').and.callFake((id: string | null) =>
+        Promise.resolve(id === 'w1' ? 'obsolete' : 'joined'),
+      );
+
+      const result = await service.fetchAndProcessPendingWelcome(CONV_ID, USER, DEVICE);
+
+      expect(result).toBe('joined');
+    });
+
+    it('picks \'obsolete\' over \'already-processed\' when no Welcome was actually joined', async () => {
+      mockRepo.getPendingWelcomes.and.returnValue(Promise.resolve({
+        data: [
+          { id: 'w1', conversationId: CONV_ID, welcome: 'b64-1', createdAt: 1 },
+          { id: 'w2', conversationId: CONV_ID, welcome: 'b64-2', createdAt: 2 },
+        ],
+      }));
+      spyOn(service, 'processWelcomeForConversation').and.callFake((id: string | null) =>
+        Promise.resolve(id === 'w1' ? 'already-processed' : 'obsolete'),
+      );
+
+      const result = await service.fetchAndProcessPendingWelcome(CONV_ID, USER, DEVICE);
+
+      expect(result).toBe('obsolete');
     });
   });
 });

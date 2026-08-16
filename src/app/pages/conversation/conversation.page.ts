@@ -222,7 +222,16 @@ export class ConversationPage implements OnDestroy {
         }
 
         try {
-          const hadWelcome = await this.coordinator.fetchAndProcessPendingWelcome(currentConvId, user, device);
+          // Type-mechanical adaptation only (P1 fix): fetchAndProcessPendingWelcome()
+          // now returns a semantic result, not a boolean. This call site was
+          // never vulnerable to the P1 bug -- catchUpMissedCommits() below
+          // always runs unconditionally regardless of this value -- so
+          // `hadWelcome` preserves the EXACT prior boolean meaning (true
+          // whenever a pending Welcome was seen and processed without
+          // throwing, i.e. any outcome other than 'none'), not narrowed to
+          // 'joined' only.
+          const welcomeResult = await this.coordinator.fetchAndProcessPendingWelcome(currentConvId, user, device);
+          const hadWelcome = welcomeResult !== 'none';
           if (this.conversationId !== currentConvId) return;
 
           // Even with no pending Welcome, this device may simply have no local

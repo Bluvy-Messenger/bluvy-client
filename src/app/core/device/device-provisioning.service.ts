@@ -132,6 +132,30 @@ export class DeviceProvisioningService {
   ): Promise<void> {
     await this.syncSvc.flush();
 
+    // AUDIT P1 crash/restart (reprovisionLostStateDevice() only): resolves
+    // any reprovision left pending by a crash between the local optimistic
+    // write and postCommit() confirmation. Iterates only the
+    // pendingReprovisions marker map (normally empty) -- not a blind sweep
+    // of every conversation.
+    await this.coordinator.recoverPendingReprovisions(user, device);
+
+    // AUDIT P0 crash/restart (removeRevokedDeviceFromAllGroups() only):
+    // resolves any Remove left pending by a crash between the local
+    // optimistic write and postCommit() confirmation. Iterates only the
+    // pendingRemovals marker map (normally empty) -- not a blind sweep of
+    // every conversation. Runs before removeRevokedDeviceLeaves() below so
+    // any phantom-removed device is restored to a known-good state (or
+    // confirmed genuinely removed) before that sweep's own idempotent
+    // pre-check would otherwise treat it as already handled.
+    await this.coordinator.recoverPendingRemovals(user, device);
+
+    // AUDIT P0 crash/restart (ensureGroupReady() genesis Phase 2 only):
+    // resolves any genesis Add-commit left pending by a crash between the
+    // local optimistic write and postCommit() confirmation. Iterates only
+    // the pendingGenesises marker map (normally empty) -- not a blind
+    // sweep of every conversation.
+    await this.coordinator.recoverPendingGenesises(user, device);
+
     // Independent of the own-device provisioning below: a revoked device
     // needing leaf removal is just as often a conversation partner's device
     // as one of this account's own.

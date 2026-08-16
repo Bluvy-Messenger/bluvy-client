@@ -259,10 +259,23 @@ describe('MLS multi-device invariants — double/triple removal correction valid
   // network postCommit() a head start larger, in practice, than the random
   // jitter applied per network call here, so the two commits' declared
   // epochs are always posted in the same order they were locally computed.
-  // Verified empirically (not assumed): 1 zero-delay run + 20 runs with
-  // randomized 0-15ms delay on every network call (acquireCommitLock AND
-  // postCommit independently) all converged correctly with no
-  // EPOCH_GAP/409 and no destructive clearConversationGroup reset.
+  //
+  // UPDATED after the AUDIT GLOBAL P0 fix (reconcileAfterPostCommitFailure()
+  // now wired into removeRevokedDeviceFromAllGroups()'s non-409 catch,
+  // mls-membership.service.ts): with two truly concurrent same-device calls
+  // for the SAME conversation, one of the two postCommit()s can genuinely
+  // lose an epoch race against the OTHER call's own commit (an EpochGapError,
+  // non-409 -- acquireCommitLock() re-acquiring for the SAME device is not
+  // exclusive against itself, by design, see mls-membership.service.ts's own
+  // comment on that lock). Before the P0 fix, a losing call's phantom local
+  // Remove was silently left in place uncorrected -- which happened to make
+  // this test's local-only membership assertion look right by accident,
+  // without ever proving the server actually agreed. Now the loser is
+  // correctly rolled back (real fix behavior, exercised for the FIRST time
+  // by this exact test) and needs an explicit retry to complete for real --
+  // exactly the self-healing pattern every other membership method in this
+  // series already relies on (see mls-invariants-provisiondevice-divergence.spec.ts
+  // Section 4-5, mls-invariants-remove-revoked-divergence.spec.ts Section 6).
   it('Étape 7: Remove(B) + Remove(C) issued concurrently by the same device converge correctly under randomized network jitter (20 repetitions)', async () => {
     for (let i = 0; i < 20; i++) {
       const backend = new FakeMlsBackend();
@@ -283,8 +296,17 @@ describe('MLS multi-device invariants — double/triple removal correction valid
       expect(a.getGroupStateB64(CONV_ID))
         .withContext(`iteration ${i}: local group state must not have been destructively cleared`)
         .toBeDefined();
+
+      // Whichever of B/C genuinely lost the epoch race was correctly
+      // rolled back rather than phantom-removed -- retry it, exactly like
+      // the real removeRevokedDeviceLeaves() reconnect sweep would on its
+      // next pass. Idempotent no-op for whichever side already succeeded.
+      const stillPresent = a.memberDeviceIds(CONV_ID);
+      if (stillPresent.includes(DEVICE_B.id)) await a.membershipSvc.removeRevokedDeviceFromAllGroups(DEVICE_B.id, USER_A, DEVICE_A);
+      if (stillPresent.includes(DEVICE_C.id)) await a.membershipSvc.removeRevokedDeviceFromAllGroups(DEVICE_C.id, USER_A, DEVICE_A);
+
       expect(a.memberDeviceIds(CONV_ID))
-        .withContext(`iteration ${i}`)
+        .withContext(`iteration ${i}: after retry, both genuinely removed`)
         .toEqual([DEVICE_A.id]);
     }
   }, 30000);
