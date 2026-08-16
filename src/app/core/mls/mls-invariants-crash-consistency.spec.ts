@@ -71,16 +71,19 @@ describe('MLS multi-device invariants — crash consistency (Section 5)', () => 
     expect(a.memberDeviceIds(CONV_ID)).toContain('device-x');
   });
 
-  // FINDING (documented, not fixed). Investigated as a genuine hypothesis,
-  // not assumed: mls-membership.service.ts's provisionDevice() writes the
-  // new Group State locally (storage.update(), optimistic) BEFORE calling
-  // mlsRepo.postCommit() (network). Its catch block only handles a 409
-  // response specially (clears state, signals epochConflict$); any OTHER
-  // failure (e.g. the network going down between the local write and the
-  // request completing) is just re-thrown, WITHOUT rolling back the local
-  // optimistic write. This test empirically checks what state that leaves
-  // the device in.
-  it('FINDING: a network failure AFTER the local optimistic write (before the server confirms the commit) leaves the local epoch permanently ahead of what was ever actually posted', async () => {
+  // FIXED (P1). Previously documented as a finding: provisionDevice() wrote
+  // the new Group State locally (storage.update(), optimistic) BEFORE
+  // calling mlsRepo.postCommit() (network), and any non-409 postCommit()
+  // failure was just re-thrown without rolling back the optimistic write --
+  // permanently diverging the client from the server. Fixed by
+  // reconcileAfterPostCommitFailure() (mls-membership.service.ts): a
+  // CAS-guarded rollback to the pre-write state, followed by the unmodified
+  // catchUpMissedCommits() asking the server directly whether the commit
+  // actually landed. See mls-invariants-provisiondevice-divergence.spec.ts
+  // for the full P1 regression suite (Case A/B, retry, crash/restart,
+  // crypto verification, concurrency) -- this test now just confirms the
+  // fix from this file's own "crash consistency" angle.
+  it('a network failure AFTER the local optimistic write (before the server confirms the commit) rolls back -- the client no longer stays permanently ahead of the server', async () => {
     const backend = new FakeMlsBackend();
     const a = new Device(backend, USER_A, DEVICE_A);
     const b = new Device(backend, USER_B, DEVICE_B);
@@ -96,27 +99,20 @@ describe('MLS multi-device invariants — crash consistency (Section 5)', () => 
 
     await expectAsync(a.membershipSvc.provisionDevice('device-x', CONV_ID, USER_A, DEVICE_A)).toBeRejected();
 
-    // The finding, stated as observed fact: local state already advanced...
-    expect(a.epoch(CONV_ID)).withContext('local epoch advanced optimistically despite the commit never being posted').toBe(2);
-    expect(a.memberDeviceIds(CONV_ID)).withContext('device-x appears locally as a member').toContain('device-x');
-    // ...while the server has NO record of this commit at all.
+    // Rolled back: local state matches the server again.
+    expect(a.epoch(CONV_ID)).withContext('rolled back to the last confirmed epoch').toBe(1);
+    expect(a.memberDeviceIds(CONV_ID)).withContext('phantom device rolled back out').not.toContain('device-x');
     expect(backend.getCommits(CONV_ID).filter(c => c.epoch === 1).length)
       .withContext('the server never received any commit for this epoch')
       .toBe(0);
 
-    // Consequence: provisionDevice()'s own idempotent "already a member"
-    // pre-check (mls-membership.service.ts:81, isDeviceMember) now silently
-    // SKIPS a retry for the same device, because the LOCAL state already
-    // (wrongly) believes device-x is provisioned -- so a later, automatic
-    // retry (e.g. the next reconnect sweep) does not repair this on its own.
-    const secondAttempt = await (async () => {
-      try { await a.membershipSvc.provisionDevice('device-x', CONV_ID, USER_A, DEVICE_A); return 'ran'; }
-      catch { return 'threw'; }
-    })();
-    expect(secondAttempt).toBe('ran'); // does not throw -- just silently no-ops
+    // Consequence: isDeviceMember() correctly reflects reality again after
+    // the rollback, so a retry genuinely posts the commit this time.
+    await a.membershipSvc.provisionDevice('device-x', CONV_ID, USER_A, DEVICE_A);
+    expect(a.memberDeviceIds(CONV_ID)).withContext('retry genuinely repairs the divergence').toContain('device-x');
     expect(backend.getCommits(CONV_ID).filter(c => c.epoch === 1).length)
-      .withContext('still nothing posted -- the pre-check skip means it never retries the actual commit')
-      .toBe(0);
+      .withContext('the retry actually posted the commit')
+      .toBe(1);
   });
 
   it('crash before ANY write for a brand-new conversation (nothing local, nothing on the backend): retry starts clean, no divergence possible', async () => {

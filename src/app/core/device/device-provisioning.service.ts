@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { MlsCoordinatorBase } from '../mls/coordinator/mls-coordinator.base';
+import { MlsEpochConflictBus } from '../mls/mls-epoch-conflict-bus.service';
 import { ConversationsService } from '../conversation/conversations.service';
 import { SyncService } from '../sync/sync.service';
 import { DeviceRepository } from './device.repository';
@@ -9,10 +10,11 @@ import type { DeviceInfo }  from './device.types';
 
 @Injectable({ providedIn: 'root' })
 export class DeviceProvisioningService {
-  private deviceRepo  = inject(DeviceRepository);
-  private coordinator = inject(MlsCoordinatorBase);
-  private convSvc     = inject(ConversationsService);
-  private syncSvc     = inject(SyncService);
+  private deviceRepo       = inject(DeviceRepository);
+  private coordinator      = inject(MlsCoordinatorBase);
+  private convSvc          = inject(ConversationsService);
+  private syncSvc          = inject(SyncService);
+  private epochConflictBus = inject(MlsEpochConflictBus);
 
   async handleDeviceNew(
     newDeviceId: string,
@@ -153,6 +155,31 @@ export class DeviceProvisioningService {
 
     for (const { deviceId: otherId, conversationId } of pending) {
       if (!await this.coordinator.canProvision(conversationId, user, device)) continue;
+
+      // AUDIT P1 (provisionDevice client/server divergence after network
+      // failure): `pending` is server truth -- getPendingProvisions() only
+      // lists a pair when no device_welcomes row exists for it, and a
+      // confirmed commit always writes that row in the same transaction
+      // (mls.service.ts storeMlsCommit). So if local state already
+      // believes otherId is a member of conversationId, the ONLY way that
+      // can happen is a prior provisionDevice() whose optimistic write
+      // landed locally but whose commit never reached the server (Case A)
+      // -- including the case where the app crashed before
+      // reconcileAfterPostCommitFailure()'s inline rollback ever ran, so no
+      // in-memory previousStateB64pd is left to roll back to.
+      // provisionDevice()'s own local "already member" pre-check would
+      // otherwise silently no-op forever (see AUDIT P1). Surfacing it
+      // through the same epoch-conflict signal the 409 handlers already use
+      // elsewhere in mls-membership.service.ts routes it through the
+      // existing recovery machinery (backup restore first, escalating only
+      // if that also fails), scoped to exactly the conversations this
+      // mismatch was actually detected for -- not a blind catch-up sweep.
+      if (await this.coordinator.isDeviceMemberLocally(conversationId, otherId, user, device)) {
+        console.warn('[DeviceProvisioning] checkAndProvisionOnConnect: local state believes', otherId, 'is already a member of', conversationId, 'but the server has no record of it -- signalling epoch conflict to trigger recovery');
+        this.epochConflictBus.epochConflict$.next({ conversationId });
+        continue;
+      }
+
       try {
         await this.coordinator.provisionDevice(otherId, conversationId, user, device);
       } catch (err) {

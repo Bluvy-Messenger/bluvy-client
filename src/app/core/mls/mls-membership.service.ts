@@ -194,6 +194,21 @@ export class MlsMembershipService {
         console.log('[MLS:observability] clearConversationGroup caller', { conversationId, caller: 'provisionDevice 409 handler' });
         await this.clearConversationGroup(conversationId, user, device);
         this.epochConflictBus.epochConflict$.next({ conversationId });
+      } else {
+        // AUDIT P1: any other postCommit() failure (timeout, connection
+        // refused, 5xx, or the response simply never arriving) leaves the
+        // question "did the server actually receive this commit?" open --
+        // the optimistic write at L177 above already advanced local state
+        // regardless. Reconcile instead of just throwing: roll back (CAS-
+        // guarded, same pattern as the lost-race branch below) then let
+        // catchUpMissedCommits() -- unmodified -- ask the server directly.
+        // Case A (server never got it): 0 commits found, rollback stands.
+        // Case B (server accepted it, only the response was lost):
+        // catchUpMissedCommits() finds and applies our own commit via the
+        // normal incoming-commit path -- empirically confirmed to produce a
+        // ClientState byte-identical to createCommit()'s own newState (see
+        // AUDIT P1 design report), so this is not a lossy re-derivation.
+        await this.reconcileAfterPostCommitFailure(conversationId, scope, newStateB64pd, previousStateB64pd, user, device, 'provisionDevice');
       }
       throw err;
     }
@@ -681,5 +696,86 @@ export class MlsMembershipService {
           .catch(err => console.warn('[MLS] removeRevokedDevice: resync after lost race failed for conv', convId, err));
       }
     }
+  }
+
+  // AUDIT P1 (provisionDevice client/server divergence after network
+  // failure): after a postCommit() failure that is NOT a confirmed 409, the
+  // optimistic local write from storage.update() may or may not have
+  // actually reached the server. Roll back to the pre-write state -- CAS-
+  // guarded exactly like the lost-commit-race branches above, so a
+  // concurrent write in the meantime is never clobbered -- then let
+  // catchUpMissedCommits() (unmodified) determine from the server itself
+  // whether our commit actually landed:
+  //   Case A (server never received it): 0 commits found, rollback stands.
+  //   Case B (server accepted it, only the response was lost):
+  //     catchUpMissedCommits() finds our own commit (stored server-side
+  //     under the pre-write epoch, per the "epoch = built from" schema
+  //     convention) and applies it via the normal incoming-commit path.
+  // If the CAS check fails (some other operation already moved the state
+  // forward -- a concurrent incoming commit, or another optimistic write),
+  // nothing is forced: the rollback is skipped entirely, mirroring the
+  // "return null" skip already used by every lost-race branch in this file.
+  private async reconcileAfterPostCommitFailure(
+    conversationId:     string,
+    scope:              string,
+    optimisticStateB64: string,
+    previousStateB64:   string | undefined,
+    user:               UserProfile,
+    device:             SessionDevice,
+    caller:             string,
+  ): Promise<void> {
+    let rolledBack = false;
+
+    await this.storage.update<StoredMlsState>(scope, async (s) => {
+      if (!s) return null;
+      if (s.groupStates[conversationId] !== optimisticStateB64) {
+        console.log('[MLS:observability] reconcileAfterPostCommitFailure rollback skipped (concurrent write detected)', { conversationId, deviceId: device.id, caller });
+        return null;
+      }
+      if (previousStateB64 === undefined) delete s.groupStates[conversationId];
+      else s.groupStates[conversationId] = previousStateB64;
+      s.updatedAt = Date.now();
+      rolledBack = true;
+      return s;
+    });
+
+    if (!rolledBack) return;
+
+    console.log('[MLS:observability] reconcileAfterPostCommitFailure rolled back, reconciling with server', { conversationId, deviceId: device.id, caller });
+
+    try {
+      const applied = await this.commitSvc.catchUpMissedCommits(conversationId, user, device);
+      console.log('[MLS:observability] reconcileAfterPostCommitFailure reconciled', { conversationId, deviceId: device.id, caller, applied });
+    } catch (reconcileErr) {
+      // The reconciliation attempt itself failed (e.g. a second network
+      // failure). The rollback still stands -- local state correctly
+      // reflects the last confirmed epoch rather than a phantom-advanced
+      // one -- so this is safe to leave for the next reconnect sweep
+      // (DeviceProvisioningService.checkAndProvisionOnConnect) instead of
+      // retrying inline here.
+      console.warn('[MLS] reconcileAfterPostCommitFailure: reconciliation attempt failed for conv', conversationId, '-- rollback still stands, will be retried on next reconnect', reconcileErr);
+    }
+  }
+
+  // Read-only, no lock, no network -- mirrors provisionDevice()'s own local
+  // "already member" pre-check (L74-85 above). Exposed separately for
+  // DeviceProvisioningService's reconnect sweep: cross-referencing this
+  // against the server's own getPendingProvisions() list is how the sweep
+  // detects a conversation whose local state phantom-advanced past a
+  // Commit the server never actually received (AUDIT P1), for the case
+  // where the app crashed before reconcileAfterPostCommitFailure() ever ran
+  // and no in-memory previousStateB64pd is left to roll back to.
+  async isDeviceMemberLocally(
+    conversationId: string,
+    deviceId:       string,
+    user:           UserProfile,
+    device:         SessionDevice,
+  ): Promise<boolean> {
+    const scope = this.cryptoCtx.makeScope(user.did, device.id);
+    const state = await this.storage.load<StoredMlsState>(scope);
+    const encoded = state?.groupStates[conversationId];
+    if (!encoded) return false;
+    const clientState = this.cryptoCtx.restoreClientState(encoded);
+    return this.cryptoCtx.isDeviceMember(clientState, deviceId);
   }
 }

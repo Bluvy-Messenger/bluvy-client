@@ -141,6 +141,19 @@ export abstract class MlsCoordinatorBase {
     device:        DeviceInfo,
   ): Promise<void>;
 
+  // Read-only, no lock, no network. AUDIT P1 crash/restart detection: lets
+  // DeviceProvisioningService's reconnect sweep cross-reference the
+  // server's own "not yet provisioned" list against local belief, to catch
+  // a conversation whose local state phantom-advanced past a Commit the
+  // server never received, surviving even a crash before the inline
+  // rollback ran.
+  abstract isDeviceMemberLocally(
+    convId:   string,
+    deviceId: string,
+    user:     UserProfile,
+    device:   DeviceInfo,
+  ): Promise<boolean>;
+
   // ── Restore ───────────────────────────────────────────────────────────────
   abstract injectRestoredGroupStates(
     groupStates: Record<string, string>,

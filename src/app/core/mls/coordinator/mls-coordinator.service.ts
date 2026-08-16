@@ -824,6 +824,15 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     return this.mlsSvc.reprovisionLostStateDevice(staleDeviceId, convId, user, device);
   }
 
+  override async isDeviceMemberLocally(
+    convId:   string,
+    deviceId: string,
+    user:     UserProfile,
+    device:   DeviceInfo,
+  ): Promise<boolean> {
+    return this.mlsSvc.isDeviceMemberLocally(convId, deviceId, user, device);
+  }
+
   // ── Restore ────────────────────────────────────────────────────────────────
 
   override async injectRestoredGroupStates(

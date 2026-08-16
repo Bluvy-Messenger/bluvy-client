@@ -599,4 +599,15 @@ export class MlsService {
   ): Promise<void> {
     return this.membershipSvc.removeRevokedDeviceFromAllGroups(revokedDeviceId, user, device);
   }
+
+  // Thin delegate to MlsMembershipService.isDeviceMemberLocally() (AUDIT P1
+  // crash/restart detection) -- see that method's doc comment.
+  async isDeviceMemberLocally(
+    conversationId: string,
+    deviceId:       string,
+    user:           UserProfile,
+    device:         SessionDevice,
+  ): Promise<boolean> {
+    return this.membershipSvc.isDeviceMemberLocally(conversationId, deviceId, user, device);
+  }
 }
