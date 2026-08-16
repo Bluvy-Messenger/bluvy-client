@@ -17,9 +17,11 @@ import {
   emptyPskIndex,
   encodeGroupState,
   decodeGroupState,
+  decodeMlsMessage,
   encodeMlsMessage,
   type ClientConfig,
   type ClientState,
+  type KeyPackage,
   type PrivateKeyPackage,
   type ProposalAdd,
 } from 'ts-mls';
@@ -92,6 +94,15 @@ export async function getCs() {
   return getCiphersuiteImpl(getCiphersuiteFromName(CIPHERSUITE_NAME), defaultCryptoProvider);
 }
 
+// Caches the private half of the most recently generated key package per
+// deviceId. generateDeviceIdentityKeyPackage() only returns the PUBLIC
+// package (matching the real consumeOwnKeyPackage/consumeKeyPackage network
+// response shape) -- this cache lets a real Device instance for that same
+// deviceId later actually join the group its own Welcome invites it into
+// (Device.joinViaPendingWelcome()), instead of the private material being
+// silently discarded. Test-only; nothing production reads this.
+const privateKeyPackageCache = new Map<string, { publicPackage: KeyPackage; privatePackage: PrivateKeyPackage }>();
+
 export async function generateDeviceIdentityKeyPackage(deviceId: string): Promise<ConsumedKeyPackageResponse> {
   const cs = await getCs();
   // Identity format mirrors production (`${did}#${deviceId}`) closely enough
@@ -99,6 +110,7 @@ export async function generateDeviceIdentityKeyPackage(deviceId: string): Promis
   // work identically to real code — the did portion is irrelevant to those checks.
   const credential = { credentialType: 'basic' as const, identity: new TextEncoder().encode(`harness#${deviceId}`) };
   const kp = await generateKeyPackage(credential, defaultCapabilities(), defaultLifetime, [], cs);
+  privateKeyPackageCache.set(deviceId, kp);
   const keyPackageB64 = bytesToBase64(encodeMlsMessage({ version: 'mls10', wireformat: 'mls_key_package', keyPackage: kp.publicPackage }));
   return { keyPackage: keyPackageB64, deviceId };
 }
@@ -359,6 +371,36 @@ export class Device {
 
   getGroupStateB64(conversationId: string): string | undefined {
     return this.storage.raw(this.scope)?.groupStates[conversationId];
+  }
+
+  // Fetches this device's own pending Welcome from the backend (posted by
+  // provisionDevice()/reprovisionLostStateDevice() on another device acting
+  // on its behalf) and genuinely joins via real ts-mls joinGroup(), using
+  // the private key package generateDeviceIdentityKeyPackage() cached for
+  // this exact deviceId when the OTHER device's consumeOwnKeyPackage() call
+  // generated it. Lets a test verify THIS device's actual post-reprovision
+  // session, not just the acting device's own view of the tree.
+  async joinViaPendingWelcome(conversationId: string): Promise<void> {
+    const pending = await this.backend.getPendingWelcomes(this.device.id, conversationId);
+    if (pending.data.length === 0) {
+      throw new Error(`harness: no pending welcome for device ${this.device.id} in ${conversationId}`);
+    }
+    const item = pending.data[pending.data.length - 1]!; // most recent
+    const cachedKp = privateKeyPackageCache.get(this.device.id);
+    if (!cachedKp) {
+      throw new Error(`harness: no cached private key package for device ${this.device.id} -- was it ever generated via generateDeviceIdentityKeyPackage?`);
+    }
+
+    const cs = await getCs();
+    const welcomeBytes = base64ToBytes(item.welcome);
+    const decoded = decodeMlsMessage(welcomeBytes, 0)?.[0];
+    if (!decoded || decoded.wireformat !== 'mls_welcome') {
+      throw new Error('harness: pending item is not a valid Welcome');
+    }
+
+    const joinedState = await joinGroup(decoded.welcome, cachedKp.publicPackage, cachedKp.privatePackage, emptyPskIndex, cs);
+    this.seedGroupState(conversationId, bytesToBase64(encodeGroupState(joinedState)));
+    this.backend.ackWelcome(this.device.id, item.id);
   }
 
   // Decodes this device's own current ClientState for a conversation --

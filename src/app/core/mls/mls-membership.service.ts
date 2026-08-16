@@ -332,14 +332,34 @@ export class MlsMembershipService {
       // another device already fixed it (or it was never a member to begin
       // with) — skip idempotently rather than attempt a Remove for a leaf
       // that doesn't exist.
+      //
+      // Same bug/fix as removeRevokedDeviceFromAllGroups(): getGroupMembers()
+      // (ts-mls/clientState.js) filters state.ratchetTree down to non-blank
+      // leaves only, so its array position is NOT the MLS leaf index once
+      // any earlier leaf has been blanked by a prior Remove. Using that
+      // position directly as `remove.removed` can silently target a
+      // DIFFERENT, still-occupied leaf — validateRemove() only rejects a
+      // blank target, it never checks that the index actually corresponds
+      // to the intended identity, so a wrong-but-occupied index removes an
+      // unrelated device instead of throwing. findLeafIndex() (ts-mls's own
+      // API, ts-mls/ratchetTree.js) resolves the true leaf index directly
+      // from the raw tree by matching the LeafNode itself.
       const members = getGroupMembers(clientState);
       const dec = new TextDecoder();
-      const leafIndex = members.findIndex((m: ReturnType<typeof getGroupMembers>[number]) =>
+      const targetMember = members.find((m: ReturnType<typeof getGroupMembers>[number]) =>
         m.credential.credentialType === 'basic' &&
         dec.decode(m.credential.identity).endsWith(`#${staleDeviceId}`)
       );
 
-      if (leafIndex === -1) {
+      if (!targetMember) {
+        if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: device not (or no longer) a member, nothing to fix', staleDeviceId, conversationId);
+        shouldSkip = true;
+        return null;
+      }
+
+      const leafIndex = findLeafIndex(clientState.ratchetTree, targetMember);
+
+      if (leafIndex === undefined) {
         if (!environment.production) console.log('[MLS] reprovisionLostStateDevice: device not (or no longer) a member, nothing to fix', staleDeviceId, conversationId);
         shouldSkip = true;
         return null;
