@@ -8,6 +8,7 @@ import {
   type ProposalAdd,
 } from 'ts-mls';
 import { getGroupMembers } from 'ts-mls/clientState.js';
+import { findLeafIndex } from 'ts-mls/ratchetTree.js';
 import type { UserProfile } from '../auth/auth.types';
 import { MlsStateStorageService } from './mls-state-storage.service';
 import { MlsRepository } from './mls.repository';
@@ -564,15 +565,31 @@ export class MlsMembershipService {
         const members = getGroupMembers(clientState);
         const dec = new TextDecoder();
 
-        // getGroupMembers() returns leaves in tree order with no attached index —
-        // the array position IS the leaf index (see provisionDevice's identical
-        // "already member" lookup above, which relies on the same ordering).
-        const leafIndex = members.findIndex((m) =>
+        // getGroupMembers() (ts-mls/clientState.js) filters state.ratchetTree
+        // down to non-blank leaves only, in raw tree order -- so its array
+        // position is NOT the MLS leaf index once any earlier leaf has been
+        // blanked by a prior Remove (each blank leaf shifts every later
+        // member's compacted position down by one relative to their real
+        // leaf index). Using that position as `remove.removed` then points
+        // ts-mls at the wrong (possibly already-blank) leaf, which
+        // validateRemove() rejects with "Tried to remove empty leaf node"
+        // (ts-mls/dist/src/clientState.js). findLeafIndex() (ts-mls's own
+        // API, ts-mls/ratchetTree.js) resolves the true leaf index directly
+        // from the raw tree by matching the LeafNode itself, independent of
+        // how many earlier leaves are blank.
+        const targetMember = members.find((m) =>
           m.credential.credentialType === 'basic' &&
           dec.decode(m.credential.identity).endsWith(`#${revokedDeviceId}`)
         );
 
-        if (leafIndex === -1) {
+        if (!targetMember) {
+          shouldSkip = true;
+          return null;
+        }
+
+        const leafIndex = findLeafIndex(clientState.ratchetTree, targetMember);
+
+        if (leafIndex === undefined) {
           shouldSkip = true;
           return null;
         }

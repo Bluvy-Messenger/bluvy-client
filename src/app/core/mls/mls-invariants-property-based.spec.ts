@@ -137,25 +137,10 @@ async function runSequence(seed: number, steps: number): Promise<void> {
   }
 }
 
-// KNOWN FAILURE, LEFT VISIBLE ON PURPOSE (seed=17): this is a confirmed,
-// precisely-reproduced production bug found by this property-based suite,
-// documented in full in the audit's final report -- it is NOT flaky and
-// this test is deliberately NOT skipped/xit'd, per the audit's explicit
-// instruction not to mask a real failure. Root cause (confirmed via direct
-// instrumentation, not guessed): mls-membership.service.ts's
-// removeRevokedDeviceFromAllGroups() locates the leaf to remove via
-// `members.findIndex(...)` on `getGroupMembers(clientState)`, under the
-// documented assumption "the array position IS the leaf index". Once the
-// conversation's tree already contains at least one blanked leaf from a
-// PRIOR removal, that assumption stops holding for at least one subsequent,
-// otherwise fully legitimate removal of a DIFFERENT, still-present member --
-// findIndex() returns a value getGroupMembers() and memberDeviceIds()
-// (independently, correctly) both still list the target device under, yet
-// the real ts-mls createCommit() call built against that index throws
-// "Tried to remove empty leaf node". Reproduced exactly: seed=17, steps
-// 0-6 (catchup, add, catchup, add, add, duplicate, remove
-// prop-device-17-3 -- succeeds) then step 7 (remove prop-device-17-4,
-// confirmed present in memberDeviceIds() immediately before the call) throws.
+// FIXED: seed=17 previously found a confirmed production bug in
+// mls-membership.service.ts's removeRevokedDeviceFromAllGroups() (see the
+// "double removal" describe block below for the full root cause and fix).
+// All seeds, including 17, are expected to pass now.
 describe('MLS multi-device invariants — property-based random operation sequences (Section 9)', () => {
   const NUM_SEQUENCES = 20;
   const STEPS_PER_SEQUENCE = 12;
@@ -171,14 +156,25 @@ describe('MLS multi-device invariants — property-based random operation sequen
 // above -- no randomness, no catchup/duplicate noise, isolates the exact
 // trigger: removing a SECOND, different, still-present member after the
 // conversation's tree already contains one blanked leaf from a prior removal.
-describe('MLS multi-device invariants — FINDING: minimal repro of removeRevokedDeviceFromAllGroups failing on a second removal (Section 9, reduced from seed=17)', () => {
+//
+// FIXED (was a documented, confirmed-not-fixed finding at the time this test
+// was written): removeRevokedDeviceFromAllGroups() (mls-membership.service.ts)
+// used to locate the leaf to remove via `members.findIndex(...)` on the
+// COMPACTED array returned by getGroupMembers() (ts-mls/clientState.js),
+// which filters out blank leaves -- so its array position stops matching the
+// real MLS leaf index as soon as any earlier leaf has been blanked by a
+// prior Remove. It now uses ts-mls's own findLeafIndex() (ts-mls/ratchetTree.js),
+// which resolves the true leaf index directly from the raw ratchetTree by
+// matching the LeafNode itself, independent of any earlier blanks. This test
+// now asserts the fixed (correct) behavior: the second removal succeeds.
+describe('MLS multi-device invariants — double removal after a prior Remove already blanked a leaf (Section 9, reduced from seed=17)', () => {
   const USER_A: UserProfile = { did: 'did:plc:alice', handle: 'alice.test', displayName: 'Alice', avatarUrl: null };
   const DEVICE_A: DeviceInfo = { id: 'device-a1', name: 'Phone', platform: 'android' };
   const USER_B: UserProfile = { did: 'did:plc:bob', handle: 'bob.test', displayName: 'Bob', avatarUrl: null };
   const DEVICE_B: DeviceInfo = { id: 'device-b1', name: 'Laptop', platform: 'web' };
   const CONV_ID = 'conv-minimal-repro';
 
-  it('add 3 devices, remove the 2nd, then remove the 3rd (still present): the second removal throws instead of succeeding', async () => {
+  it('add 3 devices, remove the 2nd, then remove the 3rd (still present): the second removal succeeds', async () => {
     const backend = new FakeMlsBackend();
     const a = new Device(backend, USER_A, DEVICE_A);
     const b = new Device(backend, USER_B, DEVICE_B);
@@ -196,28 +192,10 @@ describe('MLS multi-device invariants — FINDING: minimal repro of removeRevoke
     expect(a.memberDeviceIds(CONV_ID)).not.toContain('device-y');
     expect(a.memberDeviceIds(CONV_ID)).withContext('device-z must still be a legitimate, present member here').toContain('device-z');
 
-    // Second removal, of a DIFFERENT, still-present device: THE BUG.
-    // Expected: succeeds cleanly, exactly like the first removal did.
-    // Actual (documented, not fixed): throws "Tried to remove empty leaf node".
-    let threw: unknown;
-    try {
-      await a.membershipSvc.removeRevokedDeviceFromAllGroups('device-z', USER_A, DEVICE_A);
-    } catch (err) {
-      threw = err;
-    }
-
-    if (threw) {
-      // Confirms the bug is present, with a precise pointer to where.
-      console.error(
-        '[FINDING confirmed] removeRevokedDeviceFromAllGroups() threw removing a second, ' +
-        'still-present device after a prior removal already blanked a leaf. ' +
-        'See mls-membership.service.ts, removeRevokedDeviceFromAllGroups(), the ' +
-        '`members.findIndex(...)` leaf lookup. Error:', threw,
-      );
-    }
-    expect(threw).withContext(
-      'If this now passes, the underlying production bug has been fixed since this audit -- ' +
-      'update this test to assert success instead of documenting the failure.',
-    ).toBeTruthy();
+    // Second removal, of a DIFFERENT, still-present device -- must succeed
+    // exactly like the first removal did, not throw.
+    await a.membershipSvc.removeRevokedDeviceFromAllGroups('device-z', USER_A, DEVICE_A);
+    expect(a.memberDeviceIds(CONV_ID)).not.toContain('device-z');
+    expect(a.memberDeviceIds(CONV_ID).sort()).toEqual([DEVICE_A.id, DEVICE_B.id, 'device-x'].sort());
   });
 });
