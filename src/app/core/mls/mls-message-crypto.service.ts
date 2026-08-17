@@ -13,6 +13,7 @@ import { MlsStateStorageService } from './mls-state-storage.service';
 import { MlsCryptoContextService } from './mls-crypto-context.service';
 import { MlsPendingCommitTracker } from './mls-pending-commit-tracker.service';
 import type { SessionDevice, StoredMlsState } from './mls.types';
+import { DecryptEpochAheadError } from './errors/decrypt-epoch-ahead-error';
 
 // Raw per-message MLS crypto: encryptMessage/decryptMessage. Extracted from
 // MlsService (Phase 1 Step 4 of the split). This is deliberately just the
@@ -98,6 +99,25 @@ export class MlsMessageCryptoService {
       if (!encoded) throw new Error('MLS group not ready for this conversation');
 
       const clientState = this.cryptoCtx.restoreClientState(encoded);
+
+      // P2 fix: ts-mls's processPrivateMessage() only special-cases a
+      // ciphertext epoch BEHIND the local epoch (historical key retention,
+      // "epoch too old"). An epoch AHEAD of local (a missed commit) falls
+      // straight through into the crypto call below using the wrong (stale)
+      // epoch's keys, producing a CryptoError whose .message is the raw
+      // browser AEAD failure text -- indistinguishable from a genuine
+      // crypto/fork failure, so it is misclassified PermanentMlsError and
+      // never retried. Detected structurally here instead (zero-cost bigint
+      // comparison, no crypto performed yet), exactly like EpochGapError
+      // does for incoming commits (mls-commit.service.ts).
+      if (decoded.privateMessage.epoch > clientState.groupContext.epoch) {
+        throw new DecryptEpochAheadError(
+          conversationId,
+          Number(clientState.groupContext.epoch),
+          Number(decoded.privateMessage.epoch),
+        );
+      }
+
       const result = await processPrivateMessage(
         clientState,
         decoded.privateMessage,

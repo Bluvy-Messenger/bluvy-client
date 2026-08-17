@@ -1,6 +1,7 @@
 import { Observable } from 'rxjs';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo }  from '../../device/device.types';
+import type { WelcomeProcessingResult } from '../mls.types';
 import type {
   DecryptResult,
   ReplayResult,
@@ -57,7 +58,7 @@ export abstract class MlsCoordinatorBase {
     convId: string,
     user:   UserProfile,
     device: DeviceInfo,
-  ): Promise<boolean>;
+  ): Promise<WelcomeProcessingResult>;
 
   // ── Group ─────────────────────────────────────────────────────────────────
   abstract ensureGroupReady(
@@ -139,6 +140,46 @@ export abstract class MlsCoordinatorBase {
     convId:        string,
     user:          UserProfile,
     device:        DeviceInfo,
+  ): Promise<void>;
+
+  // Read-only, no lock, no network. AUDIT P1 crash/restart detection: lets
+  // DeviceProvisioningService's reconnect sweep cross-reference the
+  // server's own "not yet provisioned" list against local belief, to catch
+  // a conversation whose local state phantom-advanced past a Commit the
+  // server never received, surviving even a crash before the inline
+  // rollback ran.
+  abstract isDeviceMemberLocally(
+    convId:   string,
+    deviceId: string,
+    user:     UserProfile,
+    device:   DeviceInfo,
+  ): Promise<boolean>;
+
+  // AUDIT P1 crash/restart (reprovisionLostStateDevice() only): resolves
+  // any pending reprovision operations left by a crash before
+  // reconciliation, via the pendingReprovisions marker persisted in
+  // StoredMlsState. Called from DeviceProvisioningService on reconnect.
+  abstract recoverPendingReprovisions(
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<void>;
+
+  // AUDIT P0 crash/restart (removeRevokedDeviceFromAllGroups() only):
+  // resolves any pending Remove operations left by a crash before
+  // reconciliation, via the pendingRemovals marker persisted in
+  // StoredMlsState. Called from DeviceProvisioningService on reconnect.
+  abstract recoverPendingRemovals(
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<void>;
+
+  // AUDIT P0 crash/restart (ensureGroupReady() genesis Phase 2 only):
+  // resolves any pending genesis Add-commit operations left by a crash
+  // before reconciliation, via the pendingGenesises marker persisted in
+  // StoredMlsState. Called from DeviceProvisioningService on reconnect.
+  abstract recoverPendingGenesises(
+    user:   UserProfile,
+    device: DeviceInfo,
   ): Promise<void>;
 
   // ── Restore ───────────────────────────────────────────────────────────────

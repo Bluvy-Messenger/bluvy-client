@@ -86,6 +86,11 @@ export class SyncService {
   private sessionDevice: DeviceInfo  | null = null;
   private rebuilding                  = false;
   private groupNotReadyRestorePending = false;
+  // Coalesces concurrent restore() calls (e.g. conversation-open + onGroupNotReady
+  // racing for the same broken conversation) into one underlying doRestore() pass --
+  // doRestore() paginates the entire account's MBK backup, not scoped to one
+  // conversation, so redundant concurrent calls are wasted client/backend load.
+  private restoreInFlight: Promise<RestoreResult> | null = null;
 
   // ── Queue ──────────────────────────────────────────────────────────────────
 
@@ -165,7 +170,7 @@ export class SyncService {
     this.groupNotReadyRestorePending = true;
 
     if (this.mbk) {
-      void this.doRestore()
+      void this.restore()
         .then(result => {
           // AUDIT_01 W2 fast-follow: doRestore() computes restoredGroupStates
           // but a caller must explicitly inject it -- this path never did,
@@ -531,9 +536,12 @@ export class SyncService {
     void this.doRebuild();
   }
 
-  // Public awaitable restore.
+  // Public awaitable restore. Coalesces concurrent callers into a single
+  // doRestore() pass -- see restoreInFlight.
   async restore(): Promise<RestoreResult> {
-    return this.doRestore();
+    if (this.restoreInFlight) return this.restoreInFlight;
+    this.restoreInFlight = this.doRestore().finally(() => { this.restoreInFlight = null; });
+    return this.restoreInFlight;
   }
 
   // Clears in-memory state only. SecureLocalStorage is preserved across sessions.

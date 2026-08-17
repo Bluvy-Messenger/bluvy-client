@@ -13,6 +13,7 @@ import { PendingDecryptRepository } from '../repositories/pending-decrypt.reposi
 import { TransientMlsError }        from '../errors/transient-mls-error';
 import { PermanentMlsError }        from '../errors/permanent-mls-error';
 import { EpochGapError }            from '../errors/epoch-gap-error';
+import { DecryptEpochAheadError }   from '../errors/decrypt-epoch-ahead-error';
 import { MlsWatchdogService }       from '../watchdog/mls-watchdog.service';
 import { MlsBackupRegistry }        from '../mls-backup-registry.service';
 import { assertMls }                from '../assertions/mls-assertions';
@@ -22,6 +23,7 @@ import {
   type ReplayResult,
   type ReplayedDecryptEvent,
 } from './mls-coordinator.types';
+import type { WelcomeProcessingResult } from '../mls.types';
 import {
   type ConversationReadyEvent,
   type WelcomeProcessedEvent,
@@ -262,13 +264,16 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     convId: string,
     user:   UserProfile,
     device: DeviceInfo,
-  ): Promise<boolean> {
-    const ok = await this.mlsSvc.fetchAndProcessPendingWelcome(convId, user, device);
-    if (ok) {
+  ): Promise<WelcomeProcessingResult> {
+    const result = await this.mlsSvc.fetchAndProcessPendingWelcome(convId, user, device);
+    // P1 fix (Welcome-obsolete-return-value): only a REAL join justifies
+    // transitioning to Ready -- 'obsolete' and 'already-processed' mean
+    // nothing was actually established/changed for this device.
+    if (result === 'joined') {
       this.transitionState(convId, ConversationMlsState.Ready);
       void this.replayPendingDecrypts(convId, user, device);
     }
-    return ok;
+    return result;
   }
 
   // ── Group readiness ────────────────────────────────────────────────────────
@@ -285,41 +290,92 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     assertMls(!!participantDid, 'ensureGroupReady: participantDid required', { convId });
     assertMls(!!convId,         'ensureGroupReady: convId required');
 
-    if (this.isConversationReady(convId)) return;
+    // AUDIT ADVERSARIAL P1 fix: a concurrent call for the SAME convId (same
+    // device/instance -- e.g. a UI double-tap on "send", or two independent
+    // call sites both warming a brand-new conversation) must never launch a
+    // second, independent Genesis attempt while one is already in flight.
+    // MlsService.ensureGroupReady()'s Phase 2 CAS write means a second,
+    // uncoordinated attempt's storage.update() callback would see the first
+    // attempt's not-yet-server-confirmed optimistic write and return SUCCESS
+    // purely from that observation -- confirmed empirically by a real-crypto
+    // test (see "AUDIT: same-device double concurrent ensureGroupReady()" in
+    // mls-invariants-ensuregroupready-crashrestart.spec.ts). Every call now
+    // loops on InitializationBarrier -- the SAME barrier already used by
+    // processWelcome()/decrypt, no second barrier introduced -- until either
+    // the conversation is genuinely READY, or no operation is in flight and
+    // this call becomes the one that registers and actually performs it.
+    while (true) {
+      if (this.isConversationReady(convId)) {
+        // AUDIT P2 fix: Ready is a one-way in-memory flag for this process
+        // -- nothing ever un-sets it just because this device fell behind
+        // on later commits while briefly disconnected (missing a real-time
+        // mls:commit socket push is not an error, so no transition away
+        // from Ready ever fires for that reason alone). Before this fix,
+        // every ensureGroupReady() call after the first this session
+        // short-circuited HERE unconditionally, meaning
+        // MlsService.ensureGroupReady()'s own "already confirmed" catch-up
+        // (see mls.service.ts) was only ever reachable on the very first
+        // call -- confirmed empirically: a second call after a real missed
+        // commit still returned with the local epoch unchanged, and a
+        // subsequent encryptMessage() produced a message any member who
+        // joined during the outage could never decrypt. Guarantee
+        // freshness on EVERY call, not just the first, by always catching
+        // up before trusting the cached flag -- cheap when nothing is
+        // missed (a single GET that returns immediately, no write), and
+        // this is the exact same primitive MlsService.ensureGroupReady()'s
+        // own "already confirmed" branch uses. A genuine failure here
+        // propagates (not swallowed) for the same reason it does there:
+        // this is the actual guarantee being requested, not a best-effort
+        // background check.
+        await this.mlsSvc.catchUpMissedCommits(convId, user, device);
+        return;
+      }
 
-    // FAILED only allows FAILED -> EMPTY (see MlsStateTransitionGuard). Reset here
-    // so a conversation marked FAILED by trackCommitOutcome (e.g. a permanent
-    // commit-race fork) doesn't make the next transition to INITIALIZING below
-    // throw — that would otherwise hard-block sending a message on this
-    // conversation forever instead of at least attempting to proceed.
-    if (this.states.get(convId) === ConversationMlsState.Failed) {
-      this.transitionState(convId, ConversationMlsState.Empty);
-    }
+      if (this.barrier.isInitializing(convId)) {
+        // Another ensureGroupReady() (or processWelcome()) is already
+        // running for this conversation. Wait for it to finish and
+        // re-derive the state from scratch on the next loop iteration --
+        // never proceed independently while it's still unconfirmed.
+        await this.barrier.wait(convId);
+        continue;
+      }
 
-    const { release } = this.barrier.register(convId);
+      // FAILED only allows FAILED -> EMPTY (see MlsStateTransitionGuard). Reset here
+      // so a conversation marked FAILED by trackCommitOutcome (e.g. a permanent
+      // commit-race fork) doesn't make the next transition to INITIALIZING below
+      // throw — that would otherwise hard-block sending a message on this
+      // conversation forever instead of at least attempting to proceed.
+      if (this.states.get(convId) === ConversationMlsState.Failed) {
+        this.transitionState(convId, ConversationMlsState.Empty);
+      }
 
-    // Re-check after barrier registration — processWelcome may have completed concurrently.
-    if (this.isConversationReady(convId)) {
-      release();
+      const { release } = this.barrier.register(convId);
+
+      // Re-check after barrier registration — processWelcome may have completed concurrently.
+      if (this.isConversationReady(convId)) {
+        release();
+        await this.mlsSvc.catchUpMissedCommits(convId, user, device);
+        return;
+      }
+
+      this.transitionState(convId, ConversationMlsState.Initializing);
+      try {
+        await this.mlsSvc.ensureGroupReady(convId, participantDid, user, device, signal, preConsumedKeyPackage, memberDids);
+        this.transitionState(convId, ConversationMlsState.Ready);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          this.transitionState(convId, ConversationMlsState.Empty);
+        } else {
+          this.transitionState(convId, ConversationMlsState.Failed);
+          this.scheduleFailedRecovery(convId, user, device);
+        }
+        throw err;
+      } finally {
+        release();
+      }
+      await this.replayPendingDecrypts(convId, user, device);
       return;
     }
-
-    this.transitionState(convId, ConversationMlsState.Initializing);
-    try {
-      await this.mlsSvc.ensureGroupReady(convId, participantDid, user, device, signal, preConsumedKeyPackage, memberDids);
-      this.transitionState(convId, ConversationMlsState.Ready);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        this.transitionState(convId, ConversationMlsState.Empty);
-      } else {
-        this.transitionState(convId, ConversationMlsState.Failed);
-        this.scheduleFailedRecovery(convId, user, device);
-      }
-      throw err;
-    } finally {
-      release();
-    }
-    await this.replayPendingDecrypts(convId, user, device);
   }
 
   // Two-tier recovery of everything this device can still reach before
@@ -573,6 +629,32 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         this.decryptionFailures.set(convId, 0);
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
+        // P2 fix: an epoch-ahead ciphertext (this device missed a later
+        // commit) is detected structurally by MlsMessageCryptoService, not
+        // by regex on the underlying CryptoError's message (which is
+        // indistinguishable from a genuine crypto/fork failure -- see
+        // DecryptEpochAheadError's doc comment). Gated strictly on
+        // `instanceof`, never on classifyError()'s regex classification, so
+        // this cannot change behavior for any other error class (transient
+        // network errors, genuinely permanent failures, EpochTooOld, etc).
+        // A single catch-up attempt only -- catchUpMissedCommits() already
+        // applies every missed commit in one call, so a second attempt
+        // would be redundant. On any failure here, fall through unchanged
+        // into the existing classification/heal chain below, using the
+        // ORIGINAL error -- today's behavior for "catch-up didn't close the
+        // gap" is completely unaffected.
+        if (err instanceof DecryptEpochAheadError) {
+          try {
+            await this.catchUpMissedCommits(convId, user, device);
+            const retriedPlaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
+            this.transitionState(convId, ConversationMlsState.Ready);
+            this.decryptionFailures.set(convId, 0);
+            return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext: retriedPlaintext, operationId };
+          } catch (catchUpErr) {
+            if (!environment.production) console.warn('[MLS:coordinator] decryptMessage: catch-up after epoch-ahead ciphertext failed for', messageId, catchUpErr);
+          }
+        }
+
         const classified = this.classifyError(err, convId);
         if (classified instanceof TransientMlsError) {
           console.warn('[MLS:coordinator] decryptMessage transient error for', messageId, '->', classified.kind, ':', err instanceof Error ? err.message : err);
@@ -583,7 +665,15 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         // FIRST: Before enqueuing as transient or marking as undecryptable, attempt to fetch & process any pending Welcome for this conversation.
         // If no Welcome is pending, attempt MBK Cloud Restore fallback to recover the group state from another device.
         try {
-          let healed = await this.fetchAndProcessPendingWelcome(convId, user, device);
+          const welcomeResult = await this.fetchAndProcessPendingWelcome(convId, user, device);
+          // Type-mechanical adaptation only (P1 fix): this path was already
+          // SAFE before and stays behaviorally identical -- it never trusted
+          // the flag alone, it always retries the real decrypt() below and
+          // falls through to the normal error classification if that retry
+          // itself fails. `healed` preserves the exact prior boolean
+          // semantics (true whenever a pending Welcome was seen and
+          // processed without throwing, i.e. any outcome other than 'none').
+          let healed = welcomeResult !== 'none';
           if (!healed && this.backupRegistry.backupService?.isMbkAvailable()) {
             const result = await this.backupRegistry.backupService.restore() as any;
             if (result?.restoredGroupStates && result.restoredGroupStates[convId]) {
@@ -824,6 +914,36 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     return this.mlsSvc.reprovisionLostStateDevice(staleDeviceId, convId, user, device);
   }
 
+  override async isDeviceMemberLocally(
+    convId:   string,
+    deviceId: string,
+    user:     UserProfile,
+    device:   DeviceInfo,
+  ): Promise<boolean> {
+    return this.mlsSvc.isDeviceMemberLocally(convId, deviceId, user, device);
+  }
+
+  override async recoverPendingReprovisions(
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<void> {
+    return this.mlsSvc.recoverPendingReprovisions(user, device);
+  }
+
+  override async recoverPendingRemovals(
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<void> {
+    return this.mlsSvc.recoverPendingRemovals(user, device);
+  }
+
+  override async recoverPendingGenesises(
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<void> {
+    return this.mlsSvc.recoverPendingGenesises(user, device);
+  }
+
   // ── Restore ────────────────────────────────────────────────────────────────
 
   override async injectRestoredGroupStates(
@@ -835,14 +955,41 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       'injectRestoredGroupStates: groupStates must be an object');
 
     const operationId = crypto.randomUUID();
+
+    // AUDIT_08 P0: a conversation with a real processWelcome()/ensureGroupReady()
+    // in flight already holds InitializationBarrier -- injecting a restored
+    // candidate for it here would let TRANSITION_REASON_RESTORE force READY
+    // before that real operation has verified anything. Drop those
+    // conversations from this pass entirely rather than injecting a candidate
+    // that could briefly sit in storage un-marked-ready: MlsService's own
+    // "never overwrite an existing groupStates[convId]" check means nothing
+    // is lost by waiting, and the next restore/sweep will retry them once the
+    // real operation releases the barrier.
+    const candidates: Record<string, string> = {};
+    for (const [convId, gs] of Object.entries(groupStates)) {
+      if (this.barrier.isInitializing(convId)) continue;
+      candidates[convId] = gs;
+    }
+
     // Only the conversationIds MlsService actually injected -- it can refuse
     // a candidate whose epoch would regress below what this device already
     // reached (see MlsService.injectRestoredGroupStates), and marking those
     // READY here would paper over that refusal.
-    const injectedIds = await this.mlsSvc.injectRestoredGroupStates(groupStates, user, device);
+    const injectedIds = Object.keys(candidates).length > 0
+      ? await this.mlsSvc.injectRestoredGroupStates(candidates, user, device)
+      : [];
 
     // Mark restored conversations as READY, bypassing normal transition rules.
+    let readyCount = 0;
     for (const convId of injectedIds) {
+      // Second check: a real join/init may have started registering its
+      // barrier during the await above (after the first filter ran). The
+      // group state was already written to storage by MlsService, but the
+      // real operation's own unconditional write will still supersede it
+      // once it completes -- the abstract READY label must not be forced
+      // here while that operation is now in flight for convId.
+      if (this.barrier.isInitializing(convId)) continue;
+
       const from = this.states.get(convId) ?? ConversationMlsState.Empty;
       this.transitionState(convId, ConversationMlsState.Ready, TRANSITION_REASON_RESTORE);
       if (!this.readyTimestamps.has(convId)) {
@@ -850,10 +997,11 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       }
       this.watchdog.watch(convId, ConversationMlsState.Ready);
       this._conversationReady$$.next({ conversationId: convId, from, operationId });
+      readyCount++;
     }
 
     this._restoreCompleted$$.next({
-      conversationCount: injectedIds.length,
+      conversationCount: readyCount,
       operationId,
     });
   }
@@ -977,8 +1125,14 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     this.transitionState(convId, ConversationMlsState.Joining);
 
     try {
-      const ok = await this.fetchAndProcessPendingWelcome(convId, user, device);
-      if (ok) {
+      const welcomeResult = await this.fetchAndProcessPendingWelcome(convId, user, device);
+      // P1 fix (Welcome-obsolete-return-value): only 'joined' proves the
+      // group was actually repaired -- 'obsolete', 'already-processed' and
+      // 'none' must fall through to the catch-up fallback below, never be
+      // read as "healed" (proven empirically to otherwise declare a
+      // conversation Ready while its real epoch never advanced, silently
+      // skipping the catch-up fallback that would have genuinely fixed it).
+      if (welcomeResult === 'joined') {
         // fetchAndProcessPendingWelcome joined the group in IndexedDB — reflect that here.
         console.log('[MLS:observability] recoverFromFailed outcome', { conversationId: convId, attempt: attempts, outcome: 'healed_via_welcome' });
         this.transitionState(convId, ConversationMlsState.Ready);
