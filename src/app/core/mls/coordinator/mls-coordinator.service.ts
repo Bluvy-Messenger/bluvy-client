@@ -13,6 +13,7 @@ import { PendingDecryptRepository } from '../repositories/pending-decrypt.reposi
 import { TransientMlsError }        from '../errors/transient-mls-error';
 import { PermanentMlsError }        from '../errors/permanent-mls-error';
 import { EpochGapError }            from '../errors/epoch-gap-error';
+import { DecryptEpochAheadError }   from '../errors/decrypt-epoch-ahead-error';
 import { MlsWatchdogService }       from '../watchdog/mls-watchdog.service';
 import { MlsBackupRegistry }        from '../mls-backup-registry.service';
 import { assertMls }                from '../assertions/mls-assertions';
@@ -628,6 +629,32 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         this.decryptionFailures.set(convId, 0);
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
+        // P2 fix: an epoch-ahead ciphertext (this device missed a later
+        // commit) is detected structurally by MlsMessageCryptoService, not
+        // by regex on the underlying CryptoError's message (which is
+        // indistinguishable from a genuine crypto/fork failure -- see
+        // DecryptEpochAheadError's doc comment). Gated strictly on
+        // `instanceof`, never on classifyError()'s regex classification, so
+        // this cannot change behavior for any other error class (transient
+        // network errors, genuinely permanent failures, EpochTooOld, etc).
+        // A single catch-up attempt only -- catchUpMissedCommits() already
+        // applies every missed commit in one call, so a second attempt
+        // would be redundant. On any failure here, fall through unchanged
+        // into the existing classification/heal chain below, using the
+        // ORIGINAL error -- today's behavior for "catch-up didn't close the
+        // gap" is completely unaffected.
+        if (err instanceof DecryptEpochAheadError) {
+          try {
+            await this.catchUpMissedCommits(convId, user, device);
+            const retriedPlaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
+            this.transitionState(convId, ConversationMlsState.Ready);
+            this.decryptionFailures.set(convId, 0);
+            return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext: retriedPlaintext, operationId };
+          } catch (catchUpErr) {
+            if (!environment.production) console.warn('[MLS:coordinator] decryptMessage: catch-up after epoch-ahead ciphertext failed for', messageId, catchUpErr);
+          }
+        }
+
         const classified = this.classifyError(err, convId);
         if (classified instanceof TransientMlsError) {
           console.warn('[MLS:coordinator] decryptMessage transient error for', messageId, '->', classified.kind, ':', err instanceof Error ? err.message : err);

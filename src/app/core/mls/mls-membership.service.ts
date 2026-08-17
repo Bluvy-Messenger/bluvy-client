@@ -573,6 +573,26 @@ export class MlsMembershipService {
       }
 
       delete state.groupStates[conversationId];
+      // P1 fix: a 409 here can leave a pending* marker (written earlier in
+      // the SAME optimistic write this call is now unwinding) orphaned --
+      // groupStates[conversationId] is gone, but the marker survives and
+      // later collides on epoch equality with a genuinely different real
+      // commit/Welcome that reaches the same epoch number (guaranteed by
+      // construction: MLS epochs increment by exactly 1 per commit on an
+      // active conversation). Every recovery function
+      // (recoverOnePendingGenesis/-Reprovision/-Removal) uses epoch
+      // equality alone as its rollback trigger, with no verification of
+      // commit identity -- proven empirically (real ts-mls crypto) to
+      // produce a silent, permanent cryptographic fork between two devices
+      // for the genesis case. Once groupStates[conversationId] is gone,
+      // every marker for it is already structurally orphaned regardless of
+      // which operation wrote it, so clearing all three here is always
+      // correct, never a regression -- same rationale already applied by
+      // the lost-commit-race branches elsewhere in this file (see the
+      // marker deletes in reconcileAfterPostCommitFailure()).
+      if (state.pendingReprovisions?.[conversationId]) delete state.pendingReprovisions[conversationId];
+      if (state.pendingRemovals?.[conversationId])     delete state.pendingRemovals[conversationId];
+      if (state.pendingGenesises?.[conversationId])    delete state.pendingGenesises[conversationId];
       state.updatedAt = Date.now();
       return state;
     });
@@ -614,6 +634,13 @@ export class MlsMembershipService {
             if (current && current.groupStates) {
               delete current.groupStates[convId];
               if (current.conversations) delete current.conversations[convId];
+              // P1 fix: same orphaned-marker defect as clearConversationGroup()
+              // above -- this branch deletes groupStates directly, so it needs
+              // the identical cleanup (see the doc comment there for the full
+              // rationale).
+              if (current.pendingReprovisions?.[convId]) delete current.pendingReprovisions[convId];
+              if (current.pendingRemovals?.[convId])     delete current.pendingRemovals[convId];
+              if (current.pendingGenesises?.[convId])    delete current.pendingGenesises[convId];
               current.updatedAt = Date.now();
               return current;
             }

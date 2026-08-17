@@ -9,6 +9,7 @@ import { PendingDecryptRepository } from '../repositories/pending-decrypt.reposi
 import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
 import { MlsBackupRegistry } from '../mls-backup-registry.service';
 import { EpochGapError } from '../errors/epoch-gap-error';
+import { DecryptEpochAheadError } from '../errors/decrypt-epoch-ahead-error';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
 
@@ -128,6 +129,80 @@ describe('MlsCoordinatorService', () => {
     expect(resultState).toBe('pending_decrypt');
     expect(mockPendingRepo.enqueue).toHaveBeenCalled();
   }));
+
+  // ── decryptMessage epoch-ahead catch-up (P2 fix) ──────────────────────────
+  // A DecryptEpochAheadError (this device missed a later commit) must trigger
+  // exactly one catch-up + retry attempt, gated strictly on `instanceof` --
+  // never on classifyError()'s regex classification, since the underlying
+  // CryptoError's message is indistinguishable from a genuine permanent
+  // failure.
+  describe('decryptMessage epoch-ahead catch-up (P2 fix)', () => {
+    it('catches up and retries once on DecryptEpochAheadError, returning plaintext on success, without logging "Unrecognized ts-mls error"', fakeAsync(() => {
+      const epochAheadError = new DecryptEpochAheadError('conv-123', 1, 2);
+      let decryptCallCount = 0;
+      mockMlsSvc.decryptMessage.and.callFake(() => {
+        decryptCallCount++;
+        return decryptCallCount === 1 ? Promise.reject(epochAheadError) : Promise.resolve('plaintext-after-catchup');
+      });
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(1));
+      mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(true));
+      spyOn(console, 'error');
+
+      let result: { state: string; plaintext: string } | undefined;
+      service.decryptMessage(
+        'conv-123', 'msg-abc', 'did:plc:bob', 'device-bob', false, Date.now(),
+        'base64-ciphertext', mockUser, mockDevice,
+      ).then(res => { result = res; });
+
+      tick();
+
+      expect(mockMlsSvc.catchUpMissedCommits).toHaveBeenCalledWith('conv-123', mockUser, mockDevice);
+      expect(mockMlsSvc.decryptMessage).toHaveBeenCalledTimes(2);
+      expect(result?.state).toBe('plaintext');
+      expect(result?.plaintext).toBe('plaintext-after-catchup');
+      // eslint-disable-next-line no-console
+      expect(console.error).not.toHaveBeenCalledWith(jasmine.stringMatching('Unrecognized ts-mls error'), jasmine.anything());
+    }));
+
+    it('falls through unchanged to the existing classification/heal chain when catch-up does not close the gap (retry also throws DecryptEpochAheadError)', fakeAsync(() => {
+      const epochAheadError = new DecryptEpochAheadError('conv-123', 1, 2);
+      mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(epochAheadError));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(0));
+
+      let resultState: string | undefined;
+      service.decryptMessage(
+        'conv-123', 'msg-abc', 'did:plc:bob', 'device-bob', false, Date.now(),
+        'base64-ciphertext', mockUser, mockDevice,
+      ).then(res => { resultState = res.state; });
+
+      tick();
+
+      // DecryptEpochAheadError isn't one of TRANSIENT_PATTERNS/PERMANENT_PATTERNS'
+      // regex matches (its .message is a synthetic, non-matching string), so it
+      // falls to the unrecognized-error default: PermanentMlsError -> undecryptable.
+      // This is today's exact pre-fix behavior for "catch-up didn't help" -- unchanged.
+      expect(resultState).toBe('undecryptable');
+      expect(mockPendingRepo.enqueue).not.toHaveBeenCalled();
+    }));
+
+    it('does not affect classification of unrelated errors (transient/permanent paths untouched)', fakeAsync(() => {
+      const transientError = new Error('MLS group not ready for this conversation');
+      mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(transientError));
+      mockPendingRepo.enqueue.and.returnValue(Promise.resolve());
+
+      let resultState: string | undefined;
+      service.decryptMessage(
+        'conv-123', 'msg-abc', 'did:plc:bob', 'device-bob', false, Date.now(),
+        'base64-ciphertext', mockUser, mockDevice,
+      ).then(res => { resultState = res.state; });
+
+      tick();
+
+      expect(resultState).toBe('pending_decrypt');
+      // catchUpMissedCommits must never be invoked for a non-DecryptEpochAheadError.
+      expect(mockMlsSvc.catchUpMissedCommits).not.toHaveBeenCalled();
+    }));
+  });
 
   // ── trackCommitOutcome / FAILED safety net ────────────────────────────────
   // Regression coverage for the commit-race fork this whole session was about:
