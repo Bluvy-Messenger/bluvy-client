@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, effect, inject } from '@angula
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform, ToastController, AlertController } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonIcon, Platform, ToastController, AlertController } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
@@ -31,6 +31,8 @@ import {
   // native Bluesky post card
   heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
   createOutline, closeOutline, closeCircle, alertCircleOutline,
+  // notes & system
+  bookmark, bookmarkOutline, pin, pinOutline, cloudDoneOutline, timeOutline, lockClosed, arrowUpOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { OAuthService } from './core/auth/oauth.service';
@@ -55,7 +57,7 @@ import type { WelcomeNewPayload } from './core/infrastructure/socket.types';
   selector: 'app-root',
   templateUrl: 'app.component.html',
   styleUrl: 'app.component.scss',
-  imports: [IonApp, IonRouterOutlet, IonToast, IonIcon, TranslatePipe],
+  imports: [IonApp, IonRouterOutlet, IonIcon, TranslatePipe],
 })
 export class AppComponent implements OnInit, OnDestroy {
   private authSvc      = inject(AuthService);
@@ -102,6 +104,7 @@ export class AppComponent implements OnInit, OnDestroy {
       logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
       heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
       createOutline, closeOutline, closeCircle, alertCircleOutline,
+      bookmark, bookmarkOutline, pin, pinOutline, cloudDoneOutline, timeOutline, lockClosed, arrowUpOutline,
     });
 
     // OAuthService.sessionUnavailable flips true when a PDS-touching feature

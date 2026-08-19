@@ -21,6 +21,7 @@ export class AuthRepository {
       deviceId,
       deviceName,
       platform,
+      app: 'messenger',
     }, { skipAuth: true });
   }
 

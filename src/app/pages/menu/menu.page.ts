@@ -54,6 +54,10 @@ export class MenuPage implements OnInit {
     void this.router.navigate([ROUTES.profile]);
   }
 
+  openNotes(): void {
+    void this.router.navigate([ROUTES.notes]);
+  }
+
   openSecurity(): void {
     void this.router.navigate([ROUTES.security]);
   }

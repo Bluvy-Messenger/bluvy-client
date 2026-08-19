@@ -19,7 +19,13 @@ import { MessagePayloadHelper } from '../../../core/conversation/message-payload
 import { BreakpointService } from '../../../core/layout/breakpoint.service';
 import { ContactsService } from '../../../core/contact/contacts.service';
 import type { Contact, BlueskyProfile } from '../../../core/contact/contact.types';
+import { addIcons } from 'ionicons';
+import {
+  bookmark, lockClosed, createOutline, archiveOutline,
+  chevronBackOutline, searchOutline, chatbubbleOutline, peopleOutline,
+} from 'ionicons/icons';
 import { MlsCoordinatorBase } from '../../../core/mls/coordinator/mls-coordinator.base';
+import { NotesService } from '../../../core/notes/notes.service';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { TranslationService } from '../../../core/i18n/translation.service';
 import { ROUTES } from '../../../core/routes';
@@ -49,6 +55,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
   private router       = inject(Router);
   readonly receiptsSvc = inject(ReceiptsService);
   readonly authSvc     = inject(AuthService);
+  readonly notesSvc    = inject(NotesService);
   private socketSvc    = inject(SocketService);
   private cacheSvc     = inject(MessageCacheService);
   readonly presenceSvc = inject(PresenceService);
@@ -100,7 +107,17 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     return match ? match[1] : null;
   });
 
+  readonly isNotesSelected = computed(() => {
+    const url = this.currentUrl();
+    return url ? url.startsWith('/notes') : false;
+  });
+
   constructor() {
+    addIcons({
+      bookmark, lockClosed, createOutline, archiveOutline,
+      chevronBackOutline, searchOutline, chatbubbleOutline, peopleOutline,
+    });
+
     // Reactively update the active sub-tab based on the URL context
     effect(() => {
       const url = this.currentUrl();
@@ -126,9 +143,14 @@ export class SidebarListComponent implements OnInit, OnDestroy {
         setTimeout(() => {
           void this.load();
           void this.loadContacts();
+          void this.notesSvc.initialize(user.did);
         });
       }
     });
+  }
+
+  openNotes(): void {
+    void this.router.navigate([ROUTES.notes]);
   }
 
   async ngOnInit(): Promise<void> {
@@ -380,9 +402,13 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     if (parsed.type === 'chat') {
       return parsed.text;
     }
+    if (parsed.type === 'place') {
+      return `📍 ${parsed.place.name}`;
+    }
     if (parsed.type === 'reaction') {
       return `A réagi ${parsed.reaction.emoji}`;
     }
     return plaintext;
   }
 }
+

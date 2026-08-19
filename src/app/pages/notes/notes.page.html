@@ -1,0 +1,152 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/conversations"></ion-back-button>
+    </ion-buttons>
+
+    <div class="conv-header">
+      <div class="notes-header-avatar">
+        <ion-icon name="bookmark"></ion-icon>
+      </div>
+      <div class="conv-header__info">
+        <span class="conv-header__name">{{ 'notes.title' | translate }}</span>
+        <span class="conv-header__status">{{ 'notes.encrypted_pds' | translate }}</span>
+      </div>
+    </div>
+
+    <ion-buttons slot="end">
+      <ion-button (click)="openPopover($event)" [attr.aria-label]="'conversation.options' | translate">
+        <ion-icon slot="icon-only" name="ellipsis-vertical-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+
+  @if (isSearching()) {
+    <div class="search-zone">
+      <ion-icon name="search-outline" class="search-zone__icon"></ion-icon>
+      <input
+        type="text"
+        class="search-zone__input"
+        placeholder="Rechercher dans vos notes..."
+        [value]="searchQuery()"
+        (input)="onSearchInput($event)"
+        autofocus
+      />
+      @if (searchQuery()) {
+        <button class="search-zone__clear" (click)="searchQuery.set('')">
+          <ion-icon name="close-circle"></ion-icon>
+        </button>
+      }
+    </div>
+  }
+</ion-header>
+
+<ion-content #notesContent>
+  @if (notesSvc.loading() && notesSvc.notes().length === 0) {
+    <div class="loading-center">
+      <div class="spinner"></div>
+    </div>
+  } @else if (filteredNotes().length === 0) {
+    <div class="chat-empty">
+      <div class="notes-empty-avatar">
+        <ion-icon name="bookmark"></ion-icon>
+      </div>
+      <h2 class="chat-empty__name">{{ 'notes.empty.title' | translate }}</h2>
+      <p class="chat-empty__subtitle">{{ 'notes.empty.desc' | translate }}</p>
+    </div>
+  } @else {
+    <div class="messages-list" role="log" aria-live="polite">
+      @for (note of filteredNotes(); track note.id; let i = $index) {
+        @if (getDateSeparator(i); as label) {
+          <div class="date-sep">{{ label }}</div>
+        }
+
+        <div class="row row--mine">
+          <div class="bubble-wrapper bubble-wrapper--mine">
+            <div
+              class="bubble bubble--mine"
+              [class.bubble--pinned]="note.pinned"
+              (click)="presentNoteActions(note)"
+            >
+              @if (note.pinned) {
+                <div class="note-pin-header">
+                  <ion-icon name="pin"></ion-icon>
+                  <span>Épinglé</span>
+                </div>
+              }
+
+              @if (editingNoteId() === note.id) {
+                <div class="note-edit-container" (click)="$event.stopPropagation()">
+                  <textarea
+                    class="note-edit-textarea"
+                    [(ngModel)]="editingText"
+                    rows="3"
+                  ></textarea>
+                  <div class="note-edit-btn-row">
+                    <button class="btn-cancel" (click)="cancelEdit()">Annuler</button>
+                    <button class="btn-save" (click)="saveEdit(note)">Enregistrer</button>
+                  </div>
+                </div>
+              } @else {
+                <p class="bubble__text">{{ note.text }}</p>
+
+                <div class="bubble__footer">
+                  <span class="bubble__time">{{ formatTime(note.createdAt) }}</span>
+                  @if (note.updatedAt > note.createdAt) {
+                    <span class="note-edited-label">modifié</span>
+                  }
+                  @if (note.syncStatus === 'synced') {
+                    <ion-icon name="cloud-done-outline" class="note-sync-icon" title="Enregistré sur le PDS"></ion-icon>
+                  } @else if (note.syncStatus === 'pending_upload') {
+                    <ion-icon name="time-outline" class="note-sync-icon note-sync-icon--pending" title="En attente de synchronisation"></ion-icon>
+                  } @else if (note.syncStatus === 'error') {
+                    <ion-icon name="alert-circle-outline" class="note-sync-icon note-sync-icon--error" title="Erreur"></ion-icon>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</ion-content>
+
+<ion-footer>
+  <div class="composer">
+    <ion-textarea
+      class="composer__input"
+      autoGrow="true"
+      rows="1"
+      [placeholder]="'notes.composer.placeholder' | translate"
+      [value]="composerText"
+      (ionInput)="onInputChange($event)"
+      (keydown)="onKeydown($event)"
+    ></ion-textarea>
+
+    <button
+      class="composer__send"
+      type="button"
+      [disabled]="!composerText.trim()"
+      (click)="submitNote()"
+      [attr.aria-label]="'notes.composer.send' | translate"
+    >
+      <ion-icon name="send"></ion-icon>
+    </button>
+  </div>
+</ion-footer>
+
+<ion-popover #optionsPopover dismissOnSelect="true" [keepContentsMounted]="true">
+  <ng-template>
+    <div class="popover-menu">
+      <button class="popover-item" (click)="toggleSearch()">
+        <ion-icon name="search-outline" class="popover-item__icon"></ion-icon>
+        <span class="popover-item__label">Rechercher</span>
+      </button>
+      <button class="popover-item" (click)="syncNow()">
+        <ion-icon name="sync-outline" class="popover-item__icon"></ion-icon>
+        <span class="popover-item__label">Synchroniser avec le PDS</span>
+      </button>
+    </div>
+  </ng-template>
+</ion-popover>

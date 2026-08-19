@@ -1,4 +1,4 @@
-<ion-modal [isOpen]="isOpen" (didDismiss)="closeModal()" class="new-chat-modal">
+<ion-modal [isOpen]="isOpen()" (didDismiss)="closeModal()" class="new-chat-modal">
   <ng-template>
     <div class="modal-wrapper">
       <div class="modal-header">
@@ -26,16 +26,17 @@
       }
 
       <!-- Group Name Input (Appears Automatically when >1 Contacts Selected) -->
-      @if (isGroupMode) {
+      @if (isGroupMode()) {
         <div class="group-config animate-fade-in">
           <input
             type="text"
             class="group-name-input"
             placeholder="Nom du groupe (optionnel)"
-            [(ngModel)]="groupName"
+            [value]="groupName()"
+            (input)="groupName.set($any($event.target).value)"
           />
 
-          <div class="group-counter" [class.group-counter--limit]="isLimitReached">
+          <div class="group-counter" [class.group-counter--limit]="isLimitReached()">
             <span>{{ selectedDids().length + 1 }} / {{ maxGroupMembers() }} membres</span>
             <small class="counter-note">(Limite maximale serveur)</small>
           </div>
@@ -49,7 +50,8 @@
           type="text"
           class="search-input"
           placeholder="Rechercher un contact..."
-          [(ngModel)]="searchQuery"
+          [value]="searchQuery()"
+          (input)="searchQuery.set($any($event.target).value)"
         />
       </div>
 
@@ -63,18 +65,18 @@
 
       <!-- Contact List -->
       <div class="contacts-body">
-        @if (filteredContacts.length === 0) {
+        @if (filteredContacts().length === 0) {
           <div class="empty-state">
             <ion-icon name="people-outline"></ion-icon>
             <p>Aucun contact Bluvy trouvé.</p>
           </div>
         } @else {
           <div class="contact-list">
-            @for (contact of filteredContacts; track contact.did) {
+            @for (contact of filteredContacts(); track contact.did) {
               <div
                 class="contact-row"
                 [class.contact-row--selected]="isSelected(contact.did)"
-                [class.contact-row--disabled]="!isSelected(contact.did) && isLimitReached"
+                [class.contact-row--disabled]="!isSelected(contact.did) && isLimitReached()"
                 (click)="onContactClick(contact)"
               >
                 <!-- Checkbox for Multi-Select -->
@@ -82,7 +84,7 @@
                   type="button"
                   class="checkbox-button"
                   (click)="$event.stopPropagation(); toggleContactSelection(contact.did)"
-                  [disabled]="loading() || (!isSelected(contact.did) && isLimitReached)"
+                  [disabled]="loading() || (!isSelected(contact.did) && isLimitReached())"
                 >
                   @if (isSelected(contact.did)) {
                     <ion-icon name="checkmark-circle" class="check-icon"></ion-icon>
@@ -98,7 +100,7 @@
                   <span class="contact-handle">&#64;{{ contact.handle }}</span>
                 </div>
 
-                @if (!isSelected(contact.did) && isLimitReached) {
+                @if (!isSelected(contact.did) && isLimitReached()) {
                   <span class="limit-badge">Max {{ maxGroupMembers() }} membres</span>
                 }
               </div>

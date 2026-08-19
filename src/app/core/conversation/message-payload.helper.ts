@@ -1,4 +1,6 @@
 import type { MessageReplyTo, ReactionPayload } from './conversation.types';
+import type { PlaceData } from '../place/place.types';
+import { validatePlaceData } from '../place/cartes-url.util';
 
 export interface ParsedChatPayload {
   type: 'chat';
@@ -11,12 +13,22 @@ export interface ParsedReactionPayload {
   reaction: ReactionPayload;
 }
 
+export interface ParsedPlacePayload {
+  type: 'place';
+  place: PlaceData;
+}
+
 export interface ParsedUnknownPayload {
   type: 'unknown';
   text: string;
 }
 
-export type ParsedMessagePayload = ParsedChatPayload | ParsedReactionPayload | ParsedUnknownPayload;
+export type ParsedMessagePayload =
+  | ParsedChatPayload
+  | ParsedReactionPayload
+  | ParsedPlacePayload
+  | ParsedUnknownPayload;
+
 
 export class MessagePayloadHelper {
   private static readonly CURRENT_VERSION = 1;
@@ -42,6 +54,25 @@ export class MessagePayloadHelper {
           ? replyTo.textSnippet.substring(0, 117) + '...' 
           : replyTo.textSnippet,
         mediaThumbnail: replyTo.mediaThumbnail,
+      },
+    });
+  }
+
+  /**
+   * Encodes a place payload.
+   */
+  static encodePlaceMessage(place: PlaceData): string {
+    return JSON.stringify({
+      v: this.CURRENT_VERSION,
+      type: 'place',
+      place: {
+        name: place.name.trim(),
+        osmType: place.osmType,
+        osmId: place.osmId,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        ...(place.zoom !== undefined ? { zoom: place.zoom } : {}),
+        ...(place.address ? { address: place.address } : {}),
       },
     });
   }
@@ -101,6 +132,25 @@ export class MessagePayloadHelper {
         };
       }
 
+      if (parsed.type === 'place') {
+        if (validatePlaceData(parsed.place)) {
+          return {
+            type: 'place',
+            place: {
+              name: parsed.place.name,
+              osmType: parsed.place.osmType,
+              osmId: parsed.place.osmId,
+              latitude: parsed.place.latitude,
+              longitude: parsed.place.longitude,
+              zoom: parsed.place.zoom,
+              address: parsed.place.address,
+            },
+          };
+        }
+        // Invalid place payload falls back to safe chat placeholder
+        return { type: 'chat', text: '📍 Lieu indisponible' };
+      }
+
       if (parsed.type === 'reaction' && parsed.reaction) {
         const r = parsed.reaction;
         if (typeof r.targetMessageId === 'string' && typeof r.emoji === 'string' && (r.action === 'add' || r.action === 'remove')) {
@@ -120,6 +170,7 @@ export class MessagePayloadHelper {
       return { type: 'chat', text: rawText };
     }
   }
+
 
   /**
    * Applies a reaction payload mutation to an existing ReactionMap.

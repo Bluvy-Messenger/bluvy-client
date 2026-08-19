@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, OnInit, inject, signal } from '@angular/core';
 import { IonIcon } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import { BskyPostCardComponent } from '../bsky-post-card/bsky-post-card.component';
@@ -9,19 +9,14 @@ import type { PopfeedReviewView } from '../../../core/popfeed-review/popfeed-rev
 
 @Component({
   selector: 'app-popfeed-review-card',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonIcon, AvatarComponent, BskyPostCardComponent, TranslatePipe],
   templateUrl: './popfeed-review-card.component.html',
   styleUrls: ['./popfeed-review-card.component.scss'],
-  // Same pattern as MessageEmbedComponent/BskyPostCardComponent: a bare
-  // `.bubble--mine &` never matches across component boundaries under
-  // Angular's emulated view encapsulation.
-  host: { '[class.popfeed-review--mine]': 'isMine' },
+  host: { '[class.popfeed-review--mine]': 'isMine()' },
 })
 export class PopfeedReviewCardComponent implements OnInit {
-  @Input({ required: true }) sourceUrl!: string;
-  @Input() isMine = false;
+  readonly sourceUrl = input.required<string>();
+  readonly isMine = input<boolean>(false);
 
   private reviewRepo = inject(PopfeedReviewRepository);
 
@@ -30,7 +25,7 @@ export class PopfeedReviewCardComponent implements OnInit {
   readonly spoilerRevealed = signal(false);
 
   async ngOnInit(): Promise<void> {
-    const match = parsePopfeedReviewUrl(this.sourceUrl);
+    const match = parsePopfeedReviewUrl(this.sourceUrl());
     if (!match) {
       this.state.set('error');
       return;
@@ -51,6 +46,6 @@ export class PopfeedReviewCardComponent implements OnInit {
   }
 
   openExternal(): void {
-    window.open(this.sourceUrl, '_blank', 'noopener,noreferrer');
+    window.open(this.sourceUrl(), '_blank', 'noopener,noreferrer');
   }
 }

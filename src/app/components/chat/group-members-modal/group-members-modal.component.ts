@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, signal, inject } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { IonModal, IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -7,10 +7,8 @@ import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import type { ConversationParticipant } from '../../../core/conversation/conversation.types';
 
-// Read-only member list & group name editor for a group conversation.
 @Component({
   selector: 'app-group-members-modal',
-  standalone: true,
   imports: [
     FormsModule,
     IonModal, IonIcon,
@@ -21,13 +19,13 @@ import type { ConversationParticipant } from '../../../core/conversation/convers
   styleUrls: ['./group-members-modal.component.scss'],
 })
 export class GroupMembersModalComponent {
-  @Input() isOpen = false;
-  @Input() members: ConversationParticipant[] = [];
-  @Input() selfDid = '';
-  @Input() groupName: string | null = null;
+  readonly isOpen = input<boolean>(false);
+  readonly members = input<ConversationParticipant[]>([]);
+  readonly selfDid = input<string>('');
+  readonly groupName = input<string | null>(null);
 
-  @Output() closed = new EventEmitter<void>();
-  @Output() renameGroup = new EventEmitter<string>();
+  readonly closed = output<void>();
+  readonly renameGroup = output<string>();
 
   readonly isEditing = signal(false);
   editNameValue = '';
@@ -37,7 +35,7 @@ export class GroupMembersModalComponent {
   }
 
   startEditing(): void {
-    this.editNameValue = this.groupName || '';
+    this.editNameValue = this.groupName() || '';
     this.isEditing.set(true);
   }
 

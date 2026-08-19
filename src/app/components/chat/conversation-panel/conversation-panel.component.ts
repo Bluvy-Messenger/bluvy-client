@@ -17,6 +17,7 @@ import { SocketService } from '../../../core/infrastructure/socket.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../../core/infrastructure/socket.types';
 import { MessageCacheService } from '../../../core/conversation/message-cache.service';
 import type { CachedMessage, DisplayMessage, MessageReplyTo } from '../../../core/conversation/conversation.types';
+import type { PlaceData } from '../../../core/place/place.types';
 import { MessagePayloadHelper } from '../../../core/conversation/message-payload.helper';
 import { SyncService } from '../../../core/sync/sync.service';
 import { TypingService } from '../../../core/typing/typing.service';
@@ -197,6 +198,69 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       this.sending = false;
     }
   }
+
+  async sendPlace(place: PlaceData): Promise<void> {
+    if (!place || this.sending) return;
+
+    const user   = this.authSvc.currentUser();
+    const device = this.authSvc.currentDevice();
+    if (!user || !device) { this.error = 'Not authenticated.'; return; }
+
+    const participantDid = this.conversation?.participant.did;
+    if (!participantDid) { this.error = 'Conversation not loaded.'; return; }
+
+    this.sending = true;
+    const pendingId = `pending-${Date.now()}-${Math.random()}`;
+    this.displayMessages.push({
+      id: pendingId, displayText: `📍 ${place.name}`, isMine: true, createdAt: Date.now(), pending: true, replyTo: null, place,
+    });
+    this.scrollToBottom();
+
+    try {
+      if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
+        this.ensureGroupAbort = new AbortController();
+      }
+      const memberDids = this.conversation?.members?.map(m => m.did);
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        this.ensureGroupAbort.signal,
+        undefined,
+        memberDids,
+      );
+      const payloadText = MessagePayloadHelper.encodePlaceMessage(place);
+      const ciphertext   = await this.coordinator.encryptMessage(this.conversationId, payloadText, user, device);
+      const serverMsg    = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
+      this.knownIds.add(serverMsg.id);
+
+      const cached: CachedMessage = {
+        id: serverMsg.id, conversationId: this.conversationId,
+        senderDeviceId: device.id, senderDid: user.did, plaintext: payloadText,
+        isMine: true, undecryptable: false, cacheVersion: 1, encryptionVersion: 1,
+        deletedAt: null, createdAt: serverMsg.createdAt, cachedAt: Date.now(),
+        replyTo: null,
+      };
+      await this.messageCacheSvc.store(cached);
+      this.syncSvc.enqueue({
+        messageId: serverMsg.id, conversationId: this.conversationId,
+        plaintext: payloadText, createdAt: serverMsg.createdAt, senderDid: user.did,
+      });
+
+      const idx = this.displayMessages.findIndex(m => m.id === pendingId);
+      if (idx !== -1) this.displayMessages[idx] = this.toDisplayMessage(cached);
+      this.scrollToBottom();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (!environment.production) console.error('[ConversationPanel] sendPlace failed:', err);
+      this.displayMessages = this.displayMessages.filter(m => m.id !== pendingId);
+      this.error = err instanceof Error ? err.message : 'Send failed.';
+    } finally {
+      this.sending = false;
+    }
+  }
+
 
   async reestablishEncryption(): Promise<void> {
     const user           = this.authSvc.currentUser();
@@ -482,6 +546,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
   private toDisplayMessage(msg: CachedMessage): DisplayMessage {
     let displayText: string;
     let replyTo = msg.replyTo ?? null;
+    let place: PlaceData | null = null;
 
     if (msg.deletedAt !== null) displayText = '[Deleted]';
     else if (msg.undecryptable) displayText = '[Encrypted]';
@@ -492,6 +557,9 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
         if (!replyTo && parsed.replyTo) {
           replyTo = parsed.replyTo;
         }
+      } else if (parsed.type === 'place') {
+        displayText = `📍 ${parsed.place.name}`;
+        place = parsed.place;
       } else if (parsed.type === 'reaction') {
         displayText = '';
       } else {
@@ -508,8 +576,10 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       senderDid: msg.senderDid,
       replyTo,
       reactions: msg.reactions,
+      place,
     };
   }
+
 
   onReplyToMessage(msg: DisplayMessage): void {
     const handle = this.conversation?.participant.handle;

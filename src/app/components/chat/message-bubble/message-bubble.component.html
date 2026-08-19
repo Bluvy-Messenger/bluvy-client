@@ -1,30 +1,30 @@
 <div class="row"
-     [class.row--mine]="isMine"
+     [class.row--mine]="isMine()"
      [class.row--swiping]="swipeOffset > 0"
      (touchstart)="onTouchStart($event)"
      (touchmove)="onTouchMove($event)"
      (touchend)="onTouchEnd()"
      [style.transform]="swipeOffset > 0 ? 'translateX(' + swipeOffset + 'px)' : null">
-  @if (!isMine) {
+  @if (!isMine()) {
     <div class="row__avatar">
-      @if (showSenderInfo) {
-        <app-avatar [src]="senderAvatarUrl" [handle]="senderName || ''" size="sm"></app-avatar>
+      @if (showSenderInfo()) {
+        <app-avatar [src]="senderAvatarUrl()" [handle]="senderName() || ''" size="sm"></app-avatar>
       }
     </div>
   }
   <div class="row__col">
-    @if (showSenderInfo && senderName) {
-      <span class="row__sender-name">{{ senderName }}</span>
+    @if (showSenderInfo() && senderName()) {
+      <span class="row__sender-name">{{ senderName() }}</span>
     }
 
-    <div class="bubble-wrapper" [class.bubble-wrapper--mine]="isMine">
+    <div class="bubble-wrapper" [class.bubble-wrapper--mine]="isMine()">
       <!-- Desktop Hover Actions Bar (Messenger / Discord style) -->
       <div class="action-bar"
-           [class.action-bar--mine]="isMine"
+           [class.action-bar--mine]="isMine()"
            [class.action-bar--visible]="showEmojiPicker()">
         <!-- Quick Emoji Picker Popover -->
         @if (showEmojiPicker()) {
-          <div class="emoji-popover" [class.emoji-popover--mine]="isMine">
+          <div class="emoji-popover" [class.emoji-popover--mine]="isMine()">
             <button class="action-bar__btn" (click)="onReactionSelect('👍')" type="button">👍</button>
             <button class="action-bar__btn" (click)="onReactionSelect('❤️')" type="button">❤️</button>
             <button class="action-bar__btn" (click)="onReactionSelect('😂')" type="button">😂</button>
@@ -37,7 +37,7 @@
 
         <!-- Expanded Full Emoji Grid Popover -->
         @if (showFullPicker()) {
-          <div class="emoji-grid-popover" [class.emoji-grid-popover--mine]="isMine">
+          <div class="emoji-grid-popover" [class.emoji-grid-popover--mine]="isMine()">
             @for (e of expandedEmojis; track e) {
               <button class="emoji-grid__btn" (click)="onReactionSelect(e)" type="button">{{ e }}</button>
             }
@@ -65,54 +65,58 @@
       </div>
 
       <div class="bubble"
-           [id]="'msg-' + messageId"
-           [class.bubble--mine]="isMine"
-           [class.bubble--theirs]="!isMine"
-           [class.bubble--pending]="pending"
-           [class.bubble--first]="position === 'first'"
-           [class.bubble--middle]="position === 'middle'"
-           [class.bubble--last]="position === 'last'"
+           [id]="'msg-' + messageId()"
+           [class.bubble--mine]="isMine()"
+           [class.bubble--theirs]="!isMine()"
+           [class.bubble--pending]="pending()"
+           [class.bubble--first]="position() === 'first'"
+           [class.bubble--middle]="position() === 'middle'"
+           [class.bubble--last]="position() === 'last'"
            (click)="onBubbleClick()">
 
         <!-- Quoted reply preview header -->
-        @if (replyTo) {
+        @if (replyTo(); as reply) {
           <div class="bubble__quote" (click)="onQuoteClick($event)">
-            @if (replyTo.mediaThumbnail) {
-              <img [src]="replyTo.mediaThumbnail" class="bubble__quote-thumb" alt="Thumbnail" />
+            @if (reply.mediaThumbnail) {
+              <img [src]="reply.mediaThumbnail" class="bubble__quote-thumb" alt="Thumbnail" />
             }
             <div class="bubble__quote-content">
               <div class="bubble__quote-header">
                 <ion-icon name="return-up-back-outline"></ion-icon>
-                <span class="bubble__quote-sender">{{ replyTo.senderHandle || replyTo.senderDid }}</span>
+                <span class="bubble__quote-sender">{{ reply.senderHandle || reply.senderDid }}</span>
               </div>
-              <div class="bubble__quote-text">{{ replyTo.textSnippet }}</div>
+              <div class="bubble__quote-text">{{ reply.textSnippet }}</div>
             </div>
           </div>
         }
 
-        @if (displayText()) {
-          <p class="bubble__text">{{ displayText() }}</p>
-        }
-        @for (link of links(); track link.key) {
-          @if (link.bskyPostUrl || link.popfeedReviewUrl || link.embed || link.preview) {
-            <app-embed-preview-block
-              [bskyPostUrl]="link.bskyPostUrl"
-              [popfeedReviewUrl]="link.popfeedReviewUrl"
-              [embed]="link.embed"
-              [preview]="link.preview"
-              [previewImageSrc]="link.previewImageSrc"
-              [isMine]="isMine"
-            ></app-embed-preview-block>
+        @if (place(); as p) {
+          <app-place-embed [place]="p" [isMine]="isMine()"></app-place-embed>
+        } @else {
+          @if (displayText()) {
+            <p class="bubble__text">{{ displayText() }}</p>
+          }
+          @for (link of links(); track link.key) {
+            @if (link.bskyPostUrl || link.popfeedReviewUrl || link.embed || link.preview) {
+              <app-embed-preview-block
+                [bskyPostUrl]="link.bskyPostUrl ?? null"
+                [popfeedReviewUrl]="link.popfeedReviewUrl ?? null"
+                [embed]="link.embed ?? null"
+                [preview]="link.preview ?? null"
+                [previewImageSrc]="link.previewImageSrc ?? null"
+                [isMine]="isMine()"
+              ></app-embed-preview-block>
+            }
           }
         }
         <div class="bubble__footer">
-          <span class="bubble__time">{{ timestamp | date:'HH:mm' }}</span>
-          @if (isMine && !pending) {
-            @if (receiptStatus === 'read') {
+          <span class="bubble__time">{{ timestamp() | date:'HH:mm' }}</span>
+          @if (isMine() && !pending()) {
+            @if (receiptStatus() === 'read') {
               <ion-icon name="checkmark-done" class="bubble__receipt bubble__receipt--read"></ion-icon>
-            } @else if (receiptStatus === 'delivered') {
+            } @else if (receiptStatus() === 'delivered') {
               <ion-icon name="checkmark-done-outline" class="bubble__receipt"></ion-icon>
-            } @else if (receiptStatus === 'sent') {
+            } @else if (receiptStatus() === 'sent') {
               <ion-icon name="checkmark-outline" class="bubble__receipt"></ion-icon>
             }
           }
@@ -120,9 +124,9 @@
       </div>
 
       <!-- Reactions list underneath bubble -->
-      @if (reactionEntries.length > 0) {
-        <div class="reactions-list" [class.reactions-list--mine]="isMine">
-          @for (entry of reactionEntries; track entry.emoji) {
+      @if (reactionEntries().length > 0) {
+        <div class="reactions-list" [class.reactions-list--mine]="isMine()">
+          @for (entry of reactionEntries(); track entry.emoji) {
             <button
               type="button"
               class="reaction-badge"

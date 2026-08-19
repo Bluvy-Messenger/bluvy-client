@@ -17,6 +17,11 @@ export const routes: Routes = [
           import('../pages/conversation/conversation.page').then(m => m.ConversationPage),
       },
       {
+        path: 'notes',
+        loadComponent: () =>
+          import('../pages/notes/notes.page').then(m => m.NotesPage),
+      },
+      {
         path: 'contacts',
         loadComponent: () =>
           import('../pages/contacts/contacts.page').then(m => m.ContactsPage),

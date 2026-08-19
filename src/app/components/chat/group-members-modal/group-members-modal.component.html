@@ -1,4 +1,4 @@
-<ion-modal [isOpen]="isOpen" (didDismiss)="closeModal()" class="members-modal">
+<ion-modal [isOpen]="isOpen()" (didDismiss)="closeModal()" class="members-modal">
   <ng-template>
     <div class="modal-wrapper">
       <div class="modal-header">
@@ -24,7 +24,7 @@
           </div>
         } @else {
           <div class="name-display">
-            <span class="group-name-text">{{ groupName || 'Nom du groupe non défini' }}</span>
+            <span class="group-name-text">{{ groupName() || 'Nom du groupe non défini' }}</span>
             <button class="edit-name-btn" (click)="startEditing()" type="button" title="Renommer le groupe">
               <ion-icon name="create-outline"></ion-icon>
             </button>
@@ -33,13 +33,13 @@
       </div>
 
       <div class="member-list">
-        @for (member of members; track member.did) {
+        @for (member of members(); track member.did) {
           <div class="member-row">
             <app-avatar [src]="member.avatarUrl" [handle]="member.handle" size="md"></app-avatar>
             <div class="member-info">
               <span class="member-name">
                 {{ member.displayName || member.handle }}
-                @if (member.did === selfDid) {
+                @if (member.did === selfDid()) {
                   &nbsp;&middot; {{ 'conversation.you_label' | translate }}
                 }
               </span>

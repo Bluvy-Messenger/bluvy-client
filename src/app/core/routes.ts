@@ -15,6 +15,7 @@ export const ROUTES = {
   conversations:      '/conversations',
   conversation:       (id: string) => `/conversations/${id}`,
   message:            (id: string) => `/conversations/${id}`, // alias for backward compatibility
+  notes:              '/notes',
   contacts:           '/contacts',
   contact:            (did: string) => `/contacts/${did}`,
   more:               '/menu', // alias for backward compatibility

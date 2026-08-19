@@ -9,7 +9,7 @@
     </div>
   }
   @case ('error') {
-    <a class="popfeed-card popfeed-card--error" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+    <a class="popfeed-card popfeed-card--error" [href]="sourceUrl()" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
       <ion-icon name="cloud-offline-outline"></ion-icon>
       <span>{{ 'popfeedReview.error.unavailable' | translate }}</span>
     </a>
@@ -55,16 +55,16 @@
           }
         }
 
-        <a class="popfeed-card__author" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+        <a class="popfeed-card__author" [href]="sourceUrl()" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
           <app-avatar [src]="r.author.avatarUrl" [handle]="r.author.handle" size="sm"></app-avatar>
           <span class="popfeed-card__author-name">{{ r.author.displayName || r.author.handle }}</span>
           <span class="popfeed-card__author-handle">&#64;{{ r.author.handle }}</span>
         </a>
 
         @if (r.crossPostUrl) {
-          <app-bsky-post-card [sourceUrl]="r.crossPostUrl" [isMine]="isMine" [compact]="true"></app-bsky-post-card>
+          <app-bsky-post-card [sourceUrl]="r.crossPostUrl" [isMine]="isMine()" [compact]="true"></app-bsky-post-card>
         } @else {
-          <a class="popfeed-card__open" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+          <a class="popfeed-card__open" [href]="sourceUrl()" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
             <ion-icon name="open-outline"></ion-icon>
             <span>{{ 'popfeedReview.open' | translate }}</span>
           </a>

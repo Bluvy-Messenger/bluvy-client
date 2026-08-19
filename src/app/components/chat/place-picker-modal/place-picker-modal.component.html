@@ -1,0 +1,136 @@
+<ion-modal class="place-picker-modal" [isOpen]="isOpen()" (didDismiss)="dismiss()">
+  <ng-template>
+    <div class="place-picker">
+      <!-- Step 1: Search View -->
+      @if (!selectedPlace()) {
+        <div class="place-picker__header">
+          <div class="place-picker__search">
+            <ion-icon name="search-outline"></ion-icon>
+            <input
+              type="text"
+              [value]="query()"
+              [placeholder]="'placePicker.searchPlaceholder' | translate"
+              [attr.aria-label]="'placePicker.searchPlaceholder' | translate"
+              (input)="onQueryInput($event)"
+              autofocus
+            />
+          </div>
+          <button
+            type="button"
+            class="place-picker__close"
+            [attr.aria-label]="'common.close' | translate"
+            (click)="dismiss()"
+          >
+            <ion-icon name="close"></ion-icon>
+          </button>
+        </div>
+
+        <div class="place-picker__body">
+          @if (loading()) {
+            <div class="place-picker__state">
+              <ion-spinner name="crescent"></ion-spinner>
+            </div>
+          } @else if (error()) {
+            <div class="place-picker__state">
+              <span>{{ 'placePicker.error' | translate }}</span>
+            </div>
+          } @else if (query().trim() && results().length === 0) {
+            <div class="place-picker__state">
+              <span>{{ 'placePicker.noResults' | translate }}</span>
+            </div>
+          } @else {
+            <div class="place-picker__list">
+              @for (place of results(); track place.osmId + '-' + place.name) {
+                <button
+                  type="button"
+                  class="place-picker__item"
+                  (click)="selectPlace(place)"
+                >
+                  <div class="place-picker__item-icon">
+                    <ion-icon name="location-outline"></ion-icon>
+                  </div>
+                  <div class="place-picker__item-info">
+                    <span class="place-picker__item-name">{{ place.name }}</span>
+                    @if (place.address) {
+                      <span class="place-picker__item-address">{{ place.address }}</span>
+                    }
+                  </div>
+                </button>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="place-picker__attribution">
+          {{ 'placePicker.attribution' | translate }}
+        </div>
+      } @else {
+        <!-- Step 2: Preview & Confirmation View -->
+        <div class="place-picker__header place-picker__header--confirm">
+          <button
+            type="button"
+            class="place-picker__back"
+            [attr.aria-label]="'common.back' | translate"
+            (click)="cancelSelection()"
+          >
+            <ion-icon name="arrow-back"></ion-icon>
+          </button>
+          <span class="place-picker__title">{{ 'placePicker.confirmTitle' | translate }}</span>
+          <button
+            type="button"
+            class="place-picker__close"
+            [attr.aria-label]="'common.close' | translate"
+            (click)="dismiss()"
+          >
+            <ion-icon name="close"></ion-icon>
+          </button>
+        </div>
+
+        <div class="place-picker__confirm-body">
+          @if (safePreviewUrl(); as src) {
+            <div class="place-picker__preview-container">
+              <iframe
+                class="place-picker__preview-iframe"
+                [src]="src"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-popups"
+                [title]="selectedPlace()?.name ?? 'Carte'"
+              ></iframe>
+            </div>
+          }
+
+          <div class="place-picker__confirm-info">
+            <div class="place-picker__confirm-icon">
+              <ion-icon name="location-outline"></ion-icon>
+            </div>
+            <div class="place-picker__confirm-text">
+              <h3 class="place-picker__confirm-name">{{ selectedPlace()?.name }}</h3>
+              @if (selectedPlace()?.address) {
+                <p class="place-picker__confirm-address">{{ selectedPlace()?.address }}</p>
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="place-picker__confirm-actions">
+          <button
+            type="button"
+            class="place-picker__btn place-picker__btn--cancel"
+            (click)="cancelSelection()"
+          >
+            {{ 'placePicker.cancel' | translate }}
+          </button>
+          <button
+            type="button"
+            class="place-picker__btn place-picker__btn--send"
+            (click)="confirmAndSend()"
+          >
+            <ion-icon name="checkmark"></ion-icon>
+            <span>{{ 'placePicker.send' | translate }}</span>
+          </button>
+        </div>
+      }
+    </div>
+  </ng-template>
+</ion-modal>

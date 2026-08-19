@@ -37,6 +37,7 @@
           [isMine]="msg.isMine"
           [timestamp]="msg.createdAt"
           [pending]="msg.pending"
+          [place]="msg.place ?? null"
           [replyTo]="msg.replyTo ?? null"
           [reactions]="msg.reactions"
           [currentUserId]="currentUserId"
@@ -76,6 +77,8 @@
       [replyTo]="replyingTo"
       (cancelReply)="replyingTo = null"
       (send)="sendMessage($event)"
+      (sendPlace)="sendPlace($event)"
     ></app-message-composer>
   </div>
+
 </div>

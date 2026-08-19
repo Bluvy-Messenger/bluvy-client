@@ -1,6 +1,5 @@
 import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AsyncPipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { IonContent, IonIcon, IonModal, ToastController } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
@@ -28,8 +27,7 @@ import {
   selector: 'app-contact-detail',
   templateUrl: './contact-detail.page.html',
   styleUrls: ['./contact-detail.page.scss'],
-  standalone: true,
-  imports: [IonContent, IonIcon, IonModal, AvatarComponent, TranslatePipe, AsyncPipe],
+  imports: [IonContent, IonIcon, IonModal, AvatarComponent, TranslatePipe],
 })
 export class ContactDetailPage {
   private route           = inject(ActivatedRoute);

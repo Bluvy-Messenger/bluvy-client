@@ -1,18 +1,17 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { Component, input, computed } from '@angular/core';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-unread-badge',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TranslatePipe],
-  template: `<span class="badge" [attr.aria-label]="'unread.count' | translate: { count }">{{ display }}</span>`,
+  template: `<span class="badge" [attr.aria-label]="'unread.count' | translate: { count: count() }">{{ display() }}</span>`,
   styleUrls: ['./unread-badge.component.scss'],
 })
 export class UnreadBadgeComponent {
-  @Input() count = 0;
+  readonly count = input<number>(0);
 
-  get display(): string {
-    return this.count > 99 ? '99+' : String(this.count);
-  }
+  readonly display = computed(() => {
+    const c = this.count();
+    return c > 99 ? '99+' : String(c);
+  });
 }

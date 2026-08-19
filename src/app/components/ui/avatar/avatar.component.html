@@ -1,7 +1,7 @@
-<div class="avatar avatar--{{ size }}">
-  @if (safeSrc) {
-    <img [src]="safeSrc" [alt]="handle" loading="lazy">
+<div class="avatar avatar--{{ size() }}">
+  @if (safeSrc(); as imgUrl) {
+    <img [src]="imgUrl" [alt]="handle()" loading="lazy">
   } @else {
-    <span class="avatar__initials">{{ initials }}</span>
+    <span class="avatar__initials">{{ initials() }}</span>
   }
 </div>
