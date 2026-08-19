@@ -1,0 +1,40 @@
+@if (isValid() && safeCartesUrl(); as src) {
+  <div class="place-embed" (click)="$event.stopPropagation()">
+    <div class="place-embed__header">
+      <div class="place-embed__icon">
+        <ion-icon name="location-outline"></ion-icon>
+      </div>
+      <div class="place-embed__info">
+        <span class="place-embed__name">{{ place.name }}</span>
+        @if (place.address) {
+          <span class="place-embed__address">{{ place.address }}</span>
+        }
+      </div>
+    </div>
+
+    <div class="place-embed__map-container">
+      <iframe
+        class="place-embed__iframe"
+        [src]="src"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        sandbox="allow-scripts allow-same-origin allow-popups"
+        [title]="place.name"
+      ></iframe>
+    </div>
+
+    <div class="place-embed__footer">
+      <button type="button" class="place-embed__btn" (click)="openInCartesApp($event)">
+        <ion-icon name="open-outline"></ion-icon>
+        <span>{{ 'placePicker.openMap' | translate }}</span>
+      </button>
+    </div>
+  </div>
+} @else {
+  <div class="place-embed place-embed--fallback">
+    <div class="place-embed__fallback-body">
+      <ion-icon name="alert-circle-outline" class="place-embed__fallback-icon"></ion-icon>
+      <span>{{ 'placePicker.unavailable' | translate }}</span>
+    </div>
+  </div>
+}

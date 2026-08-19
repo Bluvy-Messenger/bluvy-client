@@ -25,6 +25,15 @@
 
 <div class="composer">
   <button
+    class="composer__attach composer__attach--plus"
+    type="button"
+    [disabled]="disabled"
+    (click)="openAttachMenu($event)"
+    [attr.aria-label]="'composer.add_action' | translate"
+  >
+    <ion-icon name="add"></ion-icon>
+  </button>
+  <button
     class="composer__attach composer__attach--gif"
     type="button"
     [disabled]="disabled"
@@ -55,8 +64,34 @@
   </button>
 </div>
 
+<ion-popover
+  class="composer-attach-popover"
+  [isOpen]="attachMenuOpen()"
+  [event]="attachEvent"
+  (didDismiss)="attachMenuOpen.set(false)"
+  dismissOnSelect="true"
+>
+  <ng-template>
+    <div class="composer-popover">
+      <button type="button" class="composer-popover__item" (click)="openPlacePicker()">
+        <span class="composer-popover__icon-wrap">
+          <ion-icon name="location-outline"></ion-icon>
+        </span>
+        <span class="composer-popover__label">{{ 'composer.place' | translate }}</span>
+      </button>
+    </div>
+  </ng-template>
+</ion-popover>
+
 <app-gif-picker
   [isOpen]="gifPickerOpen()"
   (closed)="onGifPickerClosed()"
   (gifSelected)="onGifSelected($event)"
 ></app-gif-picker>
+
+<app-place-picker-modal
+  [isOpen]="placePickerOpen()"
+  (closed)="onPlacePickerClosed()"
+  (placeSelected)="onPlaceSelected($event)"
+></app-place-picker-modal>
+

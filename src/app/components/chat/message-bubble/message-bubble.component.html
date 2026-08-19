@@ -90,19 +90,23 @@
           </div>
         }
 
-        @if (displayText()) {
-          <p class="bubble__text">{{ displayText() }}</p>
-        }
-        @for (link of links(); track link.key) {
-          @if (link.bskyPostUrl || link.popfeedReviewUrl || link.embed || link.preview) {
-            <app-embed-preview-block
-              [bskyPostUrl]="link.bskyPostUrl"
-              [popfeedReviewUrl]="link.popfeedReviewUrl"
-              [embed]="link.embed"
-              [preview]="link.preview"
-              [previewImageSrc]="link.previewImageSrc"
-              [isMine]="isMine"
-            ></app-embed-preview-block>
+        @if (place) {
+          <app-place-embed [place]="place" [isMine]="isMine"></app-place-embed>
+        } @else {
+          @if (displayText()) {
+            <p class="bubble__text">{{ displayText() }}</p>
+          }
+          @for (link of links(); track link.key) {
+            @if (link.bskyPostUrl || link.popfeedReviewUrl || link.embed || link.preview) {
+              <app-embed-preview-block
+                [bskyPostUrl]="link.bskyPostUrl"
+                [popfeedReviewUrl]="link.popfeedReviewUrl"
+                [embed]="link.embed"
+                [preview]="link.preview"
+                [previewImageSrc]="link.previewImageSrc"
+                [isMine]="isMine"
+              ></app-embed-preview-block>
+            }
           }
         }
         <div class="bubble__footer">
