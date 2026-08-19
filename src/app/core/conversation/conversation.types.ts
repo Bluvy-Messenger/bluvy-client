@@ -91,6 +91,8 @@ export interface MessageCacheReadResult {
   ids:      Set<string>;
 }
 
+import type { PlaceData } from '../place/place.types';
+
 export interface DisplayMessage {
   id:          string;
   displayText: string;
@@ -100,5 +102,7 @@ export interface DisplayMessage {
   senderDid?:  string;
   replyTo?:    MessageReplyTo | null;
   reactions?:  ReactionMap;
+  place?:      PlaceData | null;
 }
+
 

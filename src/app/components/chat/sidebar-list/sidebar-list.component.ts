@@ -380,9 +380,13 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     if (parsed.type === 'chat') {
       return parsed.text;
     }
+    if (parsed.type === 'place') {
+      return `📍 ${parsed.place.name}`;
+    }
     if (parsed.type === 'reaction') {
       return `A réagi ${parsed.reaction.emoji}`;
     }
     return plaintext;
   }
 }
+

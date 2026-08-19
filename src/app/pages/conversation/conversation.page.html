@@ -80,6 +80,7 @@
             [timestamp]="msg.createdAt"
             [pending]="msg.pending"
             [position]="getMessagePosition(i)"
+            [place]="msg.place ?? null"
             [replyTo]="msg.replyTo ?? null"
             [reactions]="msg.reactions"
             [currentUserId]="currentUserId"
@@ -132,8 +133,10 @@
     [replyTo]="replyingTo"
     (cancelReply)="replyingTo = null"
     (send)="sendMessage($event)"
+    (sendPlace)="sendPlace($event)"
   ></app-message-composer>
 </ion-footer>
+
 
 <ion-popover #optionsPopover dismissOnSelect="true" [keepContentsMounted]="true">
   <ng-template>

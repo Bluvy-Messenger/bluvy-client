@@ -8,7 +8,9 @@ import type { LinkPreviewMeta } from '../../../core/link-preview/link-preview.ty
 import { EmbedRegistry } from '../../../core/embed/embed-registry.service';
 import { extractAllUrls, classifyMessageLink } from '../../../core/message-link/detect-message-link.util';
 import { EmbedPreviewBlockComponent, type EmbedPreviewEmbed } from '../embed-preview-block/embed-preview-block.component';
+import { PlaceEmbedComponent } from '../place-embed/place-embed.component';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
+import type { PlaceData } from '../../../core/place/place.types';
 
 // One slot per link found in the message, in the same left-to-right order
 // they appear in the text -- populated in place as each resolves (some
@@ -41,7 +43,7 @@ export interface ReactionEntry {
   selector: 'app-message-bubble',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent, TranslatePipe, AvatarComponent],
+  imports: [DatePipe, IonIcon, EmbedPreviewBlockComponent, PlaceEmbedComponent, TranslatePipe, AvatarComponent],
   templateUrl: './message-bubble.component.html',
   styleUrls: ['./message-bubble.component.scss'],
 })
@@ -58,6 +60,8 @@ export class MessageBubbleComponent implements OnChanges {
   @Input() currentUserId = '';
   @Input() senderName: string | null = null;
   @Input() senderAvatarUrl: string | null = null;
+  @Input() place: PlaceData | null = null;
+
 
   @Output() reply = new EventEmitter<void>();
   @Output() toggleReaction = new EventEmitter<string>();

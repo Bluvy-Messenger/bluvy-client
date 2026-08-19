@@ -2,12 +2,16 @@ import {
   Component, Input, Output, EventEmitter,
   ChangeDetectionStrategy, inject, signal, OnChanges, OnDestroy, SimpleChanges,
 } from '@angular/core';
-import { IonIcon, IonTextarea } from '@ionic/angular/standalone';
+import { IonIcon, IonTextarea, IonPopover } from '@ionic/angular/standalone';
+import { addIcons } from 'ionicons';
+import { add, locationOutline, send } from 'ionicons/icons';
 import { Capacitor } from '@capacitor/core';
 import { TypingService } from '../../../core/typing/typing.service';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+import { PlacePickerModalComponent } from '../place-picker-modal/place-picker-modal.component';
 import type { GiphyGifSummary } from '../../../core/giphy/giphy.types';
+import type { PlaceData } from '../../../core/place/place.types';
 import { ComposerLinkPreviewComponent } from '../composer-link-preview/composer-link-preview.component';
 import type { MessageReplyTo } from '../../../core/conversation/conversation.types';
 
@@ -15,7 +19,15 @@ import type { MessageReplyTo } from '../../../core/conversation/conversation.typ
   selector: 'app-message-composer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, IonTextarea, TranslatePipe, GifPickerComponent, ComposerLinkPreviewComponent],
+  imports: [
+    IonIcon,
+    IonTextarea,
+    IonPopover,
+    TranslatePipe,
+    GifPickerComponent,
+    PlacePickerModalComponent,
+    ComposerLinkPreviewComponent,
+  ],
   templateUrl: './message-composer.component.html',
   styleUrls: ['./message-composer.component.scss'],
 })
@@ -29,10 +41,19 @@ export class MessageComposerComponent implements OnChanges, OnDestroy {
   // already started typing since the conversation opened.
   @Input() initialText = '';
   @Output() send = new EventEmitter<string>();
+  @Output() sendPlace = new EventEmitter<PlaceData>();
   @Output() cancelReply = new EventEmitter<void>();
 
   inputText = '';
   readonly gifPickerOpen = signal(false);
+  readonly placePickerOpen = signal(false);
+  readonly attachMenuOpen = signal(false);
+  attachEvent: Event | null = null;
+
+  constructor() {
+    addIcons({ add, locationOutline, send });
+  }
+
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['initialText'] && this.initialText) {
@@ -76,7 +97,26 @@ export class MessageComposerComponent implements OnChanges, OnDestroy {
     this.gifPickerOpen.set(false);
   }
 
+  openAttachMenu(event: Event): void {
+    this.attachEvent = event;
+    this.attachMenuOpen.set(true);
+  }
+
+  openPlacePicker(): void {
+    this.attachMenuOpen.set(false);
+    this.placePickerOpen.set(true);
+  }
+
+  onPlacePickerClosed(): void {
+    this.placePickerOpen.set(false);
+  }
+
+  onPlaceSelected(place: PlaceData): void {
+    this.sendPlace.emit(place);
+  }
+
   // Inserted as a plain giphy.com link -- the existing embed pipeline
+
   // (EmbedRegistry -> giphyProvider) already renders any such link as a
   // native GIF embed, so no new message type or send path is needed.
   onGifSelected(gif: GiphyGifSummary): void {

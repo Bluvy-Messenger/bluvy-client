@@ -162,3 +162,53 @@
     box-shadow: var(--focus-ring);
   }
 }
+
+.composer-popover {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  min-width: 160px;
+  background: var(--color-surface, #fff);
+}
+
+.composer-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 8px);
+  border: none;
+  background: none;
+  color: var(--color-text-primary, inherit);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm, 14px);
+  font-weight: var(--weight-medium, 500);
+  transition: background var(--duration-fast, 0.15s) ease;
+
+  &:hover {
+    background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+  }
+}
+
+.composer-popover__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 133, 255, 0.12);
+  color: var(--color-primary, #0085ff);
+
+  ion-icon {
+    font-size: 16px;
+  }
+}
+
+.composer-popover__label {
+  flex: 1;
+}
+
