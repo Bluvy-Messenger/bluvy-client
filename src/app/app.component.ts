@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, effect, inject } from '@angula
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
-import { IonApp, IonRouterOutlet, IonToast, IonIcon, Platform, ToastController, AlertController } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, IonIcon, Platform, ToastController, AlertController } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
 import { TranslatePipe } from './core/i18n/translate.pipe';
 import { App } from '@capacitor/app';
@@ -57,7 +57,7 @@ import type { WelcomeNewPayload } from './core/infrastructure/socket.types';
   selector: 'app-root',
   templateUrl: 'app.component.html',
   styleUrl: 'app.component.scss',
-  imports: [IonApp, IonRouterOutlet, IonToast, IonIcon, TranslatePipe],
+  imports: [IonApp, IonRouterOutlet, IonIcon, TranslatePipe],
 })
 export class AppComponent implements OnInit, OnDestroy {
   private authSvc      = inject(AuthService);

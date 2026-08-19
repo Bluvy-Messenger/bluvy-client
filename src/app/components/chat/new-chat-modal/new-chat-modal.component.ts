@@ -1,8 +1,7 @@
-import { Component, Input, Output, EventEmitter, ViewChild, inject, signal, OnInit } from '@angular/core';
+import { Component, input, output, ViewChild, inject, signal, computed, OnInit } from '@angular/core';
 import { IonModal, IonIcon, IonSpinner } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { ConversationsService } from '../../../core/conversation/conversations.service';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import type { Contact } from '../../../core/contact/contact.types';
@@ -10,27 +9,25 @@ import type { ConversationListItem, ConversationResult } from '../../../core/con
 
 @Component({
   selector: 'app-new-chat-modal',
-  standalone: true,
   imports: [
     CommonModule,
     FormsModule,
     IonModal,
     IonIcon,
     IonSpinner,
-    TranslatePipe,
     AvatarComponent,
   ],
   templateUrl: './new-chat-modal.component.html',
   styleUrls: ['./new-chat-modal.component.scss'],
 })
 export class NewChatModalComponent implements OnInit {
-  @Input() isOpen = false;
-  @Input() bluvyContacts: Contact[] = [];
+  readonly isOpen = input<boolean>(false);
+  readonly bluvyContacts = input<Contact[]>([]);
 
   @ViewChild(IonModal) private modal?: IonModal;
 
-  @Output() closed = new EventEmitter<void>();
-  @Output() conversationCreated = new EventEmitter<ConversationListItem | ConversationResult>();
+  readonly closed = output<void>();
+  readonly conversationCreated = output<ConversationListItem | ConversationResult>();
 
   private conversationsSvc = inject(ConversationsService);
 
@@ -41,6 +38,20 @@ export class NewChatModalComponent implements OnInit {
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
 
+  readonly filteredContacts = computed<Contact[]>(() => {
+    const q = this.searchQuery().trim().toLowerCase();
+    const list = this.bluvyContacts();
+    if (!q) return list;
+    return list.filter(c =>
+      c.handle.toLowerCase().includes(q) ||
+      (c.displayName && c.displayName.toLowerCase().includes(q))
+    );
+  });
+
+  readonly maxContactsAllowed = computed<number>(() => Math.max(1, this.maxGroupMembers() - 1));
+  readonly isLimitReached = computed<boolean>(() => this.selectedDids().length >= this.maxContactsAllowed());
+  readonly isGroupMode = computed<boolean>(() => this.selectedDids().length > 1);
+
   ngOnInit(): void {
     this.conversationsSvc.fetchServerConfig().subscribe({
       next: (config) => {
@@ -48,31 +59,8 @@ export class NewChatModalComponent implements OnInit {
           this.maxGroupMembers.set(config.maxGroupMembers);
         }
       },
-      error: () => {
-        // Default to 4 if config fetch fails
-      },
+      error: () => {},
     });
-  }
-
-  get filteredContacts(): Contact[] {
-    const q = this.searchQuery().trim().toLowerCase();
-    if (!q) return this.bluvyContacts;
-    return this.bluvyContacts.filter(c =>
-      c.handle.toLowerCase().includes(q) ||
-      (c.displayName && c.displayName.toLowerCase().includes(q))
-    );
-  }
-
-  get maxContactsAllowed(): number {
-    return Math.max(1, this.maxGroupMembers() - 1);
-  }
-
-  get isLimitReached(): boolean {
-    return this.selectedDids().length >= this.maxContactsAllowed;
-  }
-
-  get isGroupMode(): boolean {
-    return this.selectedDids().length > 1;
   }
 
   toggleContactSelection(did: string): void {
@@ -80,7 +68,7 @@ export class NewChatModalComponent implements OnInit {
     if (current.includes(did)) {
       this.selectedDids.set(current.filter(d => d !== did));
     } else {
-      if (this.isLimitReached) return;
+      if (this.isLimitReached()) return;
       this.selectedDids.set([...current, did]);
     }
   }
@@ -91,15 +79,13 @@ export class NewChatModalComponent implements OnInit {
 
   getSelectedContacts(): Contact[] {
     const dids = new Set(this.selectedDids());
-    return this.bluvyContacts.filter(c => dids.has(c.did));
+    return this.bluvyContacts().filter(c => dids.has(c.did));
   }
 
   onContactClick(contact: Contact): void {
-    // If no multi-selection active yet, clicking directly starts a 1:1 DM
     if (this.selectedDids().length === 0) {
       this.startDm(contact.did);
     } else {
-      // If multi-selection is active, toggle checkbox
       this.toggleContactSelection(contact.did);
     }
   }
@@ -112,10 +98,8 @@ export class NewChatModalComponent implements OnInit {
     }
 
     if (dids.length === 1) {
-      // Exactly 1 contact selected -> Create/Open 1:1 DM
       this.startDm(dids[0]!);
     } else {
-      // > 1 contacts selected -> Create Group conversation
       this.createGroup(dids);
     }
   }
@@ -138,7 +122,7 @@ export class NewChatModalComponent implements OnInit {
   }
 
   private createGroup(dids: string[]): void {
-    if (dids.length > this.maxContactsAllowed) {
+    if (dids.length > this.maxContactsAllowed()) {
       this.error.set(`Nombre maximum de membres dépassé (limite serveur : ${this.maxGroupMembers()})`);
       return;
     }
@@ -166,15 +150,6 @@ export class NewChatModalComponent implements OnInit {
     this.groupName.set('');
     this.selectedDids.set([]);
     this.error.set(null);
-    // Dismiss the overlay directly via Ionic's imperative API, rather than
-    // relying solely on the [isOpen] input flowing back down from the parent.
-    // On native Android, closing the modal via the reactive binding while a
-    // router.navigate() fires almost simultaneously (see submitConversation's
-    // success handlers) can race: the parent's `isNewChatModalOpen = false`
-    // update never gets flushed to this component before the outlet swaps
-    // views, leaving the modal's overlay stuck on screen, unusable, on top
-    // of the newly-navigated page underneath. dismiss() acts immediately and
-    // doesn't depend on that binding round-trip.
     void this.modal?.dismiss();
     this.closed.emit();
   }

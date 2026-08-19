@@ -15,7 +15,7 @@
     <div class="msg-embed__fallback">
       <a
         class="msg-embed__fallback-link"
-        [href]="sourceUrl"
+        [href]="sourceUrl()"
         target="_blank"
         rel="noopener noreferrer"
         (click)="$event.stopPropagation()"
@@ -36,7 +36,7 @@
         </span>
         <span class="msg-embed__fallback-body">
           <span class="msg-embed__fallback-label">{{ previewTitle() ?? provider().label }}</span>
-          <span class="msg-embed__fallback-url">{{ hostnameOf(sourceUrl) }}</span>
+          <span class="msg-embed__fallback-url">{{ hostnameOf(sourceUrl()) }}</span>
         </span>
         <ion-icon name="open-outline" class="msg-embed__fallback-open"></ion-icon>
       </a>

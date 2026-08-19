@@ -1,10 +1,10 @@
 import {
-  Component, Input, Output, EventEmitter,
-  ChangeDetectionStrategy, inject, signal, OnChanges, OnDestroy, SimpleChanges,
+  Component, input, output,
+  inject, signal, effect, OnDestroy,
 } from '@angular/core';
 import { IonIcon, IonTextarea, IonPopover } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { add, locationOutline, send } from 'ionicons/icons';
+import { add, locationOutline, send, returnUpBackOutline, closeOutline } from 'ionicons/icons';
 import { Capacitor } from '@capacitor/core';
 import { TypingService } from '../../../core/typing/typing.service';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
@@ -17,8 +17,6 @@ import type { MessageReplyTo } from '../../../core/conversation/conversation.typ
 
 @Component({
   selector: 'app-message-composer',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     IonIcon,
     IonTextarea,
@@ -31,18 +29,15 @@ import type { MessageReplyTo } from '../../../core/conversation/conversation.typ
   templateUrl: './message-composer.component.html',
   styleUrls: ['./message-composer.component.scss'],
 })
-export class MessageComposerComponent implements OnChanges, OnDestroy {
-  @Input() conversationId = '';
-  @Input() disabled = false;
-  @Input() replyTo: MessageReplyTo | null = null;
-  // A draft recovered from the outbox (see OutboxRepository) after this device
-  // was killed between sending a message and confirming it locally. Only
-  // applied on an actual change so it doesn't clobber text the user has
-  // already started typing since the conversation opened.
-  @Input() initialText = '';
-  @Output() send = new EventEmitter<string>();
-  @Output() sendPlace = new EventEmitter<PlaceData>();
-  @Output() cancelReply = new EventEmitter<void>();
+export class MessageComposerComponent implements OnDestroy {
+  readonly conversationId = input<string>('');
+  readonly disabled = input<boolean>(false);
+  readonly replyTo = input<MessageReplyTo | null>(null);
+  readonly initialText = input<string>('');
+
+  readonly send = output<string>();
+  readonly sendPlace = output<PlaceData>();
+  readonly cancelReply = output<void>();
 
   inputText = '';
   readonly gifPickerOpen = signal(false);
@@ -50,23 +45,23 @@ export class MessageComposerComponent implements OnChanges, OnDestroy {
   readonly attachMenuOpen = signal(false);
   attachEvent: Event | null = null;
 
-  constructor() {
-    addIcons({ add, locationOutline, send });
-  }
-
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['initialText'] && this.initialText) {
-      this.inputText = this.initialText;
-    }
-  }
-
   private typingSvc = inject(TypingService);
 
+  constructor() {
+    addIcons({ add, locationOutline, send, returnUpBackOutline, closeOutline });
+    effect(() => {
+      const draft = this.initialText();
+      if (draft) {
+        this.inputText = draft;
+      }
+    });
+  }
+
   onInputChange(event: Event): void {
+    const convId = this.conversationId();
     this.inputText = (event as CustomEvent<{ value?: string | null }>).detail.value ?? '';
-    if (this.inputText.length > 0) this.typingSvc.startTyping(this.conversationId);
-    else this.typingSvc.stopTyping(this.conversationId);
+    if (this.inputText.length > 0) this.typingSvc.startTyping(convId);
+    else this.typingSvc.stopTyping(convId);
   }
 
   onKeydown(event: KeyboardEvent): void {
@@ -79,14 +74,15 @@ export class MessageComposerComponent implements OnChanges, OnDestroy {
 
   onSend(): void {
     const text = this.inputText.trim();
-    if (!text || this.disabled) return;
+    if (!text || this.disabled()) return;
     this.inputText = '';
-    this.typingSvc.stopTyping(this.conversationId);
+    this.typingSvc.stopTyping(this.conversationId());
     this.send.emit(text);
   }
 
   ngOnDestroy(): void {
-    if (this.conversationId) this.typingSvc.stopTyping(this.conversationId);
+    const convId = this.conversationId();
+    if (convId) this.typingSvc.stopTyping(convId);
   }
 
   openGifPicker(): void {
@@ -115,10 +111,6 @@ export class MessageComposerComponent implements OnChanges, OnDestroy {
     this.sendPlace.emit(place);
   }
 
-  // Inserted as a plain giphy.com link -- the existing embed pipeline
-
-  // (EmbedRegistry -> giphyProvider) already renders any such link as a
-  // native GIF embed, so no new message type or send path is needed.
   onGifSelected(gif: GiphyGifSummary): void {
     const url = `https://giphy.com/gifs/${gif.id}`;
     this.inputText = this.inputText.trim() ? `${this.inputText.trim()} ${url}` : url;

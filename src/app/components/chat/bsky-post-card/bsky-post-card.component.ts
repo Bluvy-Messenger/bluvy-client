@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { IonIcon, IonModal, ActionSheetController } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
@@ -12,24 +12,15 @@ import type { BskyPostView } from '../../../core/bsky-post/bsky-post.types';
 
 @Component({
   selector: 'app-bsky-post-card',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, IonIcon, IonModal, AvatarComponent, BskyQuoteEmbedComponent, TranslatePipe],
   templateUrl: './bsky-post-card.component.html',
   styleUrls: ['./bsky-post-card.component.scss'],
-  // Emulated view encapsulation scopes selectors to this component's own
-  // template, so a bare `.bubble--mine &` reaching into the parent bubble's
-  // class never matches (the exact bug already fixed in message-embed).
-  host: { '[class.bsky-post--mine]': 'isMine' },
+  host: { '[class.bsky-post--mine]': 'isMine()' },
 })
 export class BskyPostCardComponent implements OnInit {
-  @Input({ required: true }) sourceUrl!: string;
-  @Input() isMine = false;
-  // Used when nesting this card inside another provider's own rich card
-  // (e.g. a Popfeed review that already shows the same title/text via its
-  // Bluesky cross-post) -- shows only the counts + like/quote/open actions,
-  // never the avatar/text/embed, so content isn't duplicated.
-  @Input() compact = false;
+  readonly sourceUrl = input.required<string>();
+  readonly isMine = input<boolean>(false);
+  readonly compact = input<boolean>(false);
 
   private postRepo       = inject(BskyPostRepository);
   private atprotoSvc     = inject(AtprotoRepoService);
@@ -39,7 +30,7 @@ export class BskyPostCardComponent implements OnInit {
   readonly state = signal<'loading' | 'loaded' | 'error'>('loading');
   readonly post  = signal<BskyPostView | null>(null);
 
-  // Optimistic like/repost toggles -- flipped immediately, rolled back on failure.
+  // Optimistic like/repost toggles
   readonly liked       = signal(false);
   readonly likeCount   = signal(0);
   readonly likeUri     = signal<string | null>(null);
@@ -58,7 +49,7 @@ export class BskyPostCardComponent implements OnInit {
   readonly quoteCount = computed(() => this.post()?.quoteCount ?? 0);
 
   async ngOnInit(): Promise<void> {
-    const match = parseBskyPostUrl(this.sourceUrl);
+    const match = parseBskyPostUrl(this.sourceUrl());
     if (!match) {
       this.state.set('error');
       return;
@@ -87,7 +78,6 @@ export class BskyPostCardComponent implements OnInit {
     const wasLiked = this.liked();
     const prevUri = this.likeUri();
 
-    // Optimistic flip first.
     this.liked.set(!wasLiked);
     this.likeCount.update(c => c + (wasLiked ? -1 : 1));
     this.likePending.set(true);
@@ -101,7 +91,6 @@ export class BskyPostCardComponent implements OnInit {
         this.likeUri.set(uri);
       }
     } catch {
-      // Roll back on failure.
       this.liked.set(wasLiked);
       this.likeCount.update(c => c + (wasLiked ? 1 : -1));
       this.likeUri.set(prevUri);
@@ -138,8 +127,6 @@ export class BskyPostCardComponent implements OnInit {
     }
   }
 
-  // Single "Quote" footer button -- reveals the Repost/Quote-post choice,
-  // mirroring Bluesky's own repost-icon menu.
   async onQuoteButtonTap(): Promise<void> {
     const sheet = await this.actionSheetCtrl.create({
       buttons: [
@@ -196,6 +183,6 @@ export class BskyPostCardComponent implements OnInit {
   }
 
   openExternal(): void {
-    window.open(this.sourceUrl, '_blank', 'noopener,noreferrer');
+    window.open(this.sourceUrl(), '_blank', 'noopener,noreferrer');
   }
 }

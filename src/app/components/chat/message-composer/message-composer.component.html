@@ -1,16 +1,16 @@
 <app-composer-link-preview [text]="inputText"></app-composer-link-preview>
 
-@if (replyTo) {
+@if (replyTo(); as reply) {
   <div class="composer__reply-banner">
-    @if (replyTo.mediaThumbnail) {
-      <img [src]="replyTo.mediaThumbnail" class="composer__reply-thumb" alt="Thumbnail" />
+    @if (reply.mediaThumbnail) {
+      <img [src]="reply.mediaThumbnail" class="composer__reply-thumb" alt="Thumbnail" />
     }
     <div class="composer__reply-info">
       <div class="composer__reply-header">
         <ion-icon name="return-up-back-outline"></ion-icon>
-        <span class="composer__reply-label">{{ 'composer.replyingTo' | translate }} <strong>{{ replyTo.senderHandle || replyTo.senderDid }}</strong></span>
+        <span class="composer__reply-label">{{ 'composer.replyingTo' | translate }} <strong>{{ reply.senderHandle || reply.senderDid }}</strong></span>
       </div>
-      <div class="composer__reply-snippet">{{ replyTo.textSnippet }}</div>
+      <div class="composer__reply-snippet">{{ reply.textSnippet }}</div>
     </div>
     <button
       class="composer__reply-cancel"
@@ -27,7 +27,7 @@
   <button
     class="composer__attach composer__attach--plus"
     type="button"
-    [disabled]="disabled"
+    [disabled]="disabled()"
     (click)="openAttachMenu($event)"
     [attr.aria-label]="'composer.add_action' | translate"
   >
@@ -36,7 +36,7 @@
   <button
     class="composer__attach composer__attach--gif"
     type="button"
-    [disabled]="disabled"
+    [disabled]="disabled()"
     (click)="openGifPicker()"
     [attr.aria-label]="'composer.gif' | translate"
   >
@@ -49,14 +49,14 @@
     [placeholder]="'composer.placeholder' | translate"
     [attr.aria-label]="'composer.placeholder' | translate"
     [value]="inputText"
-    [disabled]="disabled"
+    [disabled]="disabled()"
     (ionInput)="onInputChange($event)"
     (keydown)="onKeydown($event)"
   ></ion-textarea>
   <button
     class="composer__send"
     type="button"
-    [disabled]="disabled || !inputText.trim()"
+    [disabled]="disabled() || !inputText.trim()"
     (click)="onSend()"
     [attr.aria-label]="'composer.send' | translate"
   >
@@ -94,4 +94,3 @@
   (closed)="onPlacePickerClosed()"
   (placeSelected)="onPlaceSelected($event)"
 ></app-place-picker-modal>
-

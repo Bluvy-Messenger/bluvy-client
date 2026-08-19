@@ -1,6 +1,6 @@
 @switch (state()) {
   @case ('loading') {
-    @if (!compact) {
+    @if (!compact()) {
       <div class="bsky-card bsky-card--loading">
         <div class="bsky-card__skeleton-avatar"></div>
         <div class="bsky-card__skeleton-lines">
@@ -11,8 +11,8 @@
     }
   }
   @case ('error') {
-    @if (!compact) {
-      <a class="bsky-card bsky-card--error" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+    @if (!compact()) {
+      <a class="bsky-card bsky-card--error" [href]="sourceUrl()" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
         <ion-icon name="cloud-offline-outline"></ion-icon>
         <span>{{ 'bskyPost.error.unavailable' | translate }}</span>
       </a>
@@ -20,9 +20,9 @@
   }
   @case ('loaded') {
     @if (post(); as p) {
-      <div class="bsky-card" [class.bsky-card--compact]="compact">
-        @if (!compact) {
-          <a class="bsky-card__header" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+      <div class="bsky-card" [class.bsky-card--compact]="compact()">
+        @if (!compact()) {
+          <a class="bsky-card__header" [href]="sourceUrl()" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
             <app-avatar [src]="p.author.avatarUrl" [handle]="p.author.handle" size="md"></app-avatar>
             <div class="bsky-card__author">
               <span class="bsky-card__name">{{ p.author.displayName || p.author.handle }}</span>
@@ -46,7 +46,7 @@
                   </div>
                 }
                 @case ('video') {
-                  <a class="bsky-card__video" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+                  <a class="bsky-card__video" [href]="sourceUrl()" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
                     @if (embed.video.thumbnail) {
                       <img [src]="embed.video.thumbnail" alt="" loading="lazy" />
                     }
@@ -75,7 +75,7 @@
                       </div>
                     }
                     @case ('video') {
-                      <a class="bsky-card__video" [href]="sourceUrl" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
+                      <a class="bsky-card__video" [href]="sourceUrl()" target="_blank" rel="noopener noreferrer" (click)="$event.stopPropagation()">
                         @if (embed.media.video.thumbnail) {
                           <img [src]="embed.media.video.thumbnail" alt="" loading="lazy" />
                         }

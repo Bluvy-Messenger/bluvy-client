@@ -1,6 +1,6 @@
 import {
-  Component, Input, Output, EventEmitter, OnChanges, SimpleChanges,
-  inject, signal, computed, ChangeDetectionStrategy,
+  Component, input, output,
+  inject, signal, computed, effect,
 } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { IonModal, IonIcon, IonSpinner } from '@ionic/angular/standalone';
@@ -16,16 +16,14 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 @Component({
   selector: 'app-place-picker-modal',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonModal, IonIcon, IonSpinner, TranslatePipe],
   templateUrl: './place-picker-modal.component.html',
   styleUrls: ['./place-picker-modal.component.scss'],
 })
-export class PlacePickerModalComponent implements OnChanges {
-  @Input() isOpen = false;
-  @Output() closed = new EventEmitter<void>();
-  @Output() placeSelected = new EventEmitter<PlaceData>();
+export class PlacePickerModalComponent {
+  readonly isOpen = input<boolean>(false);
+  readonly closed = output<void>();
+  readonly placeSelected = output<PlaceData>();
 
   private photonSvc = inject(PhotonService);
   private i18n = inject(TranslationService);
@@ -42,6 +40,11 @@ export class PlacePickerModalComponent implements OnChanges {
 
   constructor() {
     addIcons({ searchOutline, close, arrowBack, locationOutline, checkmark });
+    effect(() => {
+      if (!this.isOpen()) {
+        this.resetState();
+      }
+    });
   }
 
   readonly safePreviewUrl = computed<SafeResourceUrl | null>(() => {
@@ -51,12 +54,6 @@ export class PlacePickerModalComponent implements OnChanges {
     if (!isAllowedCartesUrl(url)) return null;
     return this.sanitizer.bypassSecurityTrustResourceUrl(url);
   });
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['isOpen'] && !this.isOpen) {
-      this.resetState();
-    }
-  }
 
   onQueryInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;

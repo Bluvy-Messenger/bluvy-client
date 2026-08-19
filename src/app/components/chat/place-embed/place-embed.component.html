@@ -5,9 +5,9 @@
         <ion-icon name="location-outline"></ion-icon>
       </div>
       <div class="place-embed__info">
-        <span class="place-embed__name">{{ place.name }}</span>
-        @if (place.address) {
-          <span class="place-embed__address">{{ place.address }}</span>
+        <span class="place-embed__name">{{ place().name }}</span>
+        @if (place().address) {
+          <span class="place-embed__address">{{ place().address }}</span>
         }
       </div>
     </div>
@@ -19,7 +19,7 @@
         loading="lazy"
         referrerpolicy="no-referrer"
         sandbox="allow-scripts allow-same-origin allow-popups"
-        [title]="place.name"
+        [title]="place().name"
       ></iframe>
     </div>
 

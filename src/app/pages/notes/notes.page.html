@@ -29,7 +29,7 @@
         class="search-zone__input"
         placeholder="Rechercher dans vos notes..."
         [value]="searchQuery()"
-        (input)="searchQuery.set($any($event.target).value)"
+        (input)="onSearchInput($event)"
         autofocus
       />
       @if (searchQuery()) {

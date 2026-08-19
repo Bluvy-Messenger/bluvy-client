@@ -28,7 +28,7 @@ describe('PlaceEmbedComponent', () => {
   });
 
   it('should create and render valid place embed with Cartes.app iframe', () => {
-    component.place = validPlace;
+    fixture.componentRef.setInput('place', validPlace);
     fixture.detectChanges();
 
     expect(component.isValid()).toBe(true);
@@ -44,13 +44,13 @@ describe('PlaceEmbedComponent', () => {
   });
 
   it('should render fallback when place data is invalid', () => {
-    component.place = {
+    fixture.componentRef.setInput('place', {
       name: '',
       osmType: 'way',
       osmId: 1,
       latitude: 100, // invalid lat
       longitude: 3.7,
-    };
+    });
     fixture.detectChanges();
 
     expect(component.isValid()).toBe(false);
@@ -62,7 +62,7 @@ describe('PlaceEmbedComponent', () => {
   });
 
   it('should open Cartes.app in external window when button is clicked', () => {
-    component.place = validPlace;
+    fixture.componentRef.setInput('place', validPlace);
     fixture.detectChanges();
 
     const openSpy = spyOn(window, 'open');

@@ -1,4 +1,4 @@
-import { Component, Input, computed, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, computed, inject } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -9,18 +9,16 @@ import { buildCartesUrl, isAllowedCartesUrl, validatePlaceData } from '../../../
 
 @Component({
   selector: 'app-place-embed',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonIcon, TranslatePipe],
   templateUrl: './place-embed.component.html',
   styleUrls: ['./place-embed.component.scss'],
   host: {
-    '[class.place-embed--mine]': 'isMine',
+    '[class.place-embed--mine]': 'isMine()',
   },
 })
 export class PlaceEmbedComponent {
-  @Input({ required: true }) place!: PlaceData;
-  @Input() isMine = false;
+  readonly place = input.required<PlaceData>();
+  readonly isMine = input<boolean>(false);
 
   private sanitizer = inject(DomSanitizer);
 
@@ -28,11 +26,11 @@ export class PlaceEmbedComponent {
     addIcons({ mapOutline, openOutline, locationOutline, alertCircleOutline });
   }
 
-  readonly isValid = computed(() => validatePlaceData(this.place));
+  readonly isValid = computed(() => validatePlaceData(this.place()));
 
   readonly rawCartesUrl = computed<string | null>(() => {
     if (!this.isValid()) return null;
-    const url = buildCartesUrl(this.place);
+    const url = buildCartesUrl(this.place());
     return isAllowedCartesUrl(url) ? url : null;
   });
 

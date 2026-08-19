@@ -1,23 +1,23 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { Component, input, computed } from '@angular/core';
 
 @Component({
   selector: 'app-avatar',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './avatar.component.html',
   styleUrls: ['./avatar.component.scss'],
 })
 export class AvatarComponent {
-  @Input() src: string | null = null;
-  @Input() handle = '';
-  @Input() size: 'sm' | 'md' | 'lg' | 'xl' = 'md';
+  readonly src = input<string | null>(null);
+  readonly handle = input<string>('');
+  readonly size = input<'sm' | 'md' | 'lg' | 'xl'>('md');
 
-  get initials(): string {
-    return this.handle[0]?.toUpperCase() ?? '?';
-  }
+  readonly initials = computed(() => {
+    const h = this.handle();
+    return h[0]?.toUpperCase() ?? '?';
+  });
 
-  get safeSrc(): string | null {
-    if (!this.src || !this.src.startsWith('https://cdn.bsky.app/')) return null;
-    return this.src;
-  }
+  readonly safeSrc = computed(() => {
+    const s = this.src();
+    if (!s || !s.startsWith('https://cdn.bsky.app/')) return null;
+    return s;
+  });
 }

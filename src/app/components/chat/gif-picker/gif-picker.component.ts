@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, inject, signal, effect } from '@angular/core';
 import { IonModal, IonIcon, IonSpinner } from '@ionic/angular/standalone';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { GiphyRepository } from '../../../core/giphy/giphy.repository';
@@ -8,16 +8,14 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 @Component({
   selector: 'app-gif-picker',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonModal, IonIcon, IonSpinner, TranslatePipe],
   templateUrl: './gif-picker.component.html',
   styleUrls: ['./gif-picker.component.scss'],
 })
-export class GifPickerComponent implements OnChanges {
-  @Input() isOpen = false;
-  @Output() closed = new EventEmitter<void>();
-  @Output() gifSelected = new EventEmitter<GiphyGifSummary>();
+export class GifPickerComponent {
+  readonly isOpen = input<boolean>(false);
+  readonly closed = output<void>();
+  readonly gifSelected = output<GiphyGifSummary>();
 
   private giphyRepo = inject(GiphyRepository);
 
@@ -29,10 +27,12 @@ export class GifPickerComponent implements OnChanges {
   private debounceHandle: ReturnType<typeof setTimeout> | null = null;
   private lastQuery: string | null = null;
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['isOpen'] && this.isOpen && this.gifs().length === 0) {
-      void this.loadTrending();
-    }
+  constructor() {
+    effect(() => {
+      if (this.isOpen() && this.gifs().length === 0) {
+        void this.loadTrending();
+      }
+    });
   }
 
   onQueryInput(event: Event): void {

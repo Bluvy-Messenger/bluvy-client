@@ -14,7 +14,6 @@ import { Router } from '@angular/router';
 import {
   IonHeader,
   IonToolbar,
-  IonTitle,
   IonContent,
   IonButtons,
   IonButton,
@@ -46,13 +45,11 @@ import type { NoteItem } from '../../core/notes/notes.types';
   selector: 'app-notes',
   templateUrl: './notes.page.html',
   styleUrls: ['./notes.page.scss'],
-  standalone: true,
   imports: [
     CommonModule,
     FormsModule,
     IonHeader,
     IonToolbar,
-    IonTitle,
     IonContent,
     IonButtons,
     IonButton,
@@ -121,6 +118,11 @@ export class NotesPage implements OnInit, OnDestroy {
 
   scrollToBottom(): void {
     this.contentRef?.scrollToBottom(200);
+  }
+
+  onSearchInput(event: Event): void {
+    const target = event.target as HTMLInputElement | null;
+    this.searchQuery.set(target?.value ?? '');
   }
 
   onInputChange(event: Event): void {
