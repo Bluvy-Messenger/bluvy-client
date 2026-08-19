@@ -44,6 +44,35 @@
         <ion-text color="danger">{{ error }}</ion-text>
       </div>
     }
+    @if (!viewingArchived) {
+      <div class="conv-pinned-section">
+        <button
+          type="button"
+          class="note-item-row"
+          [class.note-item-row--selected]="isNotesSelected()"
+          (click)="openNotes()"
+        >
+          <div class="note-item-avatar">
+            <ion-icon name="bookmark"></ion-icon>
+          </div>
+          <div class="note-item-info">
+            <div class="note-item-top">
+              <span class="note-item-name">{{ 'notes.title' | translate }}</span>
+              @if (notesSvc.latestNote()) {
+                <span class="note-item-time">{{ formatTime(notesSvc.latestNote()!.createdAt) }}</span>
+              }
+            </div>
+            <div class="note-item-bottom">
+              <span class="note-item-preview">
+                {{ notesSvc.latestNote()?.text || ('notes.preview_empty' | translate) }}
+              </span>
+              <ion-icon name="lock-closed" class="note-item-lock"></ion-icon>
+            </div>
+          </div>
+        </button>
+      </div>
+    }
+
     @if (!loading && !error && conversations.length === 0) {
       <div class="empty-state">
         <ion-icon name="chatbubble-outline" class="empty-state__icon"></ion-icon>
