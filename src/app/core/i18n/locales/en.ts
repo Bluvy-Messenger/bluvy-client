@@ -11,6 +11,14 @@ export const en: Record<string, string> = {
   'notifications.new_message': 'New message',
   'notifications.open': 'Open',
 
+  'notes.title': 'Note to self',
+  'notes.encrypted_pds': 'End-to-end encrypted on your PDS',
+  'notes.preview_empty': 'Your personal encrypted notes',
+  'notes.empty.title': 'No notes yet',
+  'notes.empty.desc': 'Write a message below to create your first personal note. Everything is encrypted on your device and stored on your PDS.',
+  'notes.composer.placeholder': 'Write a note to self...',
+  'notes.composer.send': 'Send note',
+
   'landing.title': 'Bluvy Messenger',
   'landing.tagline1': 'Private messaging built on Bluesky.',
   'landing.tagline2': 'End-to-end encryption. Your keys, your control.',

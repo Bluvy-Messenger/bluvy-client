@@ -29,6 +29,8 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { PresenceService } from '../presence/presence.service';
 import { BskyPostRepository } from '../bsky-post/bsky-post.repository';
 import { LinkPreviewService } from '../link-preview/link-preview.service';
+import { NotesService } from '../notes/notes.service';
+import { NotesLocalStoreService } from '../notes/notes-local-store.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
@@ -69,6 +71,8 @@ export class AuthService {
   private get presenceSvc(): PresenceService       { return this.injector.get(PresenceService); }
   private get bskyPostRepo(): BskyPostRepository   { return this.injector.get(BskyPostRepository); }
   private get linkPreviewSvc(): LinkPreviewService { return this.injector.get(LinkPreviewService); }
+  private get notesSvc(): NotesService             { return this.injector.get(NotesService); }
+  private get notesLocalStore(): NotesLocalStoreService { return this.injector.get(NotesLocalStoreService); }
 
   readonly currentUser     = signal<UserProfile | null>(null);
   readonly currentDevice   = signal<DeviceInfo | null>(null);
@@ -390,6 +394,7 @@ export class AuthService {
       this.presenceSvc.clear();
       this.bskyPostRepo.clear();
       this.linkPreviewSvc.clear();
+      this.notesSvc.reset();
     } catch (err) {
       console.warn('[AuthService] failed to clear singleton caches:', err);
     }
@@ -607,6 +612,7 @@ export class AuthService {
 
     // Clear user-specific databases
     await this.msgCache.clearAllForUser(did).catch(() => {});
+    await this.notesLocalStore.clearAll(did).catch(() => {});
 
     // pending-decrypt's IndexedDB is scoped by (did, deviceId) — see F14 — so
     // clearing it needs this device's id, same as the MLS scope clear below.

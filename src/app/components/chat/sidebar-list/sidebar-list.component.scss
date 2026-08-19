@@ -366,3 +366,103 @@
     border-radius: var(--radius-md) !important;
   }
 }
+
+// ── Pinned Notes to Self Item ───────────────────────────────────────────────
+
+.conv-pinned-section {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.06));
+  background: var(--color-surface, #ffffff);
+}
+
+.note-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg, 14px);
+  background: var(--color-search-bg, rgba(0, 0, 0, 0.03));
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast, 0.15s), border-color var(--duration-fast, 0.15s);
+
+  &:hover {
+    background: var(--color-interactive-hover, rgba(0, 133, 255, 0.06));
+  }
+
+  &--selected {
+    background: var(--color-interactive-selected, rgba(0, 133, 255, 0.12)) !important;
+    border-color: var(--color-primary, #0085ff);
+  }
+}
+
+.note-item-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0085ff, #6366f1);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(0, 133, 255, 0.25);
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.note-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.note-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.note-item-name {
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-item-time {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary, #6b7280);
+  flex-shrink: 0;
+}
+
+.note-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.note-item-preview {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-item-lock {
+  font-size: 0.8rem;
+  color: var(--color-success, #10b981);
+  flex-shrink: 0;
+}
+

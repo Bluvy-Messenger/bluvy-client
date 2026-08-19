@@ -45,8 +45,10 @@ export class TabsPage {
     { initialValue: this.router.url },
   );
 
-  readonly isConvRoute = computed(() =>
-    /\/conversations\/.+/.test(this.currentUrl() ?? ''));
+  readonly isConvRoute = computed(() => {
+    const url = this.currentUrl() ?? '';
+    return /\/conversations\/.+/.test(url) || url.startsWith('/notes');
+  });
 
   readonly showTabBar = computed(() =>
     !this.bpSvc.isTablet() && !this.isConvRoute());

@@ -31,6 +31,8 @@ import {
   // native Bluesky post card
   heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
   createOutline, closeOutline, closeCircle, alertCircleOutline,
+  // notes & system
+  bookmark, bookmarkOutline, pin, pinOutline, cloudDoneOutline, timeOutline, lockClosed, arrowUpOutline,
 } from 'ionicons/icons';
 import { AuthService } from './core/auth/auth.service';
 import { OAuthService } from './core/auth/oauth.service';
@@ -102,6 +104,7 @@ export class AppComponent implements OnInit, OnDestroy {
       logoYoutube, logoTiktok, logoTwitch, musicalNotesOutline, filmOutline, imageOutline,
       heart, heartOutline, playCircle, repeat, repeatOutline, cloudOfflineOutline,
       createOutline, closeOutline, closeCircle, alertCircleOutline,
+      bookmark, bookmarkOutline, pin, pinOutline, cloudDoneOutline, timeOutline, lockClosed, arrowUpOutline,
     });
 
     // OAuthService.sessionUnavailable flips true when a PDS-touching feature

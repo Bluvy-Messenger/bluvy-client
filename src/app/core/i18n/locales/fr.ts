@@ -11,6 +11,14 @@ export const fr: Record<string, string> = {
   'notifications.new_message': 'Nouveau message',
   'notifications.open': 'Ouvrir',
 
+  'notes.title': 'Notes à soi-même',
+  'notes.encrypted_pds': 'Chiffré de bout en bout sur votre PDS',
+  'notes.preview_empty': 'Vos notes personnelles chiffrées',
+  'notes.empty.title': 'Aucune note pour le moment',
+  'notes.empty.desc': 'Écrivez un message ci-dessous pour créer votre première note personnelle. Tout est chiffré sur votre appareil et stocké sur votre PDS.',
+  'notes.composer.placeholder': 'Écrire une note à soi-même...',
+  'notes.composer.send': 'Envoyer la note',
+
   'landing.title': 'Bluvy Messenger',
   'landing.tagline1': 'La messagerie privée construite sur Bluesky.',
   'landing.tagline2': 'Chiffrement de bout en bout. Vos clés, votre contrôle.',
