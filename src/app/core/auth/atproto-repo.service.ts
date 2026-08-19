@@ -6,6 +6,7 @@ import type { EmbedPreferencesRecord } from '../embed/embed-preferences.types';
 
 const EMBED_PREFERENCES_COLLECTION = 'com.bluvy.preferences.embeds';
 const EMOJI_PREFERENCES_COLLECTION = 'com.bluvy.preferences.emojis';
+const APP_SETTINGS_PREFERENCES_COLLECTION = 'com.bluvy.preferences.app';
 const DECLARATION_COLLECTION = 'com.bluvy.declaration';
 
 // Single source of truth for the URL published in com.bluvy.declaration --
@@ -26,6 +27,26 @@ export interface BluvyDeclarationRecord {
 export interface EmojiPreferencesRecord {
   $type?: typeof EMOJI_PREFERENCES_COLLECTION;
   emojis: string[];
+  updatedAt: string;
+}
+
+export interface AppSettingsRecord {
+  $type?: typeof APP_SETTINGS_PREFERENCES_COLLECTION;
+  theme?: {
+    mode?: string;
+    palette?: string;
+    darkStyle?: string;
+    accent?: string;
+    fontFamily?: string;
+    fontSize?: string;
+  };
+  locale?: string;
+  notifications?: {
+    inAppEnabled?: boolean;
+    pushEnabled?: boolean;
+  };
+  mutedConversationIds?: string[];
+  blockedContactDids?: string[];
   updatedAt: string;
 }
 
@@ -205,6 +226,48 @@ export class AtprotoRepoService {
       collection: EMOJI_PREFERENCES_COLLECTION,
       rkey: 'self',
       record: record as unknown as Record<string, unknown>,
+    });
+  }
+
+  /**
+   * Fetches the com.bluvy.preferences.app record from the user's ATProto repository.
+   */
+  async getAppSettingsPreferences(): Promise<AppSettingsRecord | null> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) return null;
+
+    try {
+      const res = await agent.com.atproto.repo.getRecord({
+        repo: this.oauth.session.sub,
+        collection: APP_SETTINGS_PREFERENCES_COLLECTION,
+        rkey: 'self',
+      });
+      return res.data.value as unknown as AppSettingsRecord;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Writes the com.bluvy.preferences.app record to the user's ATProto repository.
+   */
+  async putAppSettingsPreferences(record: AppSettingsRecord): Promise<void> {
+    const agent = this.getAgent();
+    if (!agent || !this.oauth.session?.sub) {
+      throw new Error('No active ATProto session');
+    }
+
+    const payload: AppSettingsRecord = {
+      ...record,
+      $type: APP_SETTINGS_PREFERENCES_COLLECTION,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await agent.com.atproto.repo.putRecord({
+      repo: this.oauth.session.sub,
+      collection: APP_SETTINGS_PREFERENCES_COLLECTION,
+      rkey: 'self',
+      record: payload as unknown as Record<string, unknown>,
     });
   }
 

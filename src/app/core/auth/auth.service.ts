@@ -24,6 +24,7 @@ import { NotificationService } from '../notification/notification.service';
 import { PushNotificationService } from '../notification/push-notification.service';
 import { AccountBadgeService } from '../notification/account-badge.service';
 import { EmbedPreferencesService } from '../embed/embed-preferences.service';
+import { AppPreferencesSyncService } from '../services/app-preferences-sync.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { PresenceService } from '../presence/presence.service';
 import { BskyPostRepository } from '../bsky-post/bsky-post.repository';
@@ -59,8 +60,9 @@ export class AuthService {
   private msgCache        = inject(MessageCacheService);
   private embedPrefsSvc   = inject(EmbedPreferencesService);
   private injector        = inject(Injector);
-  // Lazy-resolved to break circular dependency (NotificationService -> AuthService -> NotificationService)
-  private get notifSvc(): NotificationService     { return this.injector.get(NotificationService); }
+  // Lazy-resolved to break circular dependency (NotificationService / AppPreferencesSyncService -> AuthService)
+  private get notifSvc(): NotificationService         { return this.injector.get(NotificationService); }
+  private get appPrefsSyncSvc(): AppPreferencesSyncService { return this.injector.get(AppPreferencesSyncService); }
   private get pushSvc():  PushNotificationService { return this.injector.get(PushNotificationService); }
   private get badgeSvc(): AccountBadgeService     { return this.injector.get(AccountBadgeService); }
   private get receiptsSvc(): ReceiptsService       { return this.injector.get(ReceiptsService); }
@@ -571,6 +573,8 @@ export class AuthService {
     await this.embedPrefsSvc.bootstrap();
     void this.embedPrefsSvc.refreshFromPds()
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: embed preferences refresh failed', err); });
+    void this.appPrefsSyncSvc.bootstrap()
+      .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: app preferences sync failed', err); });
     void this.provisionSvc.checkAndProvisionOnConnect(session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: checkAndProvisionOnConnect failed', err); });
 

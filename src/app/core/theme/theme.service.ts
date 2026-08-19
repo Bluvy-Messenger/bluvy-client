@@ -1,6 +1,7 @@
-import { Injectable, effect, signal } from '@angular/core';
+import { Injectable, Injector, effect, inject, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { EdgeToEdge } from '@capawesome/capacitor-android-edge-to-edge-support';
+import { AppPreferencesSyncService } from '../services/app-preferences-sync.service';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
 export type ThemePalette = 'bluesky' | 'mu' | 'blacksky';
@@ -25,6 +26,12 @@ export class ThemeService {
   private static readonly ACCENT_KEY = 'accent_color';
   private static readonly FONT_FAMILY_KEY = 'font_family';
   private static readonly FONT_SIZE_KEY = 'font_size';
+
+  private injector = inject(Injector);
+
+  private getSyncSvc(): AppPreferencesSyncService | null {
+    try { return this.injector.get(AppPreferencesSyncService); } catch { return null; }
+  }
 
   readonly preference = signal<ThemeMode>(
     (localStorage.getItem(ThemeService.KEY) as ThemeMode) ?? 'auto',
@@ -75,34 +82,56 @@ export class ThemeService {
     });
   }
 
+  mode(): ThemeMode { return this.preference(); }
+  darkStyle(): DarkThemeStyle { return this.darkThemeStyle(); }
+  accent(): AccentColor { return this.accentColor(); }
+
   set(mode: ThemeMode): void {
     localStorage.setItem(ThemeService.KEY, mode);
     this.preference.set(mode);
+    this.getSyncSvc()?.scheduleSave();
+  }
+
+  setMode(mode: ThemeMode): void {
+    this.set(mode);
   }
 
   setPalette(palette: ThemePalette): void {
     localStorage.setItem(ThemeService.PALETTE_KEY, palette);
     this.palette.set(palette);
+    this.getSyncSvc()?.scheduleSave();
+  }
+
+  setDarkStyle(style: DarkThemeStyle): void {
+    this.setDarkThemeStyle(style);
   }
 
   setDarkThemeStyle(style: DarkThemeStyle): void {
     localStorage.setItem(ThemeService.DARK_STYLE_KEY, style);
     this.darkThemeStyle.set(style);
+    this.getSyncSvc()?.scheduleSave();
+  }
+
+  setAccent(accent: AccentColor): void {
+    this.setAccentColor(accent);
   }
 
   setAccentColor(accent: AccentColor): void {
     localStorage.setItem(ThemeService.ACCENT_KEY, accent);
     this.accentColor.set(accent);
+    this.getSyncSvc()?.scheduleSave();
   }
 
   setFontFamily(font: FontFamily): void {
     localStorage.setItem(ThemeService.FONT_FAMILY_KEY, font);
     this.fontFamily.set(font);
+    this.getSyncSvc()?.scheduleSave();
   }
 
   setFontSize(size: FontSize): void {
     localStorage.setItem(ThemeService.FONT_SIZE_KEY, size);
     this.fontSize.set(size);
+    this.getSyncSvc()?.scheduleSave();
   }
 
   private apply(

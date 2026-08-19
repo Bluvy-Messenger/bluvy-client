@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, NgZone } from '@angular/core';
+import { Injectable, Injector, inject, signal, NgZone } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { ToastController, NavController } from '@ionic/angular/standalone';
 import { filter, firstValueFrom } from 'rxjs';
@@ -9,10 +9,12 @@ import { ContactsService } from '../contact/contacts.service';
 import { MessageCacheService, CachedMessage } from '../conversation/message-cache.service';
 import { MlsCoordinatorBase } from '../mls/coordinator/mls-coordinator.base';
 import { TranslationService } from '../i18n/translation.service';
+import { AppPreferencesSyncService } from '../services/app-preferences-sync.service';
 import { ROUTES } from '../routes';
 
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
+  private readonly injector        = inject(Injector);
   private readonly socketSvc       = inject(SocketService);
   private readonly authSvc         = inject(AuthService);
   private readonly conversationsSvc = inject(ConversationsService);
@@ -217,9 +219,18 @@ export class NotificationService {
 
   setInAppEnabled(enabled: boolean): void {
     localStorage.setItem('notifications_in_app_enabled', String(enabled));
+    try { this.injector.get(AppPreferencesSyncService).scheduleSave(); } catch { /* ignore */ }
+  }
+
+  setInAppNotificationsEnabled(enabled: boolean): void {
+    this.setInAppEnabled(enabled);
   }
 
   isInAppEnabled(): boolean {
     return localStorage.getItem('notifications_in_app_enabled') !== 'false';
+  }
+
+  isInAppNotificationsEnabled(): boolean {
+    return this.isInAppEnabled();
   }
 }

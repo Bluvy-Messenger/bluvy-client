@@ -9,6 +9,7 @@ import { PendingDecryptRepository } from '../repositories/pending-decrypt.reposi
 import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
 import { MlsBackupRegistry } from '../mls-backup-registry.service';
 import { EpochGapError } from '../errors/epoch-gap-error';
+import { DecryptEpochAheadError } from '../errors/decrypt-epoch-ahead-error';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
 
@@ -44,7 +45,7 @@ describe('MlsCoordinatorService', () => {
     Object.defineProperty(mockMlsSvc, 'epochConflict$', { value: new Subject(), configurable: true });
 
     // Sane defaults so paths not under test (recovery timers, replay) don't blow up.
-    mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(false));
+    mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve('none'));
     mockMlsSvc.clearConversationGroup.and.returnValue(Promise.resolve());
     mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(0));
     mockPendingRepo.getAll.and.returnValue(Promise.resolve([]));
@@ -128,6 +129,80 @@ describe('MlsCoordinatorService', () => {
     expect(resultState).toBe('pending_decrypt');
     expect(mockPendingRepo.enqueue).toHaveBeenCalled();
   }));
+
+  // ── decryptMessage epoch-ahead catch-up (P2 fix) ──────────────────────────
+  // A DecryptEpochAheadError (this device missed a later commit) must trigger
+  // exactly one catch-up + retry attempt, gated strictly on `instanceof` --
+  // never on classifyError()'s regex classification, since the underlying
+  // CryptoError's message is indistinguishable from a genuine permanent
+  // failure.
+  describe('decryptMessage epoch-ahead catch-up (P2 fix)', () => {
+    it('catches up and retries once on DecryptEpochAheadError, returning plaintext on success, without logging "Unrecognized ts-mls error"', fakeAsync(() => {
+      const epochAheadError = new DecryptEpochAheadError('conv-123', 1, 2);
+      let decryptCallCount = 0;
+      mockMlsSvc.decryptMessage.and.callFake(() => {
+        decryptCallCount++;
+        return decryptCallCount === 1 ? Promise.reject(epochAheadError) : Promise.resolve('plaintext-after-catchup');
+      });
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(1));
+      mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(true));
+      spyOn(console, 'error');
+
+      let result: { state: string; plaintext: string } | undefined;
+      service.decryptMessage(
+        'conv-123', 'msg-abc', 'did:plc:bob', 'device-bob', false, Date.now(),
+        'base64-ciphertext', mockUser, mockDevice,
+      ).then(res => { result = res; });
+
+      tick();
+
+      expect(mockMlsSvc.catchUpMissedCommits).toHaveBeenCalledWith('conv-123', mockUser, mockDevice);
+      expect(mockMlsSvc.decryptMessage).toHaveBeenCalledTimes(2);
+      expect(result?.state).toBe('plaintext');
+      expect(result?.plaintext).toBe('plaintext-after-catchup');
+      // eslint-disable-next-line no-console
+      expect(console.error).not.toHaveBeenCalledWith(jasmine.stringMatching('Unrecognized ts-mls error'), jasmine.anything());
+    }));
+
+    it('falls through unchanged to the existing classification/heal chain when catch-up does not close the gap (retry also throws DecryptEpochAheadError)', fakeAsync(() => {
+      const epochAheadError = new DecryptEpochAheadError('conv-123', 1, 2);
+      mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(epochAheadError));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(0));
+
+      let resultState: string | undefined;
+      service.decryptMessage(
+        'conv-123', 'msg-abc', 'did:plc:bob', 'device-bob', false, Date.now(),
+        'base64-ciphertext', mockUser, mockDevice,
+      ).then(res => { resultState = res.state; });
+
+      tick();
+
+      // DecryptEpochAheadError isn't one of TRANSIENT_PATTERNS/PERMANENT_PATTERNS'
+      // regex matches (its .message is a synthetic, non-matching string), so it
+      // falls to the unrecognized-error default: PermanentMlsError -> undecryptable.
+      // This is today's exact pre-fix behavior for "catch-up didn't help" -- unchanged.
+      expect(resultState).toBe('undecryptable');
+      expect(mockPendingRepo.enqueue).not.toHaveBeenCalled();
+    }));
+
+    it('does not affect classification of unrelated errors (transient/permanent paths untouched)', fakeAsync(() => {
+      const transientError = new Error('MLS group not ready for this conversation');
+      mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(transientError));
+      mockPendingRepo.enqueue.and.returnValue(Promise.resolve());
+
+      let resultState: string | undefined;
+      service.decryptMessage(
+        'conv-123', 'msg-abc', 'did:plc:bob', 'device-bob', false, Date.now(),
+        'base64-ciphertext', mockUser, mockDevice,
+      ).then(res => { resultState = res.state; });
+
+      tick();
+
+      expect(resultState).toBe('pending_decrypt');
+      // catchUpMissedCommits must never be invoked for a non-DecryptEpochAheadError.
+      expect(mockMlsSvc.catchUpMissedCommits).not.toHaveBeenCalled();
+    }));
+  });
 
   // ── trackCommitOutcome / FAILED safety net ────────────────────────────────
   // Regression coverage for the commit-race fork this whole session was about:
@@ -318,7 +393,7 @@ describe('MlsCoordinatorService', () => {
       tick();
       expect(service.getConversationState('conv-fail-2')).toBe(ConversationMlsState.Failed);
 
-      mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve());
+      mockMlsSvc.processWelcomeForConversation.and.returnValue(Promise.resolve('joined'));
 
       let thrown: unknown;
       service.processWelcome('welcome-1', 'welcome-b64', 'conv-fail-2', mockUser, mockDevice).catch(err => { thrown = err; });
@@ -398,7 +473,7 @@ describe('MlsCoordinatorService', () => {
       tick();
       expect(service.getConversationState('conv-heal-welcome')).toBe(ConversationMlsState.Failed);
 
-      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(true));
+      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve('joined'));
 
       tick(5_000); // fires scheduleFailedRecovery's first attempt -> recoverFromFailed
       tick();      // drains the awaits inside recoverFromFailed
@@ -414,7 +489,7 @@ describe('MlsCoordinatorService', () => {
       tick();
       expect(service.getConversationState('conv-heal-catchup')).toBe(ConversationMlsState.Failed);
 
-      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(false));
+      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve('none'));
       mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(2));
 
       tick(5_000);
@@ -431,7 +506,7 @@ describe('MlsCoordinatorService', () => {
       tick();
       expect(service.getConversationState('conv-clear')).toBe(ConversationMlsState.Failed);
 
-      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(false));
+      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve('none'));
       mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(0));
 
       tick(5_000);
@@ -448,7 +523,7 @@ describe('MlsCoordinatorService', () => {
       tick();
       expect(service.getConversationState('conv-catchup-throws')).toBe(ConversationMlsState.Failed);
 
-      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve(false));
+      mockMlsSvc.fetchAndProcessPendingWelcome.and.returnValue(Promise.resolve('none'));
       // callFake (not returnValue) so the rejected promise is created lazily
       // when catchUpMissedCommits is actually invoked inside tick(5_000)
       // below, not eagerly right here -- an eagerly-created rejected promise
@@ -553,5 +628,87 @@ describe('MlsCoordinatorService', () => {
       expect(restore).toHaveBeenCalled();
       expect(result).toBe(1);
     }));
+  });
+
+  // ── AUDIT ADVERSARIAL P1 fix: ensureGroupReady() concurrency ─────────────
+  // A concurrent call for the SAME convId must never launch a second,
+  // independent MlsService.ensureGroupReady() attempt while one is already
+  // in flight -- confirmed as a real defect by a real-crypto test in
+  // mls-invariants-ensuregroupready-crashrestart.spec.ts (a losing call
+  // could resolve SUCCESS purely by observing the winning call's
+  // not-yet-server-confirmed optimistic local write). This exercises the fix
+  // at the REAL production entry point (MlsCoordinatorService.ensureGroupReady()
+  // -- the only thing the rest of the app ever calls; MlsService.ensureGroupReady()
+  // is never called directly outside the coordinator and tests) using
+  // InitializationBarrier, with mlsSvc mocked so the timing is fully
+  // controlled rather than depending on real crypto durations.
+  describe('ensureGroupReady() concurrency (AUDIT ADVERSARIAL P1 fix)', () => {
+    const CONV_ID = 'conv-concurrent-genesis';
+
+    it('a second concurrent call waits for the first and adopts its SUCCESS instead of returning independently', async () => {
+      let resolveFirst!: () => void;
+      const firstAttempt = new Promise<void>(resolve => { resolveFirst = resolve; });
+      mockMlsSvc.ensureGroupReady.and.returnValue(firstAttempt);
+
+      const p1 = service.ensureGroupReady(CONV_ID, 'did:plc:bob', mockUser, mockDevice);
+      const p2 = service.ensureGroupReady(CONV_ID, 'did:plc:bob', mockUser, mockDevice);
+
+      expect(mockMlsSvc.ensureGroupReady).withContext('only ONE real attempt while the first is still in flight').toHaveBeenCalledTimes(1);
+
+      let p2Settled = false;
+      void p2.then(() => { p2Settled = true; });
+      // Flush several microtask turns -- p2 must still be pending.
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      expect(p2Settled).withContext('p2 must not resolve while the real ensureGroupReady() call is still unconfirmed').toBeFalse();
+
+      resolveFirst();
+      await p1;
+      await p2;
+
+      expect(mockMlsSvc.ensureGroupReady).withContext('still only ONE real attempt total -- p2 adopted p1\'s result, it did not trigger its own').toHaveBeenCalledTimes(1);
+      expect(service.isConversationReady(CONV_ID)).toBeTrue();
+    });
+
+    it('after the first attempt genuinely fails, a waiting concurrent caller retries for real instead of silently succeeding or inheriting the same rejection', async () => {
+      let rejectFirst!: (err: unknown) => void;
+      const firstAttempt = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
+      let callCount = 0;
+      mockMlsSvc.ensureGroupReady.and.callFake(() => {
+        callCount++;
+        return callCount === 1 ? firstAttempt : Promise.resolve();
+      });
+
+      const p1 = service.ensureGroupReady(CONV_ID, 'did:plc:bob', mockUser, mockDevice);
+      const p2 = service.ensureGroupReady(CONV_ID, 'did:plc:bob', mockUser, mockDevice);
+      void p1.catch(() => {});
+
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      expect(mockMlsSvc.ensureGroupReady).toHaveBeenCalledTimes(1);
+
+      rejectFirst(new Error('simulated genesis failure'));
+      await expectAsync(p1).toBeRejected();
+      await p2; // must succeed via a genuine SECOND attempt, not p1's failure and not a phantom success
+
+      expect(mockMlsSvc.ensureGroupReady).withContext('p2 must have triggered a real second attempt after p1 genuinely failed').toHaveBeenCalledTimes(2);
+      expect(service.isConversationReady(CONV_ID)).toBeTrue();
+    });
+
+    it('never issues more than one real ensureGroupReady() attempt at a time across three concurrent callers', async () => {
+      let resolveFirst!: () => void;
+      const firstAttempt = new Promise<void>(resolve => { resolveFirst = resolve; });
+      mockMlsSvc.ensureGroupReady.and.returnValue(firstAttempt);
+
+      const p1 = service.ensureGroupReady(CONV_ID, 'did:plc:bob', mockUser, mockDevice);
+      const p2 = service.ensureGroupReady(CONV_ID, 'did:plc:bob', mockUser, mockDevice);
+      const p3 = service.ensureGroupReady(CONV_ID, 'did:plc:bob', mockUser, mockDevice);
+
+      expect(mockMlsSvc.ensureGroupReady).toHaveBeenCalledTimes(1);
+
+      resolveFirst();
+      await Promise.all([p1, p2, p3]);
+
+      expect(mockMlsSvc.ensureGroupReady).withContext('exactly one real attempt regardless of how many callers were waiting').toHaveBeenCalledTimes(1);
+      expect(service.isConversationReady(CONV_ID)).toBeTrue();
+    });
   });
 });

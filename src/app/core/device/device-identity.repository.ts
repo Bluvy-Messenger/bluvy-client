@@ -21,18 +21,40 @@ export class DeviceIdentityRepository {
       return { id: identity.id, ...meta };
     }
 
-    const legacyKey = `${LEGACY_KEY_PREFIX}${userDid}`;
-    const legacy    = await Preferences.get({ key: legacyKey });
-    const id        = legacy.value ?? crypto.randomUUID();
+    let id: string | null = null;
+    if (Capacitor.getPlatform() !== 'web') {
+      try {
+        const deviceIdObj = await Device.getId();
+        if (deviceIdObj?.identifier) {
+          id = await this.hashHardwareId(deviceIdObj.identifier, userDid);
+        }
+      } catch {
+        // Fall back to legacy or random UUID
+      }
+    }
+
+    if (!id) {
+      const legacyKey = `${LEGACY_KEY_PREFIX}${userDid}`;
+      const legacy    = await Preferences.get({ key: legacyKey });
+      id              = legacy.value ?? crypto.randomUUID();
+      if (legacy.value) {
+        await Preferences.remove({ key: legacyKey });
+      }
+    }
 
     await this.writeIdentity(userDid, id);
 
-    if (legacy.value) {
-      await Preferences.remove({ key: legacyKey });
-    }
-
     const meta = await this.getDeviceMetadata();
     return { id, ...meta };
+  }
+
+  private async hashHardwareId(identifier: string, userDid: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(`bluvy-hw:${identifier}:${userDid}`);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
   }
 
   // Reconciles the locally stored deviceId with one the backend returned

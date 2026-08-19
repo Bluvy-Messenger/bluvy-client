@@ -39,6 +39,10 @@ export class ApiClientService {
     return this.request<T>('PUT', path, body, options);
   }
 
+  async patch<T = unknown>(path: string, body?: unknown, options?: ApiHttpOptions): Promise<T> {
+    return this.request<T>('PATCH', path, body, options);
+  }
+
   async delete<T = unknown>(path: string, options?: ApiHttpOptions): Promise<T> {
     return this.request<T>('DELETE', path, undefined, options);
   }
@@ -147,6 +151,7 @@ export class ApiClientService {
       case 'GET':    return firstValueFrom(this.http.get<T>(url, opts).pipe(timeout(15_000)));
       case 'POST':   return firstValueFrom(this.http.post<T>(url, body ?? null, opts).pipe(timeout(15_000)));
       case 'PUT':    return firstValueFrom(this.http.put<T>(url, body ?? null, opts).pipe(timeout(15_000)));
+      case 'PATCH':  return firstValueFrom(this.http.patch<T>(url, body ?? null, opts).pipe(timeout(15_000)));
       case 'DELETE': return firstValueFrom(this.http.delete<T>(url, opts).pipe(timeout(15_000)));
       default:       throw new Error(`Unsupported HTTP method: ${method}`);
     }

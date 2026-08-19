@@ -79,9 +79,29 @@ export class PendingDecryptRepository {
   }
 
   async enqueue(entry: PendingDecryptEntry): Promise<void> {
-    const db     = await this.openDb();
-    const stored = await this.toStored(entry);
+    const db       = await this.openDb();
+    const existing = await this.getRecord(db, entry.messageId);
+
+    // Preserve attempts/enqueuedAt/lastAttemptAt across a re-enqueue of the same
+    // messageId (conversation reopened, socket retry, etc.) -- otherwise this
+    // silently resets the retry budget replayPendingDecrypts() relies on
+    // (attempts >= 1 => permanent), and the message loops as pending_decrypt
+    // forever instead of ever reaching the undecryptable fallback.
+    const toWrite: PendingDecryptEntry = existing
+      ? { ...entry, attempts: existing.attempts, enqueuedAt: existing.enqueuedAt, lastAttemptAt: existing.lastAttemptAt }
+      : entry;
+
+    const stored = await this.toStored(toWrite);
     return this.put(db, stored);
+  }
+
+  private getRecord(db: IDBDatabase, messageId: string): Promise<StoredPendingDecryptRecord | undefined> {
+    return new Promise((resolve, reject) => {
+      const tx  = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).get(messageId);
+      req.onsuccess = () => resolve(req.result as StoredPendingDecryptRecord | undefined);
+      req.onerror   = () => reject(req.error ?? new Error('Could not read pending decrypt entry'));
+    });
   }
 
   async getAll(conversationId: string): Promise<PendingDecryptEntry[]> {

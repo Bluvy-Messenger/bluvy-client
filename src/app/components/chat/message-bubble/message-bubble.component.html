@@ -1,5 +1,6 @@
 <div class="row"
      [class.row--mine]="isMine"
+     [class.row--swiping]="swipeOffset > 0"
      (touchstart)="onTouchStart($event)"
      (touchmove)="onTouchMove($event)"
      (touchend)="onTouchEnd()"

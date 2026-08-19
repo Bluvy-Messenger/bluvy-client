@@ -8,6 +8,30 @@
         </button>
       </div>
 
+      <div class="group-name-section">
+        @if (isEditing()) {
+          <div class="name-edit-form">
+            <input
+              type="text"
+              class="name-input"
+              [(ngModel)]="editNameValue"
+              placeholder="Nom du groupe..."
+              (keyup.enter)="saveName()"
+            />
+            <button class="save-name-btn" (click)="saveName()" type="button">
+              <ion-icon name="checkmark-outline"></ion-icon>
+            </button>
+          </div>
+        } @else {
+          <div class="name-display">
+            <span class="group-name-text">{{ groupName || 'Nom du groupe non défini' }}</span>
+            <button class="edit-name-btn" (click)="startEditing()" type="button" title="Renommer le groupe">
+              <ion-icon name="create-outline"></ion-icon>
+            </button>
+          </div>
+        }
+      </div>
+
       <div class="member-list">
         @for (member of members; track member.did) {
           <div class="member-row">

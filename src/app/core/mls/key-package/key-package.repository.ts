@@ -11,7 +11,7 @@ export class KeyPackageRepository {
     return this.apiClient.get<KeyPackageCountResponse>('/v1/key-packages/mine/count');
   }
 
-  async upload(keyPackages: string[]): Promise<{ data: UploadedKeyPackage[] }> {
-    return this.apiClient.post<{ data: UploadedKeyPackage[] }>('/v1/key-packages', { keyPackages });
+  async upload(keyPackages: string[], signedPayload?: unknown): Promise<{ data: UploadedKeyPackage[] }> {
+    return this.apiClient.post<{ data: UploadedKeyPackage[] }>('/v1/key-packages', { keyPackages, signedPayload });
   }
 }
