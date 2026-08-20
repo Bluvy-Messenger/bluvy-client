@@ -37,6 +37,7 @@ import { EmbedSessionOverrideService } from '../../core/embed/embed-session-over
 import { environment } from '../../../environments/environment';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { TranslationService } from '../../core/i18n/translation.service';
+import { AnalyticsService } from '../../core/analytics/analytics.service';
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -77,6 +78,7 @@ export class ConversationPage implements OnDestroy {
   private receiptsSvc     = inject(ReceiptsService);
   private embedSessionSvc = inject(EmbedSessionOverrideService);
   private toastCtrl       = inject(ToastController);
+  private analyticsSvc   = inject(AnalyticsService);
 
   readonly presenceSvc = inject(PresenceService);
   private i18n         = inject(TranslationService);
@@ -416,6 +418,7 @@ export class ConversationPage implements OnDestroy {
       const serverMsg    = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
       // Mark as known immediately so the socket handler skips it if it fires before cache write.
       this.knownIds.add(serverMsg.id);
+      this.analyticsSvc.trackEvent('Messaging', 'message_sent', activeReplyTo ? 'with_reply' : 'standard');
 
       const cached: CachedMessage = {
         id:                serverMsg.id,

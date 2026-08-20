@@ -31,6 +31,7 @@ import { BskyPostRepository } from '../bsky-post/bsky-post.repository';
 import { LinkPreviewService } from '../link-preview/link-preview.service';
 import { NotesService } from '../notes/notes.service';
 import { NotesLocalStoreService } from '../notes/notes-local-store.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import { ROUTES } from '../routes';
 
 export type { UserProfile } from './auth.types';
@@ -58,6 +59,7 @@ export class AuthService {
   private authRepo        = inject(AuthRepository);
   private apiClient       = inject(ApiClientService);
   private tokenRepo       = inject(TokenRepository);
+  private analyticsSvc   = inject(AnalyticsService);
   private secureStorage   = inject(SecureLocalStorageService);
   private msgCache        = inject(MessageCacheService);
   private embedPrefsSvc   = inject(EmbedPreferencesService);
@@ -245,6 +247,8 @@ export class AuthService {
     const success = await this.restoreSession();
     
     if (success) {
+      const accounts = await this.getStoredAccounts();
+      this.analyticsSvc.trackEvent('Auth', 'account_switched', undefined, accounts.length);
       await this.router.navigate([ROUTES.conversations]);
       return true;
     } else {
@@ -375,6 +379,8 @@ export class AuthService {
 
     await this.syncSvc.initialize(response.user.did, response.device.id, response.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] login: sync initialize failed', err); });
+
+    this.analyticsSvc.trackEvent('Auth', 'login_success');
 
     // If MBK loaded from SecureLocalStorage → navigate to notifications setup or conversations.
     // Otherwise, setupRequired$ or pinRequired$ subscription handles navigation.
@@ -585,6 +591,8 @@ export class AuthService {
 
     await this.syncSvc.initialize(session.user.did, session.device.id, session.user, sessionDevice)
       .catch(err => { if (!environment.production) console.error('[AuthService] restoreSession: sync initialize failed', err); });
+
+    this.analyticsSvc.trackEvent('Lifecycle', 'app_open');
 
     return true;
   }

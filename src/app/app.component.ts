@@ -1,6 +1,8 @@
 import { Component, OnInit, OnDestroy, ViewChild, effect, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, NavigationEnd } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
+import { AnalyticsService } from './core/analytics/analytics.service';
 import { environment } from '../environments/environment';
 import { IonApp, IonRouterOutlet, IonIcon, Platform, ToastController, AlertController } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
@@ -73,6 +75,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private msgCacheSvc = inject(MessageCacheService);
   private embedPrefsSvc = inject(EmbedPreferencesService);
   private syncSvc = inject(SyncService);
+  private analyticsSvc = inject(AnalyticsService);
   private router = inject(Router);
   private platform = inject(Platform);
   private toastCtrl = inject(ToastController);
@@ -129,6 +132,14 @@ export class AppComponent implements OnInit, OnDestroy {
     this.notificationSvc.initialize();
     this.pushNotificationSvc.initialize();
     this.badgeSvc.initListeners();
+
+    this.subs.add(
+      this.router.events.pipe(
+        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      ).subscribe(event => {
+        this.analyticsSvc.trackPageView(event.urlAfterRedirects || event.url);
+      }),
+    );
 
     this.subs.add(
       this.socketSvc.deviceNew$.subscribe(payload => {

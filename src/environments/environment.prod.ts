@@ -12,4 +12,10 @@ export const environment = {
     deleteConversation: false,
     blockUser:          false,
   },
+  analytics: {
+    enabled: true,
+    matomoEndpoint: 'https://analytics.thomasfds.fr/matomo.php',
+    siteId: 20,
+    canonicalDomain: 'https://bluvy.app',
+  },
 };

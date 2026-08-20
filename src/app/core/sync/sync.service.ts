@@ -41,6 +41,7 @@ import { MessageCacheService } from '../conversation/message-cache.service';
 import { MlsCoordinatorService } from '../mls/coordinator/mls-coordinator.service';
 import { MlsBackupRegistry } from '../mls/mls-backup-registry.service';
 import { SecureLocalStorageService } from '../secure-local-storage/secure-local-storage.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 const FLUSH_INTERVAL_MS = 5_000;
 const FLUSH_BATCH_SIZE  = 100;
@@ -57,6 +58,7 @@ export class SyncService {
   private coordinatorSvc  = inject(MlsCoordinatorService);
   private backupRegistry  = inject(MlsBackupRegistry);
   private secureStorage   = inject(SecureLocalStorageService);
+  private analyticsSvc    = inject(AnalyticsService);
 
   constructor() {
     // Single registration point for both MlsService and MlsCoordinatorService
@@ -232,6 +234,8 @@ export class SyncService {
 
     this.startFlushTimer();
     this.startBackfill();
+
+    this.analyticsSvc.trackEvent('Sync', 'sync_setup_completed');
 
     return { recoveryKey };
   }

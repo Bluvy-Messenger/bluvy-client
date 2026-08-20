@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { ConversationRepository } from './conversation.repository';
+import { AnalyticsService } from '../analytics/analytics.service';
 import type {
   ConversationResult,
   ConversationParticipant,
@@ -25,6 +26,7 @@ export type {
 @Injectable({ providedIn: 'root' })
 export class ConversationsService {
   private repo = inject(ConversationRepository);
+  private analyticsSvc = inject(AnalyticsService);
 
   private conversationDeletedSubject = new Subject<string>();
   conversationDeleted$ = this.conversationDeletedSubject.asObservable();
@@ -41,7 +43,11 @@ export class ConversationsService {
   }
 
   createOrGetDm(participantDid: string): Observable<ConversationResult> {
-    return this.repo.createOrGetDm(participantDid);
+    return this.repo.createOrGetDm(participantDid).pipe(
+      tap(() => {
+        this.analyticsSvc.trackEvent('Messaging', 'conversation_created', 'dm');
+      })
+    );
   }
 
   getMessages(conversationId: string, before?: string, limit = 50): Observable<MessagesPage> {
@@ -65,7 +71,11 @@ export class ConversationsService {
   }
 
   createGroupConversation(participantDids: string[], name?: string): Observable<ConversationListItem> {
-    return this.repo.createGroupConversation(participantDids, name);
+    return this.repo.createGroupConversation(participantDids, name).pipe(
+      tap(() => {
+        this.analyticsSvc.trackEvent('Messaging', 'conversation_created', 'group', participantDids.length);
+      })
+    );
   }
 
   updateGroupName(id: string, name: string): Observable<ConversationListItem> {
