@@ -125,3 +125,17 @@ export interface DeviceRevokedPayload {
 export interface MbkRotatedPayload {
   keyGeneration: number;
 }
+
+export interface MessageResendRequestPayload {
+  conversationId:      string;
+  messageId:          string;
+  requestedByDid:      string;
+  requestedByDeviceId: string | null;
+}
+
+export interface MessageResentPayload {
+  conversationId: string;
+  messageId:      string;
+  ciphertext:     string;
+}
+

@@ -102,7 +102,9 @@ void checkAndClearCache().then((reloading) => {
         deps: [OAuthService],
         multi: true,
       },
-      provideServiceWorker('ngsw-worker.js', {
+      // custom-service-worker.js wraps ngsw-worker.js (importScripts) and adds
+      // Web Push handling on top — asset caching behavior is unchanged.
+      provideServiceWorker('custom-service-worker.js', {
         enabled: !isDevMode() && !Capacitor.isNativePlatform(),
         registrationStrategy: 'registerWhenStable:30000'
       }),

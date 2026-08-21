@@ -69,6 +69,7 @@
            [class.bubble--mine]="isMine()"
            [class.bubble--theirs]="!isMine()"
            [class.bubble--pending]="pending()"
+           [class.bubble--failed]="failed()"
            [class.bubble--first]="position() === 'first'"
            [class.bubble--middle]="position() === 'middle'"
            [class.bubble--last]="position() === 'last'"
@@ -111,7 +112,7 @@
         }
         <div class="bubble__footer">
           <span class="bubble__time">{{ timestamp() | date:'HH:mm' }}</span>
-          @if (isMine() && !pending()) {
+          @if (isMine() && !pending() && !failed()) {
             @if (receiptStatus() === 'read') {
               <ion-icon name="checkmark-done" class="bubble__receipt bubble__receipt--read"></ion-icon>
             } @else if (receiptStatus() === 'delivered') {
@@ -122,6 +123,13 @@
           }
         </div>
       </div>
+
+      @if (isMine() && failed()) {
+        <button type="button" class="bubble__retry-btn" (click)="onRetryClick($event)">
+          <ion-icon name="alert-circle-outline" class="bubble__retry-icon"></ion-icon>
+          <span class="bubble__retry-text">{{ 'conversation.send_failed' | translate }} · <strong>{{ 'conversation.retry' | translate }}</strong></span>
+        </button>
+      }
 
       <!-- Reactions list underneath bubble -->
       @if (reactionEntries().length > 0) {

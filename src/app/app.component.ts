@@ -50,6 +50,7 @@ import { MessageCacheService } from './core/conversation/message-cache.service';
 import { EmbedPreferencesService } from './core/embed/embed-preferences.service';
 import { TranslationService } from './core/i18n/translation.service';
 import { SyncService } from './core/sync/sync.service';
+import { PeerMessageRecoveryService } from './core/mls/recovery/peer-message-recovery.service';
 import { ROUTES } from './core/routes';
 import type { WelcomeNewPayload } from './core/infrastructure/socket.types';
 
@@ -85,6 +86,7 @@ export class AppComponent implements OnInit, OnDestroy {
     inject(ThemeService);
     inject(NavigationRedirectService);
     inject(JournalService); // Console capture already started in main.ts; this wires up IndexedDB persistence
+    inject(PeerMessageRecoveryService); // Listens for peer message resend requests and responses
     addIcons({
       chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
       personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,
@@ -178,6 +180,11 @@ export class AppComponent implements OnInit, OnDestroy {
         void this.provisionSvc.checkAndProvisionOnConnect(user, device);
         void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
           .catch(err => { console.error('[AppComponent] reconnect: ensureKeyPackagePool failed', err); });
+        // Covers a reconnect without a foreground transition (e.g. a network
+        // blip while the app stayed open) -- cooldown-gated, so this is a
+        // no-op if sweepOnResumeIfStale already ran recently via appStateChange.
+        void this.provisionSvc.sweepOnResumeIfStale(user, device)
+          .catch(err => { console.error('[AppComponent] reconnect: sweepOnResumeIfStale failed', err); });
       }),
     );
 
@@ -269,6 +276,8 @@ export class AppComponent implements OnInit, OnDestroy {
         .catch(err => { console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
       void this.embedPrefsSvc.refreshFromPds()
         .catch(err => { console.error('[AppComponent] foreground: embed preferences refresh failed', err); });
+      void this.provisionSvc.sweepOnResumeIfStale(user, device)
+        .catch(err => { console.error('[AppComponent] foreground: sweepOnResumeIfStale failed', err); });
     });
 
     // This empty listener is required for Android hardware back to reach

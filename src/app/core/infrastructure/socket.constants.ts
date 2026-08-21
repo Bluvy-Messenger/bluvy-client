@@ -20,4 +20,8 @@ export const SOCKET_EVENTS = {
   MLS_REFILL_KEY_PACKAGES: 'mls:refill_key_packages',
   DEVICE_REVOKED:       'device:revoked',
   MBK_ROTATED:          'mbk:rotated',
+  MESSAGE_REQUEST_RESEND:  'message:request_resend',
+  MESSAGE_RESEND_REQUESTED: 'message:resend_requested',
+  MESSAGE_RESEND:          'message:resend',
+  MESSAGE_RESENT:          'message:resent',
 } as const;
