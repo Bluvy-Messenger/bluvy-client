@@ -92,8 +92,40 @@ export class DeviceProvisioningService {
   ): Promise<void> {
     if (this.sweptForDid.has(user.did)) return;
     this.sweptForDid.add(user.did);
+    await this.runCatchUpSweep(user, device, 'proactiveCatchUpSweep');
+  }
 
-    console.log('[MLS:observability] proactiveCatchUpSweep start', { userDid: user.did, deviceId: device.id });
+  // Push-notification audit, Phase 6: a backgrounded app's WebView appears to
+  // suspend socket/JS processing (observed: no live decrypt of a message
+  // sent while backgrounded, on both Android and PWA), so a message that
+  // arrived during that window isn't guaranteed to be caught up yet when the
+  // user returns to the app -- it would otherwise wait until they happen to
+  // open that specific conversation (ionViewWillEnter's own catch-up).
+  // Deliberately a SEPARATE cooldown from proactiveCatchUpSweep's one-shot
+  // per-process cap above, not a replacement for it: that one exists
+  // specifically to avoid a round trip per conversation on every cold start,
+  // which still holds. Resuming from background is a different, rarer-per-
+  // minute event where the added cost is worth it. Mirrors
+  // removeRevokedDeviceLeaves's existing cooldown pattern below.
+  private lastResumeSweepAt = 0;
+  private static readonly RESUME_SWEEP_MIN_INTERVAL_MS = 10 * 60 * 1000;
+
+  async sweepOnResumeIfStale(
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastResumeSweepAt < DeviceProvisioningService.RESUME_SWEEP_MIN_INTERVAL_MS) return;
+    this.lastResumeSweepAt = now;
+    await this.runCatchUpSweep(user, device, 'sweepOnResumeIfStale');
+  }
+
+  private async runCatchUpSweep(
+    user:   UserProfile,
+    device: DeviceInfo,
+    label:  string,
+  ): Promise<void> {
+    console.log(`[MLS:observability] ${label} start`, { userDid: user.did, deviceId: device.id });
 
     let conversationsSwept = 0;
     await this.forEachConversation(async (conv) => {
@@ -103,11 +135,11 @@ export class DeviceProvisioningService {
         // (see MlsService.catchUpMissedCommits) -- safe to call unconditionally.
         await this.coordinator.catchUpMissedCommits(conv.id, user, device);
       } catch (err) {
-        console.warn('[DeviceProvisioning] proactiveCatchUpSweep: failed for conv', conv.id, ':', err);
+        console.warn(`[DeviceProvisioning] ${label}: failed for conv`, conv.id, ':', err);
       }
     });
 
-    console.log('[MLS:observability] proactiveCatchUpSweep done', { userDid: user.did, conversationsSwept });
+    console.log(`[MLS:observability] ${label} done`, { userDid: user.did, conversationsSwept });
   }
 
   private provisioning = false;

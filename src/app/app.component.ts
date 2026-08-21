@@ -180,6 +180,11 @@ export class AppComponent implements OnInit, OnDestroy {
         void this.provisionSvc.checkAndProvisionOnConnect(user, device);
         void this.kpSvc.ensureKeyPackagePool(user.did, device.id)
           .catch(err => { console.error('[AppComponent] reconnect: ensureKeyPackagePool failed', err); });
+        // Covers a reconnect without a foreground transition (e.g. a network
+        // blip while the app stayed open) -- cooldown-gated, so this is a
+        // no-op if sweepOnResumeIfStale already ran recently via appStateChange.
+        void this.provisionSvc.sweepOnResumeIfStale(user, device)
+          .catch(err => { console.error('[AppComponent] reconnect: sweepOnResumeIfStale failed', err); });
       }),
     );
 
@@ -271,6 +276,8 @@ export class AppComponent implements OnInit, OnDestroy {
         .catch(err => { console.error('[AppComponent] foreground: ensureKeyPackagePool failed', err); });
       void this.embedPrefsSvc.refreshFromPds()
         .catch(err => { console.error('[AppComponent] foreground: embed preferences refresh failed', err); });
+      void this.provisionSvc.sweepOnResumeIfStale(user, device)
+        .catch(err => { console.error('[AppComponent] foreground: sweepOnResumeIfStale failed', err); });
     });
 
     // This empty listener is required for Android hardware back to reach
