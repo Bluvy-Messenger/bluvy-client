@@ -1,4 +1,4 @@
-import type { ConversationNewPayload, ConversationUpdatedPayload, ConversationSupersededPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload, MbkRotatedPayload } from './socket.types';
+import type { ConversationNewPayload, ConversationUpdatedPayload, ConversationSupersededPayload, DeviceNewPayload, MessageNewPayload, MlsCommitPayload, PresenceSnapshotPayload, PresenceStatus, PresenceUpdatePayload, ReceiptDeliveredPayload, ReceiptUpdatePayload, TypingStartPayload, TypingStopPayload, WelcomeNewPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload, MbkRotatedPayload, MessageResendRequestPayload, MessageResentPayload } from './socket.types';
 import { isObject } from './validation.util';
 
 export function validateMessageNewPayload(data: MessageNewPayload): MessageNewPayload {
@@ -139,3 +139,20 @@ export function validateMbkRotatedPayload(data: MbkRotatedPayload): MbkRotatedPa
   if (typeof data['keyGeneration'] !== 'number') throw new Error('MbkRotatedPayload.keyGeneration: expected number');
   return data;
 }
+
+export function validateMessageResendRequestPayload(data: MessageResendRequestPayload): MessageResendRequestPayload {
+  if (!isObject(data)) throw new Error('MessageResendRequestPayload: expected object');
+  if (typeof data['conversationId'] !== 'string') throw new Error('MessageResendRequestPayload.conversationId: expected string');
+  if (typeof data['messageId'] !== 'string') throw new Error('MessageResendRequestPayload.messageId: expected string');
+  if (typeof data['requestedByDid'] !== 'string') throw new Error('MessageResendRequestPayload.requestedByDid: expected string');
+  return data;
+}
+
+export function validateMessageResentPayload(data: MessageResentPayload): MessageResentPayload {
+  if (!isObject(data)) throw new Error('MessageResentPayload: expected object');
+  if (typeof data['conversationId'] !== 'string') throw new Error('MessageResentPayload.conversationId: expected string');
+  if (typeof data['messageId'] !== 'string') throw new Error('MessageResentPayload.messageId: expected string');
+  if (typeof data['ciphertext'] !== 'string') throw new Error('MessageResentPayload.ciphertext: expected string');
+  return data;
+}
+

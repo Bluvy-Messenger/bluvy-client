@@ -22,6 +22,7 @@ import { MessagePayloadHelper } from '../../../core/conversation/message-payload
 import { SyncService } from '../../../core/sync/sync.service';
 import { TypingService } from '../../../core/typing/typing.service';
 import { ReceiptsService } from '../../../core/receipts/receipts.service';
+import { PeerMessageRecoveryService } from '../../../core/mls/recovery/peer-message-recovery.service';
 import { environment } from '../../../../environments/environment';
 
 @Component({
@@ -50,6 +51,7 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
   private syncSvc         = inject(SyncService);
   private typingSvc       = inject(TypingService);
   private receiptsSvc     = inject(ReceiptsService);
+  private peerRecoverySvc = inject(PeerMessageRecoveryService);
 
   readonly presenceSvc = inject(PresenceService);
 
@@ -512,7 +514,12 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       let anyHealed = false;
       for (const stale of undecryptableCached) {
         const serverMsg = serverMsgById.get(stale.id);
-        if (!serverMsg) continue;
+        if (!serverMsg) {
+          if (!stale.isMine) {
+            this.peerRecoverySvc.requestResend(this.conversationId, stale.id);
+          }
+          continue;
+        }
         const result = await this.coordinator.decryptMessage(
           this.conversationId, stale.id, stale.senderDid ?? user.did, stale.senderDeviceId,
           stale.isMine, stale.createdAt, serverMsg.ciphertext, user, device,
@@ -529,6 +536,8 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
             });
           }
           anyHealed = true;
+        } else if (result.state === 'undecryptable' && !stale.isMine) {
+          this.peerRecoverySvc.requestResend(this.conversationId, stale.id);
         }
       }
       if (anyHealed) this.scrollToBottom();
@@ -553,6 +562,9 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
       const cached = this.buildCached(msg.id, msg.conversationId, msg.senderDeviceId, msg.senderDid, plaintext, isMine, undecryptable, msg.createdAt);
       await this.messageCacheSvc.store(cached);
       newMessages.push(cached);
+      if (undecryptable) {
+        this.peerRecoverySvc.requestResend(this.conversationId, msg.id);
+      }
       if (result.state === 'plaintext') {
         this.syncSvc.enqueue({ messageId: msg.id, conversationId: msg.conversationId, plaintext, createdAt: msg.createdAt, senderDid: msg.senderDid });
       }
@@ -622,12 +634,27 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
         const plaintext     = result.state === 'plaintext' ? result.plaintext : '';
         const cached = this.buildCached(msg.id, msg.conversationId, msg.senderDeviceId, msg.senderDid, plaintext, isMine, undecryptable, msg.createdAt);
         
+        if (undecryptable) {
+          this.peerRecoverySvc.requestResend(this.conversationId, msg.id);
+        }
+
         if (result.state === 'plaintext') {
           this.syncSvc.enqueue({ messageId: msg.id, conversationId: msg.conversationId, plaintext, createdAt: msg.createdAt, senderDid: msg.senderDid });
         }
 
         if (!isMine) this.socketSvc.sendMessageDelivered(msg.conversationId, msg.id, msg.senderDid);
         await this.handleIncomingDecryptedMessage(cached);
+      }),
+    );
+
+    this.subs.add(
+      this.peerRecoverySvc.messageRecovered$.subscribe(cached => {
+        if (cached.conversationId !== this.conversationId) return;
+        const idx = this.displayMessages.findIndex(m => m.id === cached.id);
+        if (idx !== -1) {
+          this.displayMessages[idx] = this.toDisplayMessage(cached);
+          this.cdr.detectChanges();
+        }
       }),
     );
 

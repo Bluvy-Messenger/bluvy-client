@@ -50,6 +50,7 @@ import { MessageCacheService } from './core/conversation/message-cache.service';
 import { EmbedPreferencesService } from './core/embed/embed-preferences.service';
 import { TranslationService } from './core/i18n/translation.service';
 import { SyncService } from './core/sync/sync.service';
+import { PeerMessageRecoveryService } from './core/mls/recovery/peer-message-recovery.service';
 import { ROUTES } from './core/routes';
 import type { WelcomeNewPayload } from './core/infrastructure/socket.types';
 
@@ -85,6 +86,7 @@ export class AppComponent implements OnInit, OnDestroy {
     inject(ThemeService);
     inject(NavigationRedirectService);
     inject(JournalService); // Console capture already started in main.ts; this wires up IndexedDB persistence
+    inject(PeerMessageRecoveryService); // Listens for peer message resend requests and responses
     addIcons({
       chatbubble, chatbubbleOutline, people, peopleOutline, menu, menuOutline, searchOutline,
       personOutline, personAddOutline, chevronForwardOutline, phonePortraitOutline,

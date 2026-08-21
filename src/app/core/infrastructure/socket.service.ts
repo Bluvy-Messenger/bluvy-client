@@ -8,7 +8,7 @@ import type {
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
   ConversationNewPayload, ConversationUpdatedPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
-  MbkRotatedPayload,
+  MbkRotatedPayload, MessageResendRequestPayload, MessageResentPayload,
   SendAck,
 } from './socket.types';
 import { SOCKET_EVENTS } from './socket.constants';
@@ -29,6 +29,8 @@ import {
   validateMlsRefillKeyPackagesPayload,
   validateDeviceRevokedPayload,
   validateMbkRotatedPayload,
+  validateMessageResendRequestPayload,
+  validateMessageResentPayload,
 } from './socket.validator';
 
 export type {
@@ -36,7 +38,7 @@ export type {
   PresenceSnapshotPayload, PresenceUpdatePayload,
   TypingStartPayload, TypingStopPayload, ReceiptUpdatePayload, ReceiptDeliveredPayload,
   ConversationNewPayload, ConversationSupersededPayload, MlsRefillKeyPackagesPayload, DeviceRevokedPayload,
-  MbkRotatedPayload,
+  MbkRotatedPayload, MessageResendRequestPayload, MessageResentPayload,
 } from './socket.types';
 
 @Injectable({ providedIn: 'root' })
@@ -65,6 +67,8 @@ export class SocketService {
   private readonly _mlsRefillKeyPackages = new Subject<MlsRefillKeyPackagesPayload>();
   private readonly _deviceRevoked       = new Subject<DeviceRevokedPayload>();
   private readonly _mbkRotated          = new Subject<MbkRotatedPayload>();
+  private readonly _messageResendRequested = new Subject<MessageResendRequestPayload>();
+  private readonly _messageResent       = new Subject<MessageResentPayload>();
 
   readonly messageNew$: Observable<MessageNewPayload> = this._messageNew.asObservable().pipe(
     throttleTime(100, asyncScheduler, { leading: true, trailing: true }),
@@ -86,6 +90,8 @@ export class SocketService {
   readonly mlsRefillKeyPackages$: Observable<MlsRefillKeyPackagesPayload> = this._mlsRefillKeyPackages.asObservable();
   readonly deviceRevoked$:       Observable<DeviceRevokedPayload>       = this._deviceRevoked.asObservable();
   readonly mbkRotated$:          Observable<MbkRotatedPayload>          = this._mbkRotated.asObservable();
+  readonly messageResendRequested$: Observable<MessageResendRequestPayload> = this._messageResendRequested.asObservable();
+  readonly messageResent$:       Observable<MessageResentPayload>       = this._messageResent.asObservable();
 
   connect(): void {
     if (this.socket) return;
@@ -208,12 +214,32 @@ export class SocketService {
       try { data = validateMbkRotatedPayload(raw); } catch { return; }
       this.zone.run(() => this._mbkRotated.next(data));
     });
+
+    this.socket.on(SOCKET_EVENTS.MESSAGE_RESEND_REQUESTED, (raw: MessageResendRequestPayload) => {
+      let data: MessageResendRequestPayload;
+      try { data = validateMessageResendRequestPayload(raw); } catch { return; }
+      this.zone.run(() => this._messageResendRequested.next(data));
+    });
+
+    this.socket.on(SOCKET_EVENTS.MESSAGE_RESENT, (raw: MessageResentPayload) => {
+      let data: MessageResentPayload;
+      try { data = validateMessageResentPayload(raw); } catch { return; }
+      this.zone.run(() => this._messageResent.next(data));
+    });
   }
 
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;
     this._hasConnectedOnce = false;
+  }
+
+  requestMessageResend(conversationId: string, messageId: string): void {
+    this.socket?.emit(SOCKET_EVENTS.MESSAGE_REQUEST_RESEND, { conversationId, messageId });
+  }
+
+  resendMessage(conversationId: string, messageId: string, ciphertext: string): void {
+    this.socket?.emit(SOCKET_EVENTS.MESSAGE_RESEND, { conversationId, messageId, ciphertext });
   }
 
   sendTypingStart(conversationId: string): void {
