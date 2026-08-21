@@ -1,4 +1,4 @@
-import { Injectable, Injector, inject } from '@angular/core';
+import { Injectable, Injector, inject, isDevMode } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -9,6 +9,7 @@ import { AuthService } from '../auth/auth.service';
 import { ROUTES } from '../routes';
 import { KeyPackageService } from '../mls/key-package/key-package.service';
 import { AppPreferencesSyncService } from '../services/app-preferences-sync.service';
+import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class PushNotificationService {
@@ -21,6 +22,10 @@ export class PushNotificationService {
 
   async initialize(): Promise<void> {
     if (!Capacitor.isNativePlatform()) {
+      this.setupWebMessageListener();
+      if (this.isPushEnabled()) {
+        await this.ensureWebPushSubscription();
+      }
       return;
     }
 
@@ -69,7 +74,7 @@ export class PushNotificationService {
   private setupListeners(): void {
     PushNotifications.addListener('registration', async (token) => {
       try {
-        await this.uploadTokenForAllAccounts(token.value, 'fcm');
+        await this.uploadTokenForAllAccounts({ token: token.value, platform: 'fcm' });
       } catch (err) {
         console.error('[PushNotificationService] Failed to upload push token to backend:', err);
       }
@@ -116,37 +121,134 @@ export class PushNotificationService {
     await this.navCtrl.navigateForward([ROUTES.conversation(conversationId)]);
   }
 
+  // ── Web Push (PWA) ────────────────────────────────────────────────────────
+
+  /**
+   * True only when Web Push can actually work: browser APIs present AND the
+   * custom service worker is registrable (matches main.ts's
+   * provideServiceWorker() enabled condition exactly — !isDevMode() &&
+   * !Capacitor.isNativePlatform() — otherwise navigator.serviceWorker.ready
+   * below would hang forever waiting for a registration that will never
+   * happen, e.g. under `ng serve`).
+   */
+  private isWebPushSupported(): boolean {
+    return (
+      !isDevMode() &&
+      !Capacitor.isNativePlatform() &&
+      typeof window !== 'undefined' &&
+      'serviceWorker' in navigator &&
+      'PushManager' in window &&
+      'Notification' in window
+    );
+  }
+
+  /**
+   * Listens for custom-service-worker.js's notificationclick handler posting
+   * back which conversation was tapped (only needed when a tab is already
+   * open and gets focused rather than opened fresh — see the SW file).
+   * Reuses openConversationFromNotification, same as the native tap path.
+   */
+  private setupWebMessageListener(): void {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      const data = event.data as { type?: string; conversationId?: string } | undefined;
+      if (data?.type === 'bluvy-notification-click' && data.conversationId) {
+        void this.openConversationFromNotification(data.conversationId);
+      }
+    });
+  }
+
+  /**
+   * Ensures a PushSubscription exists for this browser and is uploaded to
+   * the backend for every linked account. Safe to call repeatedly (checked
+   * on every app launch, not just first subscribe) — this is also how a
+   * subscription lost to a pushsubscriptionchange event (see the service
+   * worker file) gets reconciled, since the SW itself has no access to an
+   * auth session to re-upload it directly.
+   */
+  private async ensureWebPushSubscription(): Promise<void> {
+    if (!this.isWebPushSupported()) return;
+    if (Notification.permission !== 'granted') return;
+    if (!environment.vapidPublicKey) return;
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly:      true,
+          applicationServerKey: this.urlBase64ToUint8Array(environment.vapidPublicKey),
+        });
+      }
+      await this.uploadTokenForAllAccounts({ platform: 'webpush', subscription: subscription.toJSON() });
+    } catch (err) {
+      console.error('[PushNotificationService] Web Push subscription failed:', err);
+    }
+  }
+
+  /** VAPID applicationServerKey must be a Uint8Array — PushManager.subscribe() doesn't accept the raw base64url string. */
+  private urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+    const padding  = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64   = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData  = atob(base64);
+    const output   = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) {
+      output[i] = rawData.charCodeAt(i);
+    }
+    return output;
+  }
+
   /**
    * Returns true if we should present the post-login notification permission page to the user.
    */
   async shouldPromptForPermission(): Promise<boolean> {
-    if (!Capacitor.isNativePlatform()) return false;
+    if (Capacitor.isNativePlatform()) {
+      if (!this.isPushEnabled()) return false;
+      if (localStorage.getItem('push_permission_prompted') === 'true') return false;
+
+      try {
+        const status = await PushNotifications.checkPermissions();
+        return status.receive === 'prompt' || status.receive === 'prompt-with-rationale';
+      } catch {
+        return false;
+      }
+    }
+
+    if (!this.isWebPushSupported()) return false;
     if (!this.isPushEnabled()) return false;
     if (localStorage.getItem('push_permission_prompted') === 'true') return false;
-
-    try {
-      const status = await PushNotifications.checkPermissions();
-      return status.receive === 'prompt' || status.receive === 'prompt-with-rationale';
-    } catch {
-      return false;
-    }
+    return Notification.permission === 'default';
   }
 
   /**
-   * Triggers native permission request dialog after user consents on the dedicated onboarding page.
+   * Triggers the permission request dialog after user consents on the dedicated onboarding page —
+   * native permission prompt on Android/iOS, browser Notification permission prompt on web.
    */
   async requestPermissionsFromUser(): Promise<boolean> {
     localStorage.setItem('push_permission_prompted', 'true');
-    if (!Capacitor.isNativePlatform()) return false;
 
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await PushNotifications.requestPermissions();
+        if (result.receive === 'granted') {
+          void PushNotifications.register();
+          return true;
+        }
+      } catch (err) {
+        console.error('[PushNotificationService] Failed to request permissions:', err);
+      }
+      return false;
+    }
+
+    if (!this.isWebPushSupported()) return false;
     try {
-      const result = await PushNotifications.requestPermissions();
-      if (result.receive === 'granted') {
-        void PushNotifications.register();
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        await this.ensureWebPushSubscription();
         return true;
       }
     } catch (err) {
-      console.error('[PushNotificationService] Failed to request permissions:', err);
+      console.error('[PushNotificationService] Failed to request web push permission:', err);
     }
     return false;
   }
@@ -162,30 +264,50 @@ export class PushNotificationService {
    * are delivered to the newly active account rather than the previous one.
    */
   async onAccountSwitch(): Promise<void> {
-    if (!Capacitor.isNativePlatform()) return;
     if (!this.isPushEnabled()) return;
 
-    const status = await PushNotifications.checkPermissions();
-    if (status.receive === 'granted') {
-      void PushNotifications.register();
+    if (Capacitor.isNativePlatform()) {
+      const status = await PushNotifications.checkPermissions();
+      if (status.receive === 'granted') {
+        void PushNotifications.register();
+      }
+      return;
     }
+
+    // Re-uploads the existing subscription (if any) for the newly active
+    // account too — uploadTokenForAllAccounts already loops every linked
+    // account, mirroring the native re-register path above.
+    void this.ensureWebPushSubscription();
   }
 
   async setPushEnabled(enabled: boolean): Promise<void> {
     localStorage.setItem('notifications_push_enabled', String(enabled));
     try { this.injector.get(AppPreferencesSyncService).scheduleSave(); } catch { /* ignore */ }
-    if (!Capacitor.isNativePlatform()) {
+
+    if (Capacitor.isNativePlatform()) {
+      if (enabled) {
+        void this.requestPermissionsFromUser();
+      } else {
+        try {
+          await PushNotifications.removeAllListeners();
+          await this.deleteTokenForAllAccounts();
+        } catch (err) {
+          console.error('[PushNotificationService] Failed to remove push token from backend:', err);
+        }
+      }
       return;
     }
 
     if (enabled) {
       void this.requestPermissionsFromUser();
-    } else {
+    } else if (this.isWebPushSupported()) {
       try {
-        await PushNotifications.removeAllListeners();
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) await subscription.unsubscribe();
         await this.deleteTokenForAllAccounts();
       } catch (err) {
-        console.error('[PushNotificationService] Failed to remove push token from backend:', err);
+        console.error('[PushNotificationService] Failed to disable web push:', err);
       }
     }
   }
@@ -203,23 +325,25 @@ export class PushNotificationService {
   }
 
   /**
-   * Uploads the OS push token on behalf of every account stored on this
-   * device, not just the currently active one. The token is device-level
-   * (same value regardless of which account is selected in the UI), but the
-   * backend binds it per account (`deviceId` resolved from the bearer
-   * token's session) — so every linked account needs its own upload to
-   * actually receive pushes while it isn't the one selected in the app.
+   * Uploads the push registration (FCM/APNs token or Web Push subscription —
+   * `body` is whatever POST /v1/devices/push-token expects for the current
+   * platform) on behalf of every account stored on this device, not just the
+   * currently active one. The registration is device-level (same value
+   * regardless of which account is selected in the UI), but the backend
+   * binds it per account (`deviceId` resolved from the bearer token's
+   * session) — so every linked account needs its own upload to actually
+   * receive pushes while it isn't the one selected in the app.
    * Best-effort per account: a missing access token for a linked account
    * simply skips it; an expired one is refreshed (scoped to that account,
    * see AuthService.refreshTokensForDid) and retried once before giving up.
    */
-  private async uploadTokenForAllAccounts(token: string, platform: 'fcm' | 'apns'): Promise<void> {
+  private async uploadTokenForAllAccounts(body: Record<string, unknown>): Promise<void> {
     const accounts = await this.authSvc.getStoredAccounts();
     await Promise.allSettled(accounts.map(async (acc) => {
       const accessToken = await this.tokenRepo.getAccessToken(acc.did);
       if (!accessToken) return;
       await this.pushTokenRequestWithRefresh(acc.did, accessToken, (bearer) =>
-        this.apiClient.post('/v1/devices/push-token', { token, platform }, {
+        this.apiClient.post('/v1/devices/push-token', body, {
           skipAuth: true,
           headers:  { Authorization: `Bearer ${bearer}` },
         }));
