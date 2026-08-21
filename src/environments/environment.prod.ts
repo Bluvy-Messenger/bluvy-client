@@ -11,7 +11,7 @@ export const environment = {
   // `npx web-push generate-vapid-keys` (do not reuse the dev pair from
   // environment.ts). Empty until the team provisions one; Web Push
   // subscription is skipped client-side when unset.
-  vapidPublicKey: '',
+  vapidPublicKey: 'BALe3cPSwSmrYhq7YoCRwm1HhjkfcTYxVi2whqys2A1SAXEPTTyehTJYsS1v_9IWZrFtVRTM5hBK2vLXPNYQwJE',
   features: {
     deleteAccount:      false,
     muteConversation:   false,
