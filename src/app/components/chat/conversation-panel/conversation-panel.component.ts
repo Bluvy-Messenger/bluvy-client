@@ -192,7 +192,16 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (!environment.production) console.error('[ConversationPanel] sendMessage failed:', err);
-      this.displayMessages = this.displayMessages.filter(m => m.id !== pendingId);
+      const idx = this.displayMessages.findIndex(m => m.id === pendingId);
+      if (idx !== -1) {
+        this.displayMessages[idx] = {
+          ...this.displayMessages[idx],
+          pending: false,
+          failed: true,
+          rawText: text,
+          replyTo: activeReplyTo,
+        };
+      }
       this.error = err instanceof Error ? err.message : 'Send failed.';
     } finally {
       this.sending = false;
@@ -254,10 +263,123 @@ export class ConversationPanelComponent implements OnInit, OnDestroy, OnChanges 
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (!environment.production) console.error('[ConversationPanel] sendPlace failed:', err);
-      this.displayMessages = this.displayMessages.filter(m => m.id !== pendingId);
+      const idx = this.displayMessages.findIndex(m => m.id === pendingId);
+      if (idx !== -1) {
+        this.displayMessages[idx] = {
+          ...this.displayMessages[idx],
+          pending: false,
+          failed: true,
+          rawText: `📍 ${place.name}`,
+          place,
+        };
+      }
       this.error = err instanceof Error ? err.message : 'Send failed.';
     } finally {
       this.sending = false;
+    }
+  }
+
+  async retrySendMessage(failedMsg: DisplayMessage): Promise<void> {
+    if (!failedMsg || this.sending) return;
+
+    const user   = this.authSvc.currentUser();
+    const device = this.authSvc.currentDevice();
+    if (!user || !device) { this.error = 'Not authenticated.'; return; }
+
+    const participantDid = this.conversation?.participant.did;
+    if (!participantDid) { this.error = 'Conversation not loaded.'; return; }
+
+    const text = failedMsg.rawText ?? failedMsg.displayText;
+    if (!text) return;
+
+    const activeReplyTo = failedMsg.replyTo;
+    const msgId = failedMsg.id;
+    const idx = this.displayMessages.findIndex(m => m.id === msgId);
+    if (idx !== -1) {
+      this.displayMessages[idx] = {
+        ...this.displayMessages[idx],
+        pending: true,
+        failed: false,
+      };
+    }
+    this.sending = true;
+    this.error = '';
+    this.cdr.detectChanges();
+
+    try {
+      if (!this.ensureGroupAbort || this.ensureGroupAbort.signal.aborted) {
+        this.ensureGroupAbort = new AbortController();
+      }
+      const memberDids = this.conversation?.members?.map(m => m.did);
+      // 1. Re-establish encryption (catch-up / heal)
+      await this.coordinator.ensureGroupReady(
+        this.conversationId,
+        participantDid,
+        user,
+        device,
+        this.ensureGroupAbort.signal,
+        undefined,
+        memberDids,
+      );
+
+      // 2. Encrypt with fresh valid key
+      let payloadText: string;
+      if (failedMsg.place) {
+        payloadText = MessagePayloadHelper.encodePlaceMessage(failedMsg.place);
+      } else {
+        payloadText = MessagePayloadHelper.encodeChatMessage(text, activeReplyTo ?? undefined);
+      }
+
+      const ciphertext = await this.coordinator.encryptMessage(this.conversationId, payloadText, user, device);
+
+      // 3. Send message via socket
+      const serverMsg = await this.socketSvc.sendMessage(this.conversationId, ciphertext);
+      this.knownIds.add(serverMsg.id);
+
+      const cached: CachedMessage = {
+        id:                serverMsg.id,
+        conversationId:    this.conversationId,
+        senderDeviceId:    device.id,
+        senderDid:         user.did,
+        plaintext:         payloadText,
+        isMine:            true,
+        undecryptable:     false,
+        cacheVersion:      1,
+        encryptionVersion: 1,
+        deletedAt:         null,
+        createdAt:         serverMsg.createdAt,
+        cachedAt:          Date.now(),
+        replyTo:           activeReplyTo,
+      };
+      await this.messageCacheSvc.store(cached);
+      this.syncSvc.enqueue({
+        messageId:      serverMsg.id,
+        conversationId: this.conversationId,
+        plaintext:      payloadText,
+        createdAt:      serverMsg.createdAt,
+        senderDid:      user.did,
+      });
+
+      const currentIdx = this.displayMessages.findIndex(m => m.id === msgId);
+      if (currentIdx !== -1) {
+        this.displayMessages[currentIdx] = this.toDisplayMessage(cached);
+      }
+      this.scrollToBottom();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (!environment.production) console.error('[ConversationPanel] retrySendMessage failed:', err);
+      const currentIdx = this.displayMessages.findIndex(m => m.id === msgId);
+      if (currentIdx !== -1) {
+        this.displayMessages[currentIdx] = {
+          ...this.displayMessages[currentIdx],
+          pending: false,
+          failed: true,
+        };
+      }
+      this.error = err instanceof Error ? err.message : 'Retry failed.';
+    } finally {
+      this.sending = false;
+      this.cdr.detectChanges();
     }
   }
 

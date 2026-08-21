@@ -16,7 +16,7 @@ import { EpochGapError }            from '../errors/epoch-gap-error';
 import { DecryptEpochAheadError }   from '../errors/decrypt-epoch-ahead-error';
 import { MlsWatchdogService }       from '../watchdog/mls-watchdog.service';
 import { MlsBackupRegistry }        from '../mls-backup-registry.service';
-import { assertMls }                from '../assertions/mls-assertions';
+import { assertMls, MlsAssertionError } from '../assertions/mls-assertions';
 import {
   ConversationMlsState,
   type DecryptResult,
@@ -711,11 +711,12 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
           return { messageId, conversationId: convId, state: 'pending_decrypt' as const, plaintext: '', errorKind: classified.kind, operationId };
         }
 
+        const isInternalAssertion = err instanceof MlsAssertionError;
         const readyTime = this.readyTimestamps.get(convId);
         const isHistorical = readyTime !== undefined && createdAt < readyTime - 5000;
 
-        if (isHistorical) {
-          if (!environment.production) console.log('[MLS:coordinator] decryptMessage: ignoring permanent decryption failure for historical message', messageId, 'createdAt =', createdAt, 'readyTime =', readyTime);
+        if (isHistorical || isInternalAssertion) {
+          if (!environment.production) console.log('[MLS:coordinator] decryptMessage: ignoring permanent decryption failure count for', isInternalAssertion ? 'internal assertion error' : 'historical message', messageId, 'createdAt =', createdAt, 'readyTime =', readyTime);
         } else {
           const failures = (this.decryptionFailures.get(convId) ?? 0) + 1;
           this.decryptionFailures.set(convId, failures);

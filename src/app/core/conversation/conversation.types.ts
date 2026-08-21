@@ -94,15 +94,18 @@ export interface MessageCacheReadResult {
 import type { PlaceData } from '../place/place.types';
 
 export interface DisplayMessage {
-  id:          string;
-  displayText: string;
-  isMine:      boolean;
-  createdAt:   number;
-  pending:     boolean;
-  senderDid?:  string;
-  replyTo?:    MessageReplyTo | null;
-  reactions?:  ReactionMap;
-  place?:      PlaceData | null;
+  id:             string;
+  displayText:    string;
+  isMine:         boolean;
+  createdAt:      number;
+  pending:        boolean;
+  failed?:        boolean;
+  rawText?:       string;
+  outboxLocalId?: string;
+  senderDid?:     string;
+  replyTo?:       MessageReplyTo | null;
+  reactions?:     ReactionMap;
+  place?:         PlaceData | null;
 }
 
 

@@ -1,10 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { MlsCoordinatorBase } from '../mls/coordinator/mls-coordinator.base';
-import { MlsEpochConflictBus } from '../mls/mls-epoch-conflict-bus.service';
 import { ConversationsService } from '../conversation/conversations.service';
 import { SyncService } from '../sync/sync.service';
 import { DeviceRepository } from './device.repository';
+import { environment } from '../../../environments/environment';
 import type { UserProfile } from '../auth/auth.types';
 import type { DeviceInfo }  from './device.types';
 
@@ -14,7 +14,6 @@ export class DeviceProvisioningService {
   private coordinator      = inject(MlsCoordinatorBase);
   private convSvc          = inject(ConversationsService);
   private syncSvc          = inject(SyncService);
-  private epochConflictBus = inject(MlsEpochConflictBus);
 
   async handleDeviceNew(
     newDeviceId: string,
@@ -199,8 +198,9 @@ export class DeviceProvisioningService {
       // if that also fails), scoped to exactly the conversations this
       // mismatch was actually detected for -- not a blind catch-up sweep.
       if (await this.coordinator.isDeviceMemberLocally(conversationId, otherId, user, device)) {
-        console.warn('[DeviceProvisioning] checkAndProvisionOnConnect: local state believes', otherId, 'is already a member of', conversationId, 'but the server has no record of it -- signalling epoch conflict to trigger recovery');
-        this.epochConflictBus.epochConflict$.next({ conversationId });
+        if (!environment.production) {
+          console.log('[DeviceProvisioning] checkAndProvisionOnConnect: device', otherId, 'is already a member of', conversationId, '— skipping provision');
+        }
         continue;
       }
 

@@ -10,6 +10,7 @@ import { MlsWatchdogService } from '../watchdog/mls-watchdog.service';
 import { MlsBackupRegistry } from '../mls-backup-registry.service';
 import { EpochGapError } from '../errors/epoch-gap-error';
 import { DecryptEpochAheadError } from '../errors/decrypt-epoch-ahead-error';
+import { MlsAssertionError } from '../assertions/mls-assertions';
 import type { UserProfile } from '../../auth/auth.types';
 import type { DeviceInfo } from '../../device/device.types';
 
@@ -128,6 +129,61 @@ describe('MlsCoordinatorService', () => {
     // Assert: State must be 'pending_decrypt' and enqueued
     expect(resultState).toBe('pending_decrypt');
     expect(mockPendingRepo.enqueue).toHaveBeenCalled();
+  }));
+
+  it('transitions from EMPTY to READY on cold-start successful decryptMessage without throwing MlsAssertionError', fakeAsync(() => {
+    // Cold-start: states map is completely empty
+    expect(service.getConversationState('conv-cold-decrypt')).toBe(ConversationMlsState.Empty);
+    mockMlsSvc.decryptMessage.and.returnValue(Promise.resolve('decrypted plaintext'));
+
+    let result: { state: string; plaintext: string } | undefined;
+    service.decryptMessage(
+      'conv-cold-decrypt',
+      'msg-1',
+      'did:plc:bob',
+      'device-bob',
+      false,
+      Date.now(),
+      'base64-ciphertext',
+      mockUser,
+      mockDevice
+    ).then(res => {
+      result = res;
+    });
+
+    tick();
+
+    expect(result?.state).toBe('plaintext');
+    expect(result?.plaintext).toBe('decrypted plaintext');
+    expect(service.getConversationState('conv-cold-decrypt')).toBe(ConversationMlsState.Ready);
+  }));
+
+  it('does not increment decryptionFailures or trigger destructive recovery on internal MlsAssertionError', fakeAsync(() => {
+    const assertionErr = new MlsAssertionError('test assertion failure', 'a', 'b');
+    mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(assertionErr));
+
+    let failedEvent: { conversationId: string } | undefined;
+    service.conversationFailed$.subscribe(evt => { failedEvent = evt; });
+
+    for (let i = 0; i < 4; i++) {
+      service.decryptMessage(
+        'conv-assertion-fail',
+        `msg-${i}`,
+        'did:plc:bob',
+        'device-bob',
+        false,
+        Date.now(),
+        'base64-ciphertext',
+        mockUser,
+        mockDevice
+      );
+      tick();
+    }
+
+    // Even after 4 errors, the conversation must not be marked FAILED because they were internal assertion errors
+    expect(service.getConversationState('conv-assertion-fail')).not.toBe(ConversationMlsState.Failed);
+    expect(failedEvent).toBeUndefined();
+    expect(mockMlsSvc.clearConversationGroup).not.toHaveBeenCalled();
   }));
 
   // ── decryptMessage epoch-ahead catch-up (P2 fix) ──────────────────────────

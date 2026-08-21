@@ -5,7 +5,7 @@ import {
 import { DatePipe } from '@angular/common';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { happyOutline, returnUpBackOutline, checkmarkOutline, checkmarkDoneOutline, checkmarkDone } from 'ionicons/icons';
+import { happyOutline, returnUpBackOutline, checkmarkOutline, checkmarkDoneOutline, checkmarkDone, alertCircleOutline, refreshOutline } from 'ionicons/icons';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import { EmbedPreviewBlockComponent } from '../embed-preview-block/embed-preview-block.component';
@@ -47,6 +47,7 @@ export class MessageBubbleComponent {
   readonly isMine = input<boolean>(false);
   readonly timestamp = input<number>(0);
   readonly pending = input<boolean>(false);
+  readonly failed = input<boolean>(false);
   readonly position = input<'first' | 'middle' | 'last' | 'single'>('single');
   readonly receiptStatus = input<'read' | 'delivered' | 'sent' | null>(null);
   readonly replyTo = input<MessageReplyTo | null>(null);
@@ -57,6 +58,7 @@ export class MessageBubbleComponent {
   readonly place = input<PlaceData | null>(null);
 
   readonly reply = output<void>();
+  readonly retry = output<void>();
   readonly toggleReaction = output<string>();
   readonly jumpToReply = output<string>();
 
@@ -104,7 +106,7 @@ export class MessageBubbleComponent {
   });
 
   constructor() {
-    addIcons({ happyOutline, returnUpBackOutline, checkmarkOutline, checkmarkDoneOutline, checkmarkDone });
+    addIcons({ happyOutline, returnUpBackOutline, checkmarkOutline, checkmarkDoneOutline, checkmarkDone, alertCircleOutline, refreshOutline });
 
     effect(() => {
       const rawText = this.text();
@@ -171,6 +173,10 @@ export class MessageBubbleComponent {
   }
 
   onBubbleClick(): void {
+    if (this.failed()) {
+      this.onRetryClick();
+      return;
+    }
     const now = Date.now();
     if (now - this.lastTapTime < 320) {
       this.toggleReaction.emit('❤️');
@@ -178,6 +184,11 @@ export class MessageBubbleComponent {
     } else {
       this.lastTapTime = now;
     }
+  }
+
+  onRetryClick(e?: MouseEvent): void {
+    e?.stopPropagation();
+    this.retry.emit();
   }
 
   getReactorsTooltip(emoji: string): string {
