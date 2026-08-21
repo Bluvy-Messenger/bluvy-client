@@ -44,6 +44,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Fallback defaults for FCM payloads that omit icon/channelId; the
+             "messages" channel itself is created at runtime by
+             PushNotificationService (see push-notification.service.ts). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="messages" />
     </application>
 
     <!-- Permissions -->

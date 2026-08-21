@@ -24,6 +24,13 @@ export class PushNotificationService {
       return;
     }
 
+    // Must exist before any notification is ever posted to it (backend
+    // always targets channelId 'messages' — see push.service.ts). Runs
+    // unconditionally, independent of the user's push preference below:
+    // createChannel is idempotent, and the channel must already be correct
+    // if the user re-enables push later.
+    await this.ensureMessagesChannel();
+
     // Check if user disabled push notifications
     if (!this.isPushEnabled()) {
       return;
@@ -40,6 +47,22 @@ export class PushNotificationService {
       }
     } catch (err) {
       console.warn('[PushNotificationService] Error checking permissions during init:', err);
+    }
+  }
+
+  /** Android 8+ requires a channel to exist before a notification can be posted to it. */
+  private async ensureMessagesChannel(): Promise<void> {
+    try {
+      await PushNotifications.createChannel({
+        id:          'messages',
+        name:        'Messages',
+        description: 'New message notifications',
+        importance:  4, // HIGH — heads-up banner, no sound-only downgrade
+        vibration:   true,
+        lights:      true,
+      });
+    } catch (err) {
+      console.warn('[PushNotificationService] Failed to create notification channel:', err);
     }
   }
 
