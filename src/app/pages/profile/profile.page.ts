@@ -141,7 +141,7 @@ export class ProfilePage {
     try {
       await navigator.clipboard.writeText(did);
       const toast = await this.toastCtrl.create({
-        message: 'DID copié !',
+        message: this.i18n.instant('profile.did_copied'),
         duration: 2000,
         position: 'bottom',
         color: 'success'

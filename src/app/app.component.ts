@@ -142,7 +142,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.subs.add(
       this.i18n.onLangChange.subscribe(({ lang }) => {
         localStorage.setItem('bluvy_locale', lang);
-        this.appPrefsSyncSvc.scheduleSave();
+        // Locale changes must reach the PDS immediately rather than via the
+        // debounced scheduleSave(): on Android, backgrounding/killing the app
+        // right after a language switch can suspend the pending setTimeout
+        // before it fires, leaving the PDS record stale -- so the next
+        // restoreSession() bootstrap() reverts the just-picked language.
+        void this.appPrefsSyncSvc.syncToPdsNow();
       }),
     );
 
