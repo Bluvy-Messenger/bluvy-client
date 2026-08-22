@@ -5,6 +5,9 @@ const config: CapacitorConfig = {
   appName: 'Bluvy Messenger',
   webDir:  'www',
   plugins: {
+    CapacitorSQLite: {
+      androidIsEncryption: false,
+    },
     EdgeToEdge: {
       statusBarColor:     '#FFFFFF',
       navigationBarColor: '#FFFFFF',
