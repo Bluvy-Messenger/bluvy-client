@@ -1,5 +1,6 @@
 import { Component, input, computed } from '@angular/core';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 
 @Component({
   selector: 'app-unread-badge',

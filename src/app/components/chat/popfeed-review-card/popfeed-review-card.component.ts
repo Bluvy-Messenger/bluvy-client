@@ -2,7 +2,8 @@ import { Component, input, OnInit, inject, signal } from '@angular/core';
 import { IonIcon } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import { BskyPostCardComponent } from '../bsky-post-card/bsky-post-card.component';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { PopfeedReviewRepository } from '../../../core/popfeed-review/popfeed-review.repository';
 import { parsePopfeedReviewUrl } from '../../../core/popfeed-review/popfeed-review-url.util';
 import type { PopfeedReviewView } from '../../../core/popfeed-review/popfeed-review.types';

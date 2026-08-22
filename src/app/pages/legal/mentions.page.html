@@ -8,7 +8,7 @@
 <ion-content>
   <div class="legal-content">
 
-    @if (i18n.locale === 'en') {
+    @if (i18n.currentLang() === 'en') {
       <p class="legal-en-note">{{ 'legal.en_only' | translate }}</p>
     }
 

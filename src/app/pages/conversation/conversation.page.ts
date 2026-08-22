@@ -35,8 +35,9 @@ import { TypingService } from '../../core/typing/typing.service';
 import { ReceiptsService } from '../../core/receipts/receipts.service';
 import { EmbedSessionOverrideService } from '../../core/embed/embed-session-override.service';
 import { environment } from '../../../environments/environment';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { PeerMessageRecoveryService } from '../../core/mls/recovery/peer-message-recovery.service';
 import { ROUTES } from '../../core/routes';
 
@@ -81,7 +82,7 @@ export class ConversationPage implements OnDestroy {
   private peerRecoverySvc = inject(PeerMessageRecoveryService);
 
   readonly presenceSvc = inject(PresenceService);
-  private i18n         = inject(TranslationService);
+  private i18n         = inject(TranslateService);
 
   conversation:    ConversationListItem | null = null;
   displayMessages: DisplayMessage[] = [];
@@ -341,11 +342,11 @@ export class ConversationPage implements OnDestroy {
   private dateLabel(ts: number): string {
     const d = new Date(ts);
     const today = new Date();
-    if (d.toDateString() === today.toDateString()) return this.i18n.t('conversation.today');
+    if (d.toDateString() === today.toDateString()) return this.i18n.instant('conversation.today');
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) return this.i18n.t('conversation.yesterday');
-    return d.toLocaleDateString(this.i18n.locale === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (d.toDateString() === yesterday.toDateString()) return this.i18n.instant('conversation.yesterday');
+    return d.toLocaleDateString(this.i18n.currentLang() === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
   }
 
   async sendMessage(text: string): Promise<void> {
@@ -1014,7 +1015,7 @@ export class ConversationPage implements OnDestroy {
   }
 
   async clearLocalHistoryPrompt(): Promise<void> {
-    const confirmClear = confirm(this.i18n.t('conversation.confirm_clear_history'));
+    const confirmClear = confirm(this.i18n.instant('conversation.confirm_clear_history'));
     if (!confirmClear) return;
 
     const user = this.authSvc.currentUser();
@@ -1027,7 +1028,7 @@ export class ConversationPage implements OnDestroy {
   }
 
   async deleteConversationPrompt(): Promise<void> {
-    const confirmDelete = confirm(this.i18n.t('conversation.confirm_delete'));
+    const confirmDelete = confirm(this.i18n.instant('conversation.confirm_delete'));
     if (!confirmDelete) return;
 
     try {
@@ -1511,7 +1512,7 @@ export class ConversationPage implements OnDestroy {
 
     if (this.conversation?.type === 'group') {
       // Group conversations cannot be recreated via 1:1 recreate endpoint
-      this.error = this.i18n.t('conversation.restore_failed');
+      this.error = this.i18n.instant('conversation.restore_failed');
       this.reestablishing = false;
       this.cdr.detectChanges();
       return;
@@ -1533,7 +1534,7 @@ export class ConversationPage implements OnDestroy {
       void this.showRecreatedNotice();
     } catch (err) {
       if (!environment.production) console.error('[Conversation] reestablishEncryption: recreate failed:', err);
-      this.error = this.i18n.t('conversation.restore_failed');
+      this.error = this.i18n.instant('conversation.restore_failed');
     } finally {
       this.reestablishing     = false;
       this.recreatingFallback = false;
@@ -1547,7 +1548,7 @@ export class ConversationPage implements OnDestroy {
   private async showRecreatedNotice(): Promise<void> {
     try {
       const toast = await this.toastCtrl.create({
-        message:  this.i18n.t('conversation.recreated_notice'),
+        message:  this.i18n.instant('conversation.recreated_notice'),
         duration: 3500,
         position: 'bottom',
         color:    'medium',

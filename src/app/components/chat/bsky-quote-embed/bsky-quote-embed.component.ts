@@ -1,7 +1,8 @@
 import { Component, input } from '@angular/core';
 import { IonIcon } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import type { BskyQuoteTarget } from '../../../core/bsky-post/bsky-post.types';
 
 @Component({

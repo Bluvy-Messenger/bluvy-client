@@ -1,7 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon, IonToggle } from '@ionic/angular/standalone';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { NotificationService } from '../../core/notification/notification.service';
 import { PushNotificationService } from '../../core/notification/push-notification.service';
 import { ROUTES } from '../../core/routes';

@@ -9,9 +9,9 @@
         </div>
         <div class="header-actions">
           <div class="lang-switcher">
-            <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'fr'" (click)="i18n.setLocale('fr')">FR</button>
+            <button class="lang-btn" [class.lang-btn--active]="i18n.currentLang() === 'fr'" (click)="i18n.use('fr')">FR</button>
             <span class="lang-sep">|</span>
-            <button class="lang-btn" [class.lang-btn--active]="i18n.locale === 'en'" (click)="i18n.setLocale('en')">EN</button>
+            <button class="lang-btn" [class.lang-btn--active]="i18n.currentLang() === 'en'" (click)="i18n.use('en')">EN</button>
           </div>
         </div>
       </div>

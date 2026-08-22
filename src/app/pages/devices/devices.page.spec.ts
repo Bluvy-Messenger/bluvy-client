@@ -5,7 +5,8 @@ import { DeviceRepository } from '../../core/device/device.repository';
 import type { DeviceItem } from '../../core/device/device.repository';
 import { AuthService } from '../../core/auth/auth.service';
 import { SyncService } from '../../core/sync/sync.service';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { provideTranslateService } from '@ngx-translate/core';
+
 
 describe('DevicesPage — MBK rotation flow', () => {
   let page: DevicesPage;
@@ -32,9 +33,9 @@ describe('DevicesPage — MBK rotation flow', () => {
         { provide: AuthService, useValue: mockAuthSvc },
         { provide: SyncService, useValue: mockSyncSvc },
         { provide: Router, useValue: mockRouter },
-        // TranslationService.t() is used only to build user-facing strings --
-        // the real implementation is pure and side-effect-free, no need to mock.
-        TranslationService,
+        // TranslateService.instant() is used only to build user-facing strings --
+        // no loader needed, DI just needs to resolve.
+        provideTranslateService({ lang: 'en', fallbackLang: 'en' }),
       ],
     });
 

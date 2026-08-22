@@ -6,8 +6,9 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { IonModal, IonIcon, IonSpinner } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { searchOutline, close, arrowBack, locationOutline, checkmark } from 'ionicons/icons';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
-import { TranslationService } from '../../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { PhotonService } from '../../../core/place/photon.service';
 import type { PlaceData } from '../../../core/place/place.types';
 import { buildCartesUrl, isAllowedCartesUrl } from '../../../core/place/cartes-url.util';
@@ -26,7 +27,7 @@ export class PlacePickerModalComponent {
   readonly placeSelected = output<PlaceData>();
 
   private photonSvc = inject(PhotonService);
-  private i18n = inject(TranslationService);
+  private i18n = inject(TranslateService);
   private sanitizer = inject(DomSanitizer);
 
   readonly query = signal('');
@@ -87,7 +88,7 @@ export class PlacePickerModalComponent {
     try {
       const places = await this.photonSvc.search(
         q,
-        this.i18n.currentLocale(),
+        this.i18n.currentLang() ?? 'fr',
         12,
         this.abortController.signal,
       );

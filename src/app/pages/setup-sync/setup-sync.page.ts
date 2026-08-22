@@ -3,8 +3,9 @@ import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { IonContent, IonIcon, IonCheckbox } from '@ionic/angular/standalone';
 import { SyncService } from '../../core/sync/sync.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { PushNotificationService } from '../../core/notification/push-notification.service';
 import { ROUTES } from '../../core/routes';
 
@@ -18,7 +19,7 @@ import { ROUTES } from '../../core/routes';
 export class SetupSyncPage {
   private syncSvc = inject(SyncService);
   private router  = inject(Router);
-  private i18n    = inject(TranslationService);
+  private i18n    = inject(TranslateService);
 
   step           = 'pin' as 'pin' | 'key';
   pin            = '';
@@ -32,11 +33,11 @@ export class SetupSyncPage {
   async onSetupPin(): Promise<void> {
     this.error = '';
     if (!/^\d{4,8}$/.test(this.pin)) {
-      this.error = this.i18n.t('common.error.pin_format');
+      this.error = this.i18n.instant('common.error.pin_format');
       return;
     }
     if (this.pin !== this.pinConfirm) {
-      this.error = this.i18n.t('common.error.pin_mismatch');
+      this.error = this.i18n.instant('common.error.pin_mismatch');
       return;
     }
     this.working = true;
@@ -48,7 +49,7 @@ export class SetupSyncPage {
       this.pinConfirm     = '';
       this.step           = 'key';
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.i18n.t('setup_sync.error.setup');
+      this.error = err instanceof Error ? err.message : this.i18n.instant('setup_sync.error.setup');
     } finally {
       this.working = false;
     }

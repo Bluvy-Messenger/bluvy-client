@@ -7,7 +7,8 @@ import { addIcons } from 'ionicons';
 import { add, locationOutline, send, returnUpBackOutline, closeOutline } from 'ionicons/icons';
 import { Capacitor } from '@capacitor/core';
 import { TypingService } from '../../../core/typing/typing.service';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { PlacePickerModalComponent } from '../place-picker-modal/place-picker-modal.component';
 import type { GiphyGifSummary } from '../../../core/giphy/giphy.types';

@@ -9,8 +9,9 @@ import { ConversationsService } from '../../core/conversation/conversations.serv
 import { AuthService } from '../../core/auth/auth.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { MessageCacheService } from '../../core/conversation/message-cache.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 import { environment } from '../../../environments/environment';
 import { Capacitor } from '@capacitor/core';
@@ -38,7 +39,7 @@ export class ContactDetailPage {
   private coordinator     = inject(MlsCoordinatorBase);
   private messageCacheSvc = inject(MessageCacheService);
   private toastCtrl       = inject(ToastController);
-  private i18n            = inject(TranslationService);
+  private i18n            = inject(TranslateService);
 
   protected readonly environment = environment;
 
@@ -90,7 +91,7 @@ export class ContactDetailPage {
       }
       await this.loadAdditionalData();
     } catch {
-      this.error = this.i18n.t('contact_detail.error_load');
+      this.error = this.i18n.instant('contact_detail.error_load');
     } finally {
       this.loading = false;
     }
@@ -114,7 +115,7 @@ export class ContactDetailPage {
       }
       void this.router.navigate([ROUTES.conversation(conv.id)]);
     } catch {
-      this.error = this.i18n.t('contact_detail.error_start_conversation');
+      this.error = this.i18n.instant('contact_detail.error_start_conversation');
     } finally {
       this.openingConv = false;
     }
@@ -140,12 +141,12 @@ export class ContactDetailPage {
   }
 
   async shareViaBlueskyDm(): Promise<void> {
-    const text = this.i18n.t('contact_detail.invite_message', { url: this.personalInviteUrl });
+    const text = this.i18n.instant('contact_detail.invite_message', { url: this.personalInviteUrl });
 
     try {
       await navigator.clipboard.writeText(text);
       const toast = await this.toastCtrl.create({
-        message: this.i18n.t('contact_detail.invite_copied'),
+        message: this.i18n.instant('contact_detail.invite_copied'),
         duration: 3000,
         position: 'bottom',
         color: 'success'
@@ -168,7 +169,7 @@ export class ContactDetailPage {
     try {
       await navigator.clipboard.writeText(this.directInviteUrl);
       const toast = await this.toastCtrl.create({
-        message: this.i18n.t('contact_detail.link_copied'),
+        message: this.i18n.instant('contact_detail.link_copied'),
         duration: 3000,
         position: 'bottom',
         color: 'success'
@@ -184,15 +185,15 @@ export class ContactDetailPage {
     try {
       if (Capacitor.isNativePlatform()) {
         await Share.share({
-          title: this.i18n.t('contact_detail.qr_title'),
-          text: this.i18n.t('contact_detail.qr_text'),
+          title: this.i18n.instant('contact_detail.qr_title'),
+          text: this.i18n.instant('contact_detail.qr_text'),
           url: this.directInviteUrl,
-          dialogTitle: this.i18n.t('contact_detail.qr_share_dialog')
+          dialogTitle: this.i18n.instant('contact_detail.qr_share_dialog')
         });
       } else if (typeof navigator.share === 'function') {
         await navigator.share({
-          title: this.i18n.t('contact_detail.qr_title'),
-          text: this.i18n.t('contact_detail.qr_text'),
+          title: this.i18n.instant('contact_detail.qr_title'),
+          text: this.i18n.instant('contact_detail.qr_text'),
           url: this.directInviteUrl
         });
       } else {
@@ -286,7 +287,7 @@ export class ContactDetailPage {
 
   async clearLocalHistoryPrompt(): Promise<void> {
     if (!this.conversationId) return;
-    const confirmClear = confirm(this.i18n.t('contact_detail.confirm_clear_history') || this.i18n.t('conversation.confirm_clear_history'));
+    const confirmClear = confirm(this.i18n.instant('contact_detail.confirm_clear_history') || this.i18n.instant('conversation.confirm_clear_history'));
     if (!confirmClear) return;
 
     const user = this.authSvc.currentUser();

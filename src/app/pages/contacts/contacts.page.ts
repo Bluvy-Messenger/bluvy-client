@@ -6,7 +6,8 @@ import {
 import { SidebarListComponent } from '../../components/chat/sidebar-list/sidebar-list.component';
 import { WelcomeComponent } from '../../components/ui/welcome/welcome.component';
 import { BreakpointService } from '../../core/layout/breakpoint.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 
 @Component({
   selector: 'app-contacts',

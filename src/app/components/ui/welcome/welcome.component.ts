@@ -1,6 +1,7 @@
 import { Component, Input, computed } from '@angular/core';
 import { IonIcon } from '@ionic/angular/standalone';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 
 @Component({
   selector: 'app-welcome',

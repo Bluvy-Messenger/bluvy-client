@@ -1,7 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PlaceEmbedComponent } from './place-embed.component';
 import type { PlaceData } from '../../../core/place/place.types';
-import { TranslationService } from '../../../core/i18n/translation.service';
+import { provideTranslateService } from '@ngx-translate/core';
+
 
 describe('PlaceEmbedComponent', () => {
   let component: PlaceEmbedComponent;
@@ -20,7 +21,7 @@ describe('PlaceEmbedComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [PlaceEmbedComponent],
-      providers: [TranslationService],
+      providers: [provideTranslateService({ lang: 'en', fallbackLang: 'en' })],
     }).compileComponents();
 
     fixture = TestBed.createComponent(PlaceEmbedComponent);

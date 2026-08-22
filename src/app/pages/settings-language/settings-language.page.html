@@ -13,8 +13,8 @@
       <button
         class="segment-btn"
         role="radio"
-        [attr.aria-checked]="i18n.locale === 'fr'"
-        [class.segment-btn--active]="i18n.locale === 'fr'"
+        [attr.aria-checked]="translate.currentLang() === 'fr'"
+        [class.segment-btn--active]="translate.currentLang() === 'fr'"
         (click)="setLocale('fr')"
       >
         Français
@@ -22,8 +22,8 @@
       <button
         class="segment-btn"
         role="radio"
-        [attr.aria-checked]="i18n.locale === 'en'"
-        [class.segment-btn--active]="i18n.locale === 'en'"
+        [attr.aria-checked]="translate.currentLang() === 'en'"
+        [class.segment-btn--active]="translate.currentLang() === 'en'"
         (click)="setLocale('en')"
       >
         English
