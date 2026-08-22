@@ -8,7 +8,7 @@ import { ConversationsService } from '../conversation/conversations.service';
 import { ContactsService } from '../contact/contacts.service';
 import { MessageCacheService, CachedMessage } from '../conversation/message-cache.service';
 import { MlsCoordinatorBase } from '../mls/coordinator/mls-coordinator.base';
-import { TranslationService } from '../i18n/translation.service';
+import { TranslateService } from '@ngx-translate/core';
 import { AppPreferencesSyncService } from '../services/app-preferences-sync.service';
 import { ROUTES } from '../routes';
 
@@ -24,7 +24,7 @@ export class NotificationService {
   private readonly router           = inject(Router);
   private readonly navCtrl          = inject(NavController);
   private readonly toastCtrl         = inject(ToastController);
-  private readonly translationSvc   = inject(TranslationService);
+  private readonly translationSvc   = inject(TranslateService);
   private readonly zone             = inject(NgZone);
 
   private readonly activeConversationId = signal<string | null>(null);
@@ -67,7 +67,7 @@ export class NotificationService {
     // Decrypt the message in the background first so that:
     // a) It's added to the cache (this automatically updates UI previews in sidebar-list)
     // b) We can display the decrypted content in the notification toast
-    let decryptedText = this.translationSvc.t('notifications.new_message');
+    let decryptedText = this.translationSvc.instant('notifications.new_message');
     try {
       const result = await this.coordinator.decryptMessage(
         msg.conversationId,

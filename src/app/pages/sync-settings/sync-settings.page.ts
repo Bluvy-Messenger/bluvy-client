@@ -3,8 +3,9 @@ import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { SyncService } from '../../core/sync/sync.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -17,7 +18,7 @@ import { ROUTES } from '../../core/routes';
 export class SyncSettingsPage implements OnInit, OnDestroy {
   private syncSvc = inject(SyncService);
   private router  = inject(Router);
-  private i18n    = inject(TranslationService);
+  private i18n    = inject(TranslateService);
   private subs    = new Subscription();
 
   mbkAvailable = false;
@@ -96,11 +97,11 @@ export class SyncSettingsPage implements OnInit, OnDestroy {
   async onChangePin(): Promise<void> {
     this.error = '';
     if (!/^\d{4,8}$/.test(this.newPin)) {
-      this.error = this.i18n.t('common.error.pin_format');
+      this.error = this.i18n.instant('common.error.pin_format');
       return;
     }
     if (this.newPin !== this.newPinConfirm) {
-      this.error = this.i18n.t('common.error.pin_mismatch');
+      this.error = this.i18n.instant('common.error.pin_mismatch');
       return;
     }
     this.working = true;
@@ -111,7 +112,7 @@ export class SyncSettingsPage implements OnInit, OnDestroy {
       this.showChangePin = false;
       this.pinChanged    = true;
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.i18n.t('sync.error.pin_change');
+      this.error = err instanceof Error ? err.message : this.i18n.instant('sync.error.pin_change');
     } finally {
       this.working = false;
     }

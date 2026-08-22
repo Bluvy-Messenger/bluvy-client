@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 
 @Component({
   selector: 'app-typing-indicator',

@@ -36,8 +36,9 @@ import {
 import { NotesService } from '../../core/notes/notes.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { BreakpointService } from '../../core/layout/breakpoint.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 import type { NoteItem } from '../../core/notes/notes.types';
 
@@ -66,7 +67,7 @@ export class NotesPage implements OnInit, OnDestroy {
   private authSvc   = inject(AuthService);
   readonly bpSvc    = inject(BreakpointService);
   private router    = inject(Router);
-  private i18n      = inject(TranslationService);
+  private i18n      = inject(TranslateService);
   private actionSheetCtrl = inject(ActionSheetController);
   private alertCtrl = inject(AlertController);
   private toastCtrl = inject(ToastController);
@@ -275,7 +276,7 @@ export class NotesPage implements OnInit, OnDestroy {
 
   formatTime(ts: number): string {
     const d = new Date(ts);
-    const locale = this.i18n.locale === 'fr' ? 'fr-FR' : 'en-US';
+    const locale = this.i18n.currentLang() === 'fr' ? 'fr-FR' : 'en-US';
     return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   }
 
@@ -295,15 +296,15 @@ export class NotesPage implements OnInit, OnDestroy {
 
   private formatDateLabel(ts: number): string {
     const d = new Date(ts);
-    const locale = this.i18n.locale === 'fr' ? 'fr-FR' : 'en-US';
+    const locale = this.i18n.currentLang() === 'fr' ? 'fr-FR' : 'en-US';
     const now = new Date();
     if (d.toDateString() === now.toDateString()) {
-      return this.i18n.locale === 'fr' ? "Aujourd'hui" : 'Today';
+      return this.i18n.currentLang() === 'fr' ? "Aujourd'hui" : 'Today';
     }
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
     if (d.toDateString() === yesterday.toDateString()) {
-      return this.i18n.locale === 'fr' ? 'Hier' : 'Yesterday';
+      return this.i18n.currentLang() === 'fr' ? 'Hier' : 'Yesterday';
     }
     return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
   }

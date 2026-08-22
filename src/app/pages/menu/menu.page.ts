@@ -3,7 +3,8 @@ import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
 import { AuthService, StoredAccount } from '../../core/auth/auth.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { AccountBadgeService } from '../../core/notification/account-badge.service';
 import { ROUTES } from '../../core/routes';
 

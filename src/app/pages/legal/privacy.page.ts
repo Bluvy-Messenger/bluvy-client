@@ -2,8 +2,9 @@ import { Component, OnInit, inject } from '@angular/core';
 import { Location } from '@angular/common';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { SeoService } from '../../core/services/seo.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 
 @Component({
   selector: 'app-privacy',
@@ -15,7 +16,7 @@ import { TranslationService } from '../../core/i18n/translation.service';
 export class PrivacyPage implements OnInit {
   private location = inject(Location);
   private seo      = inject(SeoService);
-  protected i18n   = inject(TranslationService);
+  protected i18n   = inject(TranslateService);
 
   ngOnInit(): void {
     this.seo.set({

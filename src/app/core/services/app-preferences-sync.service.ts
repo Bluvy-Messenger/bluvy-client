@@ -1,7 +1,8 @@
 import { Injectable, Injector, inject } from '@angular/core';
+import { TranslateService } from '@ngx-translate/core';
 import { AtprotoRepoService, type AppSettingsRecord } from '../auth/atproto-repo.service';
+import { OAuthService } from '../auth/oauth.service';
 import { ThemeService, type ThemeMode, type ThemePalette, type DarkThemeStyle, type AccentColor, type FontFamily, type FontSize } from '../theme/theme.service';
-import { TranslationService, type Locale } from '../i18n/translation.service';
 import { NotificationService } from '../notification/notification.service';
 import { PushNotificationService } from '../notification/push-notification.service';
 import { environment } from '../../../environments/environment';
@@ -10,14 +11,27 @@ import { environment } from '../../../environments/environment';
 export class AppPreferencesSyncService {
   private injector       = inject(Injector);
   private atprotoRepo    = inject(AtprotoRepoService);
+  private oauthSvc       = inject(OAuthService);
   private themeSvc       = inject(ThemeService);
-  private translationSvc = inject(TranslationService);
+  private translationSvc = inject(TranslateService);
 
   private get notifSvc(): NotificationService { return this.injector.get(NotificationService); }
   private get pushNotifSvc(): PushNotificationService { return this.injector.get(PushNotificationService); }
 
   private isSyncing = false;
   private saveTimeout: any = null;
+
+  // All PDS reads/writes below go through AtprotoRepoService, which needs a
+  // live ATProto OAuth session (oauth.session) to build its Agent -- distinct
+  // from the backend's own session (AuthService.isAuthenticated). Checking it
+  // here, before even attempting a call, avoids scheduling/attempting PDS
+  // round-trips (e.g. from the pre-login landing page language switcher, or
+  // right after a login where the ATProto OAuth restore itself failed --
+  // see OAuthService.sessionUnavailable) that would otherwise just throw and
+  // get silently swallowed a step further down.
+  private hasAtprotoSession(): boolean {
+    return !!this.oauthSvc.session;
+  }
 
   /**
    * Bootstraps user app preferences from PDS upon authentication / session restore.
@@ -26,6 +40,7 @@ export class AppPreferencesSyncService {
    */
   async bootstrap(): Promise<void> {
     if (this.isSyncing) return;
+    if (!this.hasAtprotoSession()) return;
     this.isSyncing = true;
 
     try {
@@ -45,8 +60,8 @@ export class AppPreferencesSyncService {
         }
 
         // Apply Locale / Language
-        if (pdsRecord.locale && pdsRecord.locale !== this.translationSvc.currentLocale()) {
-          this.translationSvc.setLocale(pdsRecord.locale as Locale, false);
+        if (pdsRecord.locale && pdsRecord.locale !== this.translationSvc.currentLang()) {
+          this.translationSvc.use(pdsRecord.locale);
         }
 
         // Apply Notifications
@@ -100,6 +115,8 @@ export class AppPreferencesSyncService {
    * Immediately saves current local preferences to PDS.
    */
   async syncToPdsNow(): Promise<void> {
+    if (!this.hasAtprotoSession()) return;
+
     // Collect all muted conversation IDs from localStorage
     const mutedConversationIds: string[] = [];
     const blockedContactDids: string[] = [];
@@ -122,7 +139,7 @@ export class AppPreferencesSyncService {
         fontFamily: this.themeSvc.fontFamily(),
         fontSize:   this.themeSvc.fontSize(),
       },
-      locale: this.translationSvc.currentLocale(),
+      locale: this.translationSvc.currentLang() ?? 'fr',
       notifications: {
         inAppEnabled: this.notifSvc.isInAppNotificationsEnabled(),
         pushEnabled:  this.pushNotifSvc.isPushNotificationsEnabled(),

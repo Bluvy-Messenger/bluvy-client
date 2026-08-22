@@ -3,8 +3,9 @@ import { DatePipe } from '@angular/common';
 import { IonIcon, IonModal, ActionSheetController } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import { BskyQuoteEmbedComponent } from '../bsky-quote-embed/bsky-quote-embed.component';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
-import { TranslationService } from '../../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { BskyPostRepository } from '../../../core/bsky-post/bsky-post.repository';
 import { AtprotoRepoService } from '../../../core/auth/atproto-repo.service';
 import { parseBskyPostUrl } from '../../../core/bsky-post/bsky-post-url.util';
@@ -25,7 +26,7 @@ export class BskyPostCardComponent implements OnInit {
   private postRepo       = inject(BskyPostRepository);
   private atprotoSvc     = inject(AtprotoRepoService);
   private actionSheetCtrl = inject(ActionSheetController);
-  private i18n            = inject(TranslationService);
+  private i18n            = inject(TranslateService);
 
   readonly state = signal<'loading' | 'loaded' | 'error'>('loading');
   readonly post  = signal<BskyPostView | null>(null);
@@ -131,17 +132,17 @@ export class BskyPostCardComponent implements OnInit {
     const sheet = await this.actionSheetCtrl.create({
       buttons: [
         {
-          text: this.i18n.t(this.reposted() ? 'bskyPost.action.unrepost' : 'bskyPost.action.repost'),
+          text: this.i18n.instant(this.reposted() ? 'bskyPost.action.unrepost' : 'bskyPost.action.repost'),
           icon: this.reposted() ? 'repeat' : 'repeat-outline',
           handler: () => void this.toggleRepost(),
         },
         {
-          text: this.i18n.t('bskyPost.action.quote'),
+          text: this.i18n.instant('bskyPost.action.quote'),
           icon: 'chatbubble-ellipses-outline',
           handler: () => this.openComposer(),
         },
         {
-          text: this.i18n.t('common.cancel'),
+          text: this.i18n.instant('common.cancel'),
           role: 'cancel',
         },
       ],

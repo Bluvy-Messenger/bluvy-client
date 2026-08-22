@@ -4,8 +4,9 @@ import { ApiClientService } from '../../core/infrastructure/api-client.service';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
 import { OAuthService } from '../../core/auth/oauth.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -19,7 +20,7 @@ export class LoginPage implements OnInit {
   private router   = inject(Router);
   private auth     = inject(AuthService);
   private oauthSvc = inject(OAuthService);
-  private i18n     = inject(TranslationService);
+  private i18n     = inject(TranslateService);
   private apiClient = inject(ApiClientService);
 
   handle   = '';
@@ -82,7 +83,7 @@ export class LoginPage implements OnInit {
     const handle = this.handle.trim();
 
     if (!handle) {
-      this.error = this.i18n.t('login.error.required');
+      this.error = this.i18n.instant('login.error.required');
       return;
     }
 
@@ -120,6 +121,6 @@ export class LoginPage implements OnInit {
 
   private extractError(err: unknown): string {
     if (err instanceof Error) return err.message;
-    return this.i18n.t('login.error.failed');
+    return this.i18n.instant('login.error.failed');
   }
 }

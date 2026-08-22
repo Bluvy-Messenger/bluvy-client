@@ -1,7 +1,8 @@
 import { Component, input, OnInit, computed, inject, signal } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { IonIcon } from '@ionic/angular/standalone';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { EmbedRegistry } from '../../../core/embed/embed-registry.service';
 import { EmbedPreferencesService } from '../../../core/embed/embed-preferences.service';
 import { EmbedSessionOverrideService } from '../../../core/embed/embed-session-override.service';

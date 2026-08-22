@@ -36,6 +36,14 @@ import { MlsCoordinatorService } from './app/core/mls/coordinator/mls-coordinato
 import { provideServiceWorker } from '@angular/service-worker';
 import { OAuthService } from './app/core/auth/oauth.service';
 import { Capacitor } from '@capacitor/core';
+import { provideTranslateService } from '@ngx-translate/core';
+import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
+
+function detectInitialLocale(): string {
+  const saved = localStorage.getItem('bluvy_locale');
+  if (saved === 'fr' || saved === 'en') return saved;
+  return navigator.language.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+}
 
 @Injectable()
 class GlobalErrorHandler implements ErrorHandler {
@@ -107,6 +115,11 @@ void checkAndClearCache().then((reloading) => {
       provideServiceWorker('custom-service-worker.js', {
         enabled: !isDevMode() && !Capacitor.isNativePlatform(),
         registrationStrategy: 'registerWhenStable:30000'
+      }),
+      provideTranslateService({
+        loader: provideTranslateHttpLoader({ prefix: '/assets/i18n/', suffix: '.json' }),
+        fallbackLang: 'fr',
+        lang: detectInitialLocale(),
       }),
     ],
   });

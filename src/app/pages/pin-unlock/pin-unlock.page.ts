@@ -6,8 +6,9 @@ import { AuthService } from '../../core/auth/auth.service';
 import { SyncService } from '../../core/sync/sync.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { PushNotificationService } from '../../core/notification/push-notification.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -23,7 +24,7 @@ export class PinUnlockPage implements OnInit, OnDestroy {
   private pushSvc     = inject(PushNotificationService);
   private coordinator = inject(MlsCoordinatorBase);
   private router      = inject(Router);
-  private i18n        = inject(TranslationService);
+  private i18n        = inject(TranslateService);
   private subs        = new Subscription();
 
   pin        = '';
@@ -69,11 +70,11 @@ export class PinUnlockPage implements OnInit, OnDestroy {
       this.restoring = false;
       const httpErr = err as { status?: number };
       if (httpErr?.status === 429) {
-        this.error = this.i18n.t('pin_unlock.error.too_many');
+        this.error = this.i18n.instant('pin_unlock.error.too_many');
       } else if (err instanceof DOMException && err.name === 'OperationError') {
-        this.error = this.i18n.t('pin_unlock.error.wrong_pin');
+        this.error = this.i18n.instant('pin_unlock.error.wrong_pin');
       } else {
-        this.error = err instanceof Error ? err.message : this.i18n.t('pin_unlock.error.unlock');
+        this.error = err instanceof Error ? err.message : this.i18n.instant('pin_unlock.error.unlock');
       }
     } finally {
       this.unlocking = false;

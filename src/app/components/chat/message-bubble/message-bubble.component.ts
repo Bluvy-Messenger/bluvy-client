@@ -6,7 +6,8 @@ import { DatePipe } from '@angular/common';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { happyOutline, returnUpBackOutline, checkmarkOutline, checkmarkDoneOutline, checkmarkDone, alertCircleOutline, refreshOutline } from 'ionicons/icons';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import { EmbedPreviewBlockComponent } from '../embed-preview-block/embed-preview-block.component';
 import { PlaceEmbedComponent } from '../place-embed/place-embed.component';

@@ -2,7 +2,8 @@ import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { ThemeService, type ThemeMode, type ThemePalette, type DarkThemeStyle, type AccentColor, type FontFamily, type FontSize } from '../../core/theme/theme.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { ROUTES } from '../../core/routes';
 
 @Component({

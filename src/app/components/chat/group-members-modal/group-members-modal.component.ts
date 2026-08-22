@@ -3,7 +3,8 @@ import { FormsModule } from '@angular/forms';
 import { IonModal, IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { closeOutline, createOutline, checkmarkOutline } from 'ionicons/icons';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
 import type { ConversationParticipant } from '../../../core/conversation/conversation.types';
 
