@@ -1,7 +1,8 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon, IonToggle } from '@ionic/angular/standalone';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { ROUTES } from '../../core/routes';
 import { EmbedPreferencesService } from '../../core/embed/embed-preferences.service';
 import type { EmbedProviderId } from '../../core/embed/embed-provider.types';

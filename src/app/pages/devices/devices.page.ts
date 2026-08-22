@@ -5,8 +5,9 @@ import { IonContent, IonIcon, IonModal, IonCheckbox } from '@ionic/angular/stand
 import { DeviceRepository } from '../../core/device/device.repository';
 import { AuthService } from '../../core/auth/auth.service';
 import type { DeviceItem } from '../../core/device/device.repository';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { SyncService } from '../../core/sync/sync.service';
 import { ROUTES } from '../../core/routes';
 
@@ -22,7 +23,7 @@ export class DevicesPage {
   private authSvc    = inject(AuthService);
   private syncSvc    = inject(SyncService);
   private router     = inject(Router);
-  private i18n       = inject(TranslationService);
+  private i18n       = inject(TranslateService);
 
   devices:         DeviceItem[] = [];
   currentDeviceId  = '';
@@ -62,7 +63,7 @@ export class DevicesPage {
         return b.lastSeen - a.lastSeen;
       });
     } catch {
-      this.error = this.i18n.t('devices.error.load');
+      this.error = this.i18n.instant('devices.error.load');
     } finally {
       this.loading = false;
     }
@@ -85,7 +86,7 @@ export class DevicesPage {
       this.devices = this.devices.filter(d => d.id !== device.id);
       this.openRotationModal();
     } catch {
-      this.error = this.i18n.t('devices.error.revoke');
+      this.error = this.i18n.instant('devices.error.revoke');
     } finally {
       this.revokingId = '';
     }
@@ -108,7 +109,7 @@ export class DevicesPage {
       this.devices = this.devices.filter(d => d.id === this.currentDeviceId);
       this.openRotationModal();
     } catch {
-      this.error = this.i18n.t('devices.error.revoke_all');
+      this.error = this.i18n.instant('devices.error.revoke_all');
     } finally {
       this.revokingAll = false;
     }
@@ -144,8 +145,8 @@ export class DevicesPage {
       this.rotationStep      = 'key';
     } catch (err) {
       this.rotationError = err instanceof Error && err.message === 'Incorrect PIN'
-        ? this.i18n.t('devices.rotation.error.wrong_pin')
-        : this.i18n.t('devices.rotation.error.generic');
+        ? this.i18n.instant('devices.rotation.error.wrong_pin')
+        : this.i18n.instant('devices.rotation.error.generic');
     } finally {
       this.rotationWorking = false;
     }
@@ -176,14 +177,14 @@ export class DevicesPage {
 
   formatLastSeen(ts: number): string {
     const diff = Date.now() - ts;
-    if (diff < 60_000)           return this.i18n.t('devices.just_now');
-    if (diff < 3_600_000)        return this.i18n.t('devices.minutes_ago', { n: Math.floor(diff / 60_000) });
-    if (diff < 86_400_000)       return this.i18n.t('devices.hours_ago',   { n: Math.floor(diff / 3_600_000) });
-    if (diff < 7 * 86_400_000)   return this.i18n.t('devices.days_ago',    { n: Math.floor(diff / 86_400_000) });
-    return new Date(ts).toLocaleDateString(this.i18n.locale === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    if (diff < 60_000)           return this.i18n.instant('devices.just_now');
+    if (diff < 3_600_000)        return this.i18n.instant('devices.minutes_ago', { n: Math.floor(diff / 60_000) });
+    if (diff < 86_400_000)       return this.i18n.instant('devices.hours_ago',   { n: Math.floor(diff / 3_600_000) });
+    if (diff < 7 * 86_400_000)   return this.i18n.instant('devices.days_ago',    { n: Math.floor(diff / 86_400_000) });
+    return new Date(ts).toLocaleDateString(this.i18n.currentLang() === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
   formatCreatedAt(ts: number): string {
-    return new Date(ts).toLocaleDateString(this.i18n.locale === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    return new Date(ts).toLocaleDateString(this.i18n.currentLang() === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 }

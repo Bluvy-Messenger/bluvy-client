@@ -3,8 +3,9 @@ import { Router } from '@angular/router';
 import { IonContent, IonIcon, IonModal, ToastController } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../../components/ui/avatar/avatar.component';
 import { AuthService } from '../../core/auth/auth.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
@@ -27,7 +28,7 @@ export class ProfilePage {
   readonly authSvc = inject(AuthService);
   private router   = inject(Router);
   private toastCtrl = inject(ToastController);
-  private i18n     = inject(TranslationService);
+  private i18n     = inject(TranslateService);
 
   bio = '';
   loadingBio = false;
@@ -81,7 +82,7 @@ export class ProfilePage {
     try {
       await navigator.clipboard.writeText(this.directInviteUrl);
       const toast = await this.toastCtrl.create({
-        message: this.i18n.t('contact_detail.link_copied'),
+        message: this.i18n.instant('contact_detail.link_copied'),
         duration: 3000,
         position: 'bottom',
         color: 'success'
@@ -97,15 +98,15 @@ export class ProfilePage {
     try {
       if (Capacitor.isNativePlatform()) {
         await Share.share({
-          title: this.i18n.t('landing.invite.preview.header'),
-          text: this.i18n.t('landing.invite.preview.badge'),
+          title: this.i18n.instant('landing.invite.preview.header'),
+          text: this.i18n.instant('landing.invite.preview.badge'),
           url: this.directInviteUrl,
-          dialogTitle: this.i18n.t('landing.invite.preview.header')
+          dialogTitle: this.i18n.instant('landing.invite.preview.header')
         });
       } else if (typeof navigator.share === 'function') {
         await navigator.share({
-          title: this.i18n.t('landing.invite.preview.header'),
-          text: this.i18n.t('landing.invite.preview.badge'),
+          title: this.i18n.instant('landing.invite.preview.header'),
+          text: this.i18n.instant('landing.invite.preview.badge'),
           url: this.directInviteUrl
         });
       } else {

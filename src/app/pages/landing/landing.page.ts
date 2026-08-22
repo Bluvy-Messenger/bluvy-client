@@ -6,8 +6,9 @@ import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
 import { OAuthService } from '../../core/auth/oauth.service';
 import { SeoService } from '../../core/services/seo.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 import { environment } from '../../../environments/environment';
 
@@ -23,7 +24,7 @@ export class LandingPage implements OnInit {
   private auth     = inject(AuthService);
   private oauthSvc = inject(OAuthService);
   private seo      = inject(SeoService);
-  protected i18n   = inject(TranslationService);
+  protected i18n   = inject(TranslateService);
   private apiClient = inject(ApiClientService);
 
   readonly version = environment.version;

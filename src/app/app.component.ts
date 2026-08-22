@@ -4,7 +4,7 @@ import { Subscription } from 'rxjs';
 import { environment } from '../environments/environment';
 import { IonApp, IonRouterOutlet, IonIcon, Platform, ToastController, AlertController } from '@ionic/angular/standalone';
 import { ConnectivityService } from './core/infrastructure/connectivity.service';
-import { TranslatePipe } from './core/i18n/translate.pipe';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { App } from '@capacitor/app';
 import { addIcons } from 'ionicons';
 import {
@@ -48,7 +48,7 @@ import { PushNotificationService } from './core/notification/push-notification.s
 import { AccountBadgeService } from './core/notification/account-badge.service';
 import { MessageCacheService } from './core/conversation/message-cache.service';
 import { EmbedPreferencesService } from './core/embed/embed-preferences.service';
-import { TranslationService } from './core/i18n/translation.service';
+import { AppPreferencesSyncService } from './core/services/app-preferences-sync.service';
 import { SyncService } from './core/sync/sync.service';
 import { PeerMessageRecoveryService } from './core/mls/recovery/peer-message-recovery.service';
 import { ROUTES } from './core/routes';
@@ -77,7 +77,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private platform = inject(Platform);
   private toastCtrl = inject(ToastController);
-  private i18n = inject(TranslationService);
+  private i18n = inject(TranslateService);
+  private appPrefsSyncSvc = inject(AppPreferencesSyncService);
   readonly connectivitySvc = inject(ConnectivityService);
 
   @ViewChild(IonRouterOutlet) private routerOutlet?: IonRouterOutlet;
@@ -131,6 +132,19 @@ export class AppComponent implements OnInit, OnDestroy {
     this.notificationSvc.initialize();
     this.pushNotificationSvc.initialize();
     this.badgeSvc.initListeners();
+
+    // Single source of truth for locale persistence: fires whether the
+    // language change came from the user (settings page) or from applying
+    // a PDS-synced preference on session restore. Previously only
+    // ThemeService/NotificationService called scheduleSave() on change --
+    // locale changes were never written back to the PDS, so a stale PDS
+    // record would silently revert the user's choice on the next restore.
+    this.subs.add(
+      this.i18n.onLangChange.subscribe(({ lang }) => {
+        localStorage.setItem('bluvy_locale', lang);
+        this.appPrefsSyncSvc.scheduleSave();
+      }),
+    );
 
     this.subs.add(
       this.socketSvc.deviceNew$.subscribe(payload => {
@@ -242,7 +256,7 @@ export class AppComponent implements OnInit, OnDestroy {
         if (event.stillUndecryptable <= 0) return;
         try {
           const toast = await this.toastCtrl.create({
-            message:  this.i18n.t('conversation.history_partially_recovered', { count: String(event.stillUndecryptable) }),
+            message:  this.i18n.instant('conversation.history_partially_recovered', { count: String(event.stillUndecryptable) }),
             duration: 4500,
             position: 'bottom',
             color:    'medium',
@@ -317,15 +331,15 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!handle) return;
 
     const alert = await this.alertCtrl.create({
-      header:  this.i18n.t('atproto.reconnect.title'),
-      message: this.i18n.t('atproto.reconnect.message'),
+      header:  this.i18n.instant('atproto.reconnect.title'),
+      message: this.i18n.instant('atproto.reconnect.message'),
       buttons: [
         {
-          text: this.i18n.t('atproto.reconnect.later'),
+          text: this.i18n.instant('atproto.reconnect.later'),
           role: 'cancel',
         },
         {
-          text: this.i18n.t('atproto.reconnect.confirm'),
+          text: this.i18n.instant('atproto.reconnect.confirm'),
           handler: () => {
             // Allow re-prompting if this attempt doesn't actually resolve it
             // (e.g. the user cancels the OAuth redirect).

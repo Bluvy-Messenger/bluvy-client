@@ -2,7 +2,8 @@ import { Component, input, signal, inject, effect } from '@angular/core';
 import { IonIcon } from '@ionic/angular/standalone';
 import { EmbedRegistry } from '../../../core/embed/embed-registry.service';
 import { LinkPreviewService } from '../../../core/link-preview/link-preview.service';
-import { TranslationService } from '../../../core/i18n/translation.service';
+import { TranslateService } from '@ngx-translate/core';
+
 import { extractAllUrls, classifyMessageLink, type DetectedMessageLink, type ExtractedUrl } from '../../../core/message-link/detect-message-link.util';
 
 export interface ComposerPreviewCard {
@@ -28,7 +29,7 @@ export class ComposerLinkPreviewComponent {
 
   private embedRegistry  = inject(EmbedRegistry);
   private linkPreviewSvc = inject(LinkPreviewService);
-  private i18n           = inject(TranslationService);
+  private i18n           = inject(TranslateService);
 
   readonly cards = signal<ComposerPreviewCard[]>([]);
 
@@ -62,9 +63,9 @@ export class ComposerLinkPreviewComponent {
   private buildFallbackCard(key: string, classified: DetectedMessageLink, hostname: string, url: string): ComposerPreviewCard {
     switch (classified.kind) {
       case 'bskyPost':
-        return { key, icon: 'link-outline', accentColor: null, title: this.i18n.t('composerPreview.bskyPost'), imageUrl: null, hostname, url };
+        return { key, icon: 'link-outline', accentColor: null, title: this.i18n.instant('composerPreview.bskyPost'), imageUrl: null, hostname, url };
       case 'popfeedReview':
-        return { key, icon: 'link-outline', accentColor: null, title: this.i18n.t('composerPreview.popfeedReview'), imageUrl: null, hostname, url };
+        return { key, icon: 'link-outline', accentColor: null, title: this.i18n.instant('composerPreview.popfeedReview'), imageUrl: null, hostname, url };
       case 'embed': {
         const provider = this.embedRegistry.get(classified.match.provider);
         return { key, icon: provider.icon, accentColor: provider.accentColor, title: provider.label, imageUrl: null, hostname, url };

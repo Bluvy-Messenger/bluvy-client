@@ -5,8 +5,9 @@ import { AuthService } from '../../core/auth/auth.service';
 import { SyncService } from '../../core/sync/sync.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { environment } from '../../../environments/environment';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -21,7 +22,7 @@ export class RecoveryUnlockPage {
   private authSvc     = inject(AuthService);
   private coordinator = inject(MlsCoordinatorBase);
   private router      = inject(Router);
-  private i18n        = inject(TranslationService);
+  private i18n        = inject(TranslateService);
 
   step            = 'key' as 'key' | 'pin';
   recoveryInput   = '';
@@ -41,9 +42,9 @@ export class RecoveryUnlockPage {
       this.step = 'pin';
     } catch (err) {
       if (err instanceof DOMException && err.name === 'OperationError') {
-        this.error = this.i18n.t('recovery_unlock.error.invalid_key');
+        this.error = this.i18n.instant('recovery_unlock.error.invalid_key');
       } else {
-        this.error = err instanceof Error ? err.message : this.i18n.t('recovery_unlock.error.unlock');
+        this.error = err instanceof Error ? err.message : this.i18n.instant('recovery_unlock.error.unlock');
       }
     } finally {
       this.working = false;
@@ -53,11 +54,11 @@ export class RecoveryUnlockPage {
   async onSetNewPin(): Promise<void> {
     this.error = '';
     if (!/^\d{4,8}$/.test(this.pin)) {
-      this.error = this.i18n.t('common.error.pin_format');
+      this.error = this.i18n.instant('common.error.pin_format');
       return;
     }
     if (this.pin !== this.pinConfirm) {
-      this.error = this.i18n.t('common.error.pin_mismatch');
+      this.error = this.i18n.instant('common.error.pin_mismatch');
       return;
     }
     this.working = true;
@@ -74,7 +75,7 @@ export class RecoveryUnlockPage {
         await this.coordinator.injectRestoredGroupStates(result.restoredGroupStates, user, device);
       }
     } catch (err) {
-      this.error = this.i18n.t('recovery_unlock.error.restore');
+      this.error = this.i18n.instant('recovery_unlock.error.restore');
       if (!environment.production) console.error('[RecoveryUnlock] restore failed:', err);
     }
     this.working = false;

@@ -7,8 +7,9 @@ import {
   IonButton, IonTextarea, IonSpinner, IonText,
 } from '@ionic/angular/standalone';
 import { AuthService } from '../../core/auth/auth.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
-import { TranslationService } from '../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { BackupRepository } from '../../core/backup/backup.repository';
 import { MessageCacheService } from '../../core/conversation/message-cache.service';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
@@ -40,7 +41,7 @@ function isArgon2idHkdfParams(params: unknown): params is Argon2idHkdfParams {
 })
 export class MigrateSyncPage {
   private authSvc         = inject(AuthService);
-  private i18n            = inject(TranslationService);
+  private i18n            = inject(TranslateService);
   private backupRepo      = inject(BackupRepository);
   private messageCacheSvc = inject(MessageCacheService);
   private coordinator     = inject(MlsCoordinatorBase);
@@ -88,10 +89,10 @@ export class MigrateSyncPage {
       // 1. Get key versions from backup backend
       const { data: versions } = await this.backupRepo.getKeyVersions();
       const current = versions.find(v => v.supersededAt === null);
-      if (!current) throw new Error(this.i18n.t('migrate_sync.error.no_backup'));
+      if (!current) throw new Error(this.i18n.instant('migrate_sync.error.no_backup'));
 
       if (!isArgon2idHkdfParams(current.kdfParams)) {
-        throw new Error(this.i18n.t('migrate_sync.error.unsupported_format'));
+        throw new Error(this.i18n.instant('migrate_sync.error.unsupported_format'));
       }
 
       // 2. Decode and derive backup key
@@ -99,7 +100,7 @@ export class MigrateSyncPage {
       try {
         recoveryKeyBytes = base58Decode(key);
       } catch {
-        throw new Error(this.i18n.t('migrate_sync.error.invalid_key'));
+        throw new Error(this.i18n.instant('migrate_sync.error.invalid_key'));
       }
 
       const { backupKey } = await deriveBackupKey(
@@ -170,7 +171,7 @@ export class MigrateSyncPage {
       this.recoveryKeyInput = '';
       this.step            = 'done';
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.i18n.t('migrate_sync.error.restore');
+      this.error = err instanceof Error ? err.message : this.i18n.instant('migrate_sync.error.restore');
       this.step  = 'restore';
     } finally {
       this.working = false;

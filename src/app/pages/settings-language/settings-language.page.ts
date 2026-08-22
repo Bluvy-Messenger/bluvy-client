@@ -1,8 +1,7 @@
 import { Component, Input, Output, EventEmitter, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
-import { TranslationService } from '../../core/i18n/translation.service';
-import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ROUTES } from '../../core/routes';
 
 @Component({
@@ -14,13 +13,13 @@ import { ROUTES } from '../../core/routes';
 })
 export class SettingsLanguagePage {
   private router = inject(Router);
-  protected i18n = inject(TranslationService);
+  protected translate = inject(TranslateService);
 
   goBack(): void {
     void this.router.navigate([ROUTES.settings]);
   }
 
   setLocale(locale: 'fr' | 'en'): void {
-    this.i18n.setLocale(locale);
+    this.translate.use(locale);
   }
 }

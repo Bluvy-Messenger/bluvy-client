@@ -1,6 +1,7 @@
 import { Component, input, output, inject, signal, effect } from '@angular/core';
 import { IonModal, IonIcon, IonSpinner } from '@ionic/angular/standalone';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { GiphyRepository } from '../../../core/giphy/giphy.repository';
 import type { GiphyGifSummary } from '../../../core/giphy/giphy.types';
 

@@ -3,7 +3,8 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { mapOutline, openOutline, locationOutline, alertCircleOutline } from 'ionicons/icons';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import type { PlaceData } from '../../../core/place/place.types';
 import { buildCartesUrl, isAllowedCartesUrl, validatePlaceData } from '../../../core/place/cartes-url.util';
 

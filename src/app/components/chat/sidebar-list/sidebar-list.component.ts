@@ -26,8 +26,9 @@ import {
 } from 'ionicons/icons';
 import { MlsCoordinatorBase } from '../../../core/mls/coordinator/mls-coordinator.base';
 import { NotesService } from '../../../core/notes/notes.service';
-import { TranslatePipe } from '../../../core/i18n/translate.pipe';
-import { TranslationService } from '../../../core/i18n/translation.service';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
+
+
 import { ROUTES } from '../../../core/routes';
 import { environment } from '../../../../environments/environment';
 
@@ -62,7 +63,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
   readonly bpSvc       = inject(BreakpointService);
   private contactsSvc  = inject(ContactsService);
   private coordinator  = inject(MlsCoordinatorBase);
-  private i18n         = inject(TranslationService);
+  private i18n         = inject(TranslateService);
 
   conversations: ConversationListItem[] = [];
   loading = false;
@@ -307,7 +308,7 @@ export class SidebarListComponent implements OnInit, OnDestroy {
     if (!ts) return '';
     const d      = new Date(ts);
     const now    = new Date();
-    const locale = this.i18n.locale === 'fr' ? 'fr-FR' : 'en-US';
+    const locale = this.i18n.currentLang() === 'fr' ? 'fr-FR' : 'en-US';
     if (d.toDateString() === now.toDateString()) {
       return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     }

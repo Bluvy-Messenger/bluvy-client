@@ -6,7 +6,8 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { IonTabs, IonTabBar, IonTabButton, IonIcon } from '@ionic/angular/standalone';
 import { ReceiptsService } from '../core/receipts/receipts.service';
 import { UnreadBadgeComponent } from '../components/chat/unread-badge/unread-badge.component';
-import { TranslatePipe } from '../core/i18n/translate.pipe';
+import { TranslatePipe } from '@ngx-translate/core';
+
 import { AvatarComponent } from '../components/ui/avatar/avatar.component';
 import { BreakpointService } from '../core/layout/breakpoint.service';
 import { AuthService } from '../core/auth/auth.service';
