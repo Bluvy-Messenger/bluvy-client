@@ -26,7 +26,7 @@
         <div class="profile-header__primary-actions">
           <button class="btn-primary" (click)="openInvite()">
             <ion-icon name="share-social-outline"></ion-icon>
-            <span>Partager</span>
+            <span>{{ 'profile.share' | translate }}</span>
           </button>
         </div>
       </div>
@@ -51,20 +51,20 @@
       
       <!-- Security / Session Info -->
       <div class="profile-card-section">
-        <h3 class="profile-section-title">Sécurité & Session</h3>
+        <h3 class="profile-section-title">{{ 'profile.security_session' | translate }}</h3>
         <div class="profile-card-box">
           <div class="info-row">
             <ion-icon name="shield-checkmark-outline" class="info-icon info-icon--active"></ion-icon>
             <div class="info-text">
-              <h4>Chiffrement de bout en bout</h4>
-              <p>Activé (Messagerie chiffrée MLS)</p>
+              <h4>{{ 'profile.encryption_title' | translate }}</h4>
+              <p>{{ 'profile.encryption_status' | translate }}</p>
             </div>
           </div>
           <div class="info-divider"></div>
           <div class="info-row select-text" (click)="copyDid()">
             <ion-icon name="finger-print-outline" class="info-icon"></ion-icon>
             <div class="info-text">
-              <h4>Votre identifiant unique (DID)</h4>
+              <h4>{{ 'profile.did_label' | translate }}</h4>
               <p class="safety-code">{{ authSvc.currentUser()?.did }}</p>
             </div>
             <ion-icon name="copy-outline" class="info-copy-icon"></ion-icon>
@@ -73,8 +73,8 @@
           <div class="info-row button-row" (click)="openDevices()">
             <ion-icon name="phone-portrait-outline" class="info-icon"></ion-icon>
             <div class="info-text">
-              <h4>Appareils & Clés</h4>
-              <p>Gérer les appareils autorisés dans votre session</p>
+              <h4>{{ 'profile.devices_title' | translate }}</h4>
+              <p>{{ 'profile.devices_desc' | translate }}</p>
             </div>
             <ion-icon name="chevron-forward-outline" class="info-chevron-icon"></ion-icon>
           </div>
@@ -83,13 +83,13 @@
 
       <!-- Actions -->
       <div class="profile-card-section">
-        <h3 class="profile-section-title">Actions</h3>
+        <h3 class="profile-section-title">{{ 'profile.actions' | translate }}</h3>
         <div class="profile-actions-grid">
           <button class="profile-action-btn" (click)="editOnBluesky()">
             <div class="profile-action-btn__icon-wrapper">
               <ion-icon name="open-outline"></ion-icon>
             </div>
-            <span class="profile-action-btn__label">Modifier sur Bluesky</span>
+            <span class="profile-action-btn__label">{{ 'profile.edit_on_bluesky' | translate }}</span>
           </button>
         </div>
       </div>
@@ -108,7 +108,7 @@
   <ng-template>
     <div class="invite-modal-content">
       <div class="invite-modal-header">
-        <h2 id="invite-modal-title">Mon Code d'invitation</h2>
+        <h2 id="invite-modal-title">{{ 'profile.invite_modal.title' | translate }}</h2>
         <button class="close-btn" (click)="isInviteModalOpen = false" [attr.aria-label]="'common.close' | translate">
           <ion-icon name="close"></ion-icon>
         </button>
@@ -118,20 +118,20 @@
         <button class="invite-option-btn" (click)="copyDirectLink()">
           <ion-icon name="link-outline" class="invite-option-icon"></ion-icon>
           <div class="invite-option-text">
-            <h3>Copier le lien d'invitation</h3>
-            <p>Copie votre lien direct Bluvy contenant votre DID</p>
+            <h3>{{ 'profile.invite_modal.copy_link_title' | translate }}</h3>
+            <p>{{ 'profile.invite_modal.copy_link_desc' | translate }}</p>
           </div>
         </button>
 
         <div class="qr-section">
-          <h3>Scanner le QR Code</h3>
-          <p class="qr-desc">Faites scanner ce code par un contact pour ouvrir une discussion sécurisée</p>
+          <h3>{{ 'profile.invite_modal.qr_title' | translate }}</h3>
+          <p class="qr-desc">{{ 'profile.invite_modal.qr_desc' | translate }}</p>
           <div class="qr-code-wrapper">
             <img [src]="qrCodeUrl" alt="QR Code" class="qr-code-img" />
           </div>
           <button class="share-qr-btn" (click)="shareQrCode()">
             <ion-icon name="share-social-outline"></ion-icon>
-            <span>Partager le QR Code</span>
+            <span>{{ 'profile.invite_modal.share_qr' | translate }}</span>
           </button>
         </div>
       </div>

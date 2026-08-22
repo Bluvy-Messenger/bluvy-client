@@ -475,5 +475,21 @@
   "legal.licenses.backend": "Server (backend)",
   "legal.licenses.texts": "License texts",
   "legal.licenses.texts_desc": "Full license texts are available in the respective project repositories on GitHub and npm.",
-  "legal.en_only": "This document is only available in French."
+  "legal.en_only": "This document is only available in French.",
+  "profile.share": "Share",
+  "profile.security_session": "Security & Session",
+  "profile.encryption_title": "End-to-end encryption",
+  "profile.encryption_status": "Enabled (MLS encrypted messaging)",
+  "profile.did_label": "Your unique identifier (DID)",
+  "profile.did_copied": "DID copied!",
+  "profile.devices_title": "Devices & Keys",
+  "profile.devices_desc": "Manage the devices authorized on your session",
+  "profile.actions": "Actions",
+  "profile.edit_on_bluesky": "Edit on Bluesky",
+  "profile.invite_modal.title": "My invite code",
+  "profile.invite_modal.copy_link_title": "Copy invite link",
+  "profile.invite_modal.copy_link_desc": "Copies your direct Bluvy link containing your DID",
+  "profile.invite_modal.qr_title": "Scan QR Code",
+  "profile.invite_modal.qr_desc": "Have a contact scan this code to start a secure conversation",
+  "profile.invite_modal.share_qr": "Share QR Code"
 }
