@@ -1,12 +1,12 @@
 {
-  "client_id": "https://bluvy.app/client-metadata.json",
+  "client_id": "https://messenger.bluvy.app/client-metadata.json",
   "client_name": "Bluvy Messenger",
-  "client_uri": "https://bluvy.app",
-  "logo_uri": "https://bluvy.app/assets/icon/icon.png",
-  "tos_uri": "https://bluvy.app/terms",
-  "policy_uri": "https://bluvy.app/privacy",
+  "client_uri": "https://messenger.bluvy.app",
+  "logo_uri": "https://messenger.bluvy.app/assets/icon/icon.png",
+  "tos_uri": "https://messenger.bluvy.app/terms",
+  "policy_uri": "https://messenger.bluvy.app/privacy",
   "redirect_uris": [
-    "https://bluvy.app/oauth/callback"
+    "https://messenger.bluvy.app/oauth/callback"
   ],
   "response_types": ["code"],
   "grant_types": ["authorization_code", "refresh_token"],
