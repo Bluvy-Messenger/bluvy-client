@@ -10,11 +10,11 @@ const APP_SETTINGS_PREFERENCES_COLLECTION = 'com.bluvy.preferences.app';
 const DECLARATION_COLLECTION = 'com.bluvy.declaration';
 
 // Single source of truth for the URL published in com.bluvy.declaration --
-// always bluvy.app, dev included (see publishDeclaration), so this is also
+// always messenger.bluvy.app, dev included (see publishDeclaration), so this is also
 // what KeyPackageService.syncDeclaration() checks the live PDS record
 // against when verifying it hasn't drifted (e.g. a stale dev-origin URL
 // published before this constant existed).
-export const BLUVY_MESSAGE_URL = 'https://bluvy.app/message';
+export const BLUVY_MESSAGE_URL = 'https://messenger.bluvy.app/message';
 
 export interface BluvyDeclarationRecord {
   version?: string;
@@ -79,7 +79,7 @@ export class AtprotoRepoService {
     }
 
     const repo = this.oauth.session.sub;
-    // Always bluvy.app, even in dev: this URL is published publicly on the
+    // Always messenger.bluvy.app, even in dev: this URL is published publicly on the
     // user's PDS and read by third-party clients (e.g. bsky-app), which have
     // no notion of "this dev server's origin" -- a loopback URL here would be
     // dead on arrival for anyone but the developer's own machine.

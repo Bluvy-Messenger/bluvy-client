@@ -126,14 +126,14 @@ export class ContactDetailPage {
     
     const userDid = this.authSvc.currentUser()?.did || '';
 
-    // Always bluvy.app, even in dev: these links are shared/scanned by other
+    // Always messenger.bluvy.app, even in dev: these links are shared/scanned by other
     // people's devices and clients, which have no notion of "this dev server".
 
     // Direct invite containing only the inviter's DID (so others can start a conversation)
-    this.directInviteUrl = `https://bluvy.app/message#${userDid}`;
+    this.directInviteUrl = `https://messenger.bluvy.app/message#${userDid}`;
 
     // Personal invite linking both user DIDs together
-    this.personalInviteUrl = `https://bluvy.app/message#${userDid}+${this.did}`;
+    this.personalInviteUrl = `https://messenger.bluvy.app/message#${userDid}+${this.did}`;
 
     this.qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(this.directInviteUrl)}`;
     
