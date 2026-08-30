@@ -21,7 +21,7 @@ export class SeoService {
     this.meta.updateTag({ name: 'description',         content: config.description });
     this.meta.updateTag({ property: 'og:title',        content: full });
     this.meta.updateTag({ property: 'og:description',  content: config.description });
-    this.meta.updateTag({ property: 'og:url',          content: `https://bluvy.app${config.canonicalPath ?? ''}` });
+    this.meta.updateTag({ property: 'og:url',          content: `https://messenger.bluvy.app${config.canonicalPath ?? ''}` });
     this.meta.updateTag({ name: 'twitter:title',       content: full });
     this.meta.updateTag({ name: 'twitter:description', content: config.description });
   }

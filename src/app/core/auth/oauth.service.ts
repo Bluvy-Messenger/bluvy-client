@@ -296,7 +296,7 @@ export class OAuthService {
 
     await Browser.open({ url: authUrl.toString(), presentationStyle: 'popover' });
 
-    // Android App Links intercept https://bluvy.app/oauth/callback and fire appUrlOpen.
+    // Android App Links intercept https://messenger.bluvy.app/oauth/callback and fire appUrlOpen.
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error('OAuth timeout — aucun callback reçu.')),

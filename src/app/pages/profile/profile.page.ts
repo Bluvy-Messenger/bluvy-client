@@ -55,9 +55,9 @@ export class ProfilePage {
     const user = this.authSvc.currentUser();
     if (!user) return;
 
-    // Always bluvy.app, even in dev: shared/scanned by other people's
+    // Always messenger.bluvy.app, even in dev: shared/scanned by other people's
     // devices and clients, which have no notion of "this dev server".
-    this.directInviteUrl = `https://bluvy.app/message#${user.did}`;
+    this.directInviteUrl = `https://messenger.bluvy.app/message#${user.did}`;
     this.qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(this.directInviteUrl)}`;
 
     this.loadingBio = true;
