@@ -70,6 +70,18 @@ export class KeyPackageService {
     const generated = await this.generateKeyPackages(userDid, deviceId, count);
     if (generated.length === 0) return;
 
+    // Persist the private halves locally BEFORE publishing the public
+    // KeyPackages to the server. A crash between the two used to leave the
+    // server holding KeyPackages this device has no private key for; since
+    // consumeKeyPackage() serves newest-first, discovery then handed one of
+    // those orphans to a conversation initiator, whose otherwise-valid
+    // Welcome the invited device could never join ("no matching key
+    // package") -- the conversation went FAILED on the invited side while
+    // the initiator sat at epoch 1. A KeyPackage present locally but not yet
+    // on the server is harmless: it just isn't consumable until a later
+    // refill uploads it.
+    await this.appendKeyPackagesToState(userDid, deviceId, generated);
+
     const kpList = generated.map(r => r.serializedKeyPackage);
     const signedPayload = await this.didSigner.signPayload(kpList, userDid).catch(err => {
       if (!environment.production) console.warn('[KeyPackageService] DID signature creation skipped/failed:', err);
@@ -79,18 +91,43 @@ export class KeyPackageService {
     const uploaded = await this.kpRepo.upload(kpList, signedPayload);
 
     const idsByPayload = new Map(uploaded.data.map(item => [item.keyPackage, item.id]));
-    generated.forEach(r => {
-      r.serverId = idsByPayload.get(r.serializedKeyPackage) ?? null;
-    });
 
     if (!environment.production) {
-      console.log(`[MLS:trace:3] refillPool  uploading ${generated.length} KP(s) (signed: ${!!signedPayload})`);
+      console.log(`[MLS:trace:3] refillPool  uploaded ${generated.length} KP(s) (signed: ${!!signedPayload})`);
       generated.forEach((r, i) => {
-        console.log(`[MLS:trace:3]   index=${i}  serverId=${r.serverId}  b64fp=${r.serializedKeyPackage.substring(0, 48)}`);
+        console.log(`[MLS:trace:3]   index=${i}  serverId=${idsByPayload.get(r.serializedKeyPackage) ?? null}  b64fp=${r.serializedKeyPackage.substring(0, 48)}`);
       });
     }
 
-    await this.appendKeyPackagesToState(userDid, deviceId, generated);
+    // Backfill the server ids onto the records just persisted. If this write
+    // fails the KeyPackages stay usable (their private keys are local); the
+    // only cost is getCurrentSignatureKey()'s serverId filter, which now
+    // falls back to any local record.
+    await this.backfillKeyPackageServerIds(userDid, deviceId, idsByPayload);
+  }
+
+  private async backfillKeyPackageServerIds(
+    userDid:  string,
+    deviceId: string,
+    idsByPayload: Map<string, string>,
+  ): Promise<void> {
+    if (idsByPayload.size === 0) return;
+    try {
+      const scope = this.cryptoCtx.makeScope(userDid, deviceId);
+      await this.storage.update<StoredMlsState>(scope, async (state) => {
+        if (!state?.keyPackages) return state ?? null;
+        let changed = false;
+        for (const kp of state.keyPackages) {
+          const serverId = idsByPayload.get(kp.serializedKeyPackage);
+          if (serverId && kp.serverId !== serverId) { kp.serverId = serverId; changed = true; }
+        }
+        if (!changed) return null;
+        state.updatedAt = Date.now();
+        return state;
+      });
+    } catch (err) {
+      if (!environment.production) console.warn('[KeyPackageService] backfillKeyPackageServerIds failed (KeyPackages still usable):', err);
+    }
   }
 
   /**
@@ -188,7 +225,10 @@ export class KeyPackageService {
     const state = await this.storage.load<StoredMlsState>(this.cryptoCtx.getStorageScope(userDid, deviceId));
     if (!state) return null;
 
-    const rec = state.keyPackages?.find(k => k.serverId !== null);
+    // Prefer a server-confirmed record; fall back to any local one (a refill
+    // whose serverId backfill hasn't landed yet -- the signature key is still
+    // this device's own, valid for the declaration's currentKey).
+    const rec = state.keyPackages?.find(k => k.serverId !== null) ?? state.keyPackages?.[0];
     if (!rec) return null;
 
     const binary = this.base64ToBytes(rec.serializedKeyPackage);
