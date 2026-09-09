@@ -48,6 +48,10 @@ export class ConversationsService {
     return this.repo.getMessages(conversationId, before, limit);
   }
 
+  getMessageById(conversationId: string, messageId: string): Observable<MessageItem> {
+    return this.repo.getMessageById(conversationId, messageId);
+  }
+
   deleteConversation(id: string): Observable<void> {
     return this.repo.deleteConversation(id).pipe(
       tap(() => this.conversationDeletedSubject.next(id))

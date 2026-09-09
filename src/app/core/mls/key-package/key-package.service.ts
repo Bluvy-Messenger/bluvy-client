@@ -27,6 +27,11 @@ export type { KeyPackageCountResponse, KeyPackagePoolStatus } from './key-packag
 const KP_TARGET    = 20;
 const KP_THRESHOLD = 10;
 
+// F8 orphan cleanup: while false, reconcileServerPool() only LOGS the server
+// key packages it can't back with a local private key. Flip to true in a
+// follow-up commit once production logs confirm there are no false positives.
+const RECONCILE_DELETE = false;
+
 // How often syncDeclaration() is allowed to actually read the declaration
 // back from the PDS to verify it hasn't drifted (wrong URL, stale
 // visibility, etc.) when the local device key hasn't changed. Keeps launch
@@ -70,6 +75,18 @@ export class KeyPackageService {
     const generated = await this.generateKeyPackages(userDid, deviceId, count);
     if (generated.length === 0) return;
 
+    // Persist the private halves locally BEFORE publishing the public
+    // KeyPackages to the server. A crash between the two used to leave the
+    // server holding KeyPackages this device has no private key for; since
+    // consumeKeyPackage() serves newest-first, discovery then handed one of
+    // those orphans to a conversation initiator, whose otherwise-valid
+    // Welcome the invited device could never join ("no matching key
+    // package") -- the conversation went FAILED on the invited side while
+    // the initiator sat at epoch 1. A KeyPackage present locally but not yet
+    // on the server is harmless: it just isn't consumable until a later
+    // refill uploads it.
+    await this.appendKeyPackagesToState(userDid, deviceId, generated);
+
     const kpList = generated.map(r => r.serializedKeyPackage);
     const signedPayload = await this.didSigner.signPayload(kpList, userDid).catch(err => {
       if (!environment.production) console.warn('[KeyPackageService] DID signature creation skipped/failed:', err);
@@ -79,18 +96,43 @@ export class KeyPackageService {
     const uploaded = await this.kpRepo.upload(kpList, signedPayload);
 
     const idsByPayload = new Map(uploaded.data.map(item => [item.keyPackage, item.id]));
-    generated.forEach(r => {
-      r.serverId = idsByPayload.get(r.serializedKeyPackage) ?? null;
-    });
 
     if (!environment.production) {
-      console.log(`[MLS:trace:3] refillPool  uploading ${generated.length} KP(s) (signed: ${!!signedPayload})`);
+      console.log(`[MLS:trace:3] refillPool  uploaded ${generated.length} KP(s) (signed: ${!!signedPayload})`);
       generated.forEach((r, i) => {
-        console.log(`[MLS:trace:3]   index=${i}  serverId=${r.serverId}  b64fp=${r.serializedKeyPackage.substring(0, 48)}`);
+        console.log(`[MLS:trace:3]   index=${i}  serverId=${idsByPayload.get(r.serializedKeyPackage) ?? null}  b64fp=${r.serializedKeyPackage.substring(0, 48)}`);
       });
     }
 
-    await this.appendKeyPackagesToState(userDid, deviceId, generated);
+    // Backfill the server ids onto the records just persisted. If this write
+    // fails the KeyPackages stay usable (their private keys are local); the
+    // only cost is getCurrentSignatureKey()'s serverId filter, which now
+    // falls back to any local record.
+    await this.backfillKeyPackageServerIds(userDid, deviceId, idsByPayload);
+  }
+
+  private async backfillKeyPackageServerIds(
+    userDid:  string,
+    deviceId: string,
+    idsByPayload: Map<string, string>,
+  ): Promise<void> {
+    if (idsByPayload.size === 0) return;
+    try {
+      const scope = this.cryptoCtx.makeScope(userDid, deviceId);
+      await this.storage.update<StoredMlsState>(scope, async (state) => {
+        if (!state?.keyPackages) return state ?? null;
+        let changed = false;
+        for (const kp of state.keyPackages) {
+          const serverId = idsByPayload.get(kp.serializedKeyPackage);
+          if (serverId && kp.serverId !== serverId) { kp.serverId = serverId; changed = true; }
+        }
+        if (!changed) return null;
+        state.updatedAt = Date.now();
+        return state;
+      });
+    } catch (err) {
+      if (!environment.production) console.warn('[KeyPackageService] backfillKeyPackageServerIds failed (KeyPackages still usable):', err);
+    }
   }
 
   /**
@@ -188,7 +230,10 @@ export class KeyPackageService {
     const state = await this.storage.load<StoredMlsState>(this.cryptoCtx.getStorageScope(userDid, deviceId));
     if (!state) return null;
 
-    const rec = state.keyPackages?.find(k => k.serverId !== null);
+    // Prefer a server-confirmed record; fall back to any local one (a refill
+    // whose serverId backfill hasn't landed yet -- the signature key is still
+    // this device's own, valid for the declaration's currentKey).
+    const rec = state.keyPackages?.find(k => k.serverId !== null) ?? state.keyPackages?.[0];
     if (!rec) return null;
 
     const binary = this.base64ToBytes(rec.serializedKeyPackage);
@@ -229,8 +274,56 @@ export class KeyPackageService {
     }
   }
 
+  // F8 orphan cleanup: a crash before the private halves were persisted (old
+  // ordering) could leave the server serving key packages this device can't
+  // use. consumeKeyPackage is newest-first, so discovery is *more* likely to
+  // hand one of those to a conversation initiator, whose Welcome the invited
+  // device could then never join. Delete any server key package whose payload
+  // isn't in local state. Gated on RECONCILE_DELETE (log-only until proven
+  // safe in prod). Never throws.
+  private async reconcileServerPool(userDid: string, deviceId: string): Promise<void> {
+    try {
+      const scope = this.cryptoCtx.getStorageScope(userDid, deviceId);
+      const state = await this.storage.load<StoredMlsState>(scope);
+      // Empty/absent local state means "restore needed", not "orphans" --
+      // deleting here would destroy a pool the device legitimately owns.
+      if (!state?.keyPackages?.length) return;
+
+      const localPayloads = new Set(state.keyPackages.map(k => k.serializedKeyPackage));
+
+      let cursor: string | undefined;
+      let orphans = 0;
+      for (;;) {
+        const page = await this.kpRepo.listMine(cursor);
+        for (const serverKp of page.data) {
+          if (localPayloads.has(serverKp.keyPackage)) continue;
+          orphans++;
+          console.warn('[KeyPackageService] orphan KP detected (no local private key):', serverKp.id,
+            RECONCILE_DELETE ? '— deleting' : '— log-only');
+          if (RECONCILE_DELETE) {
+            await this.kpRepo.deleteById(serverKp.id).catch(err => {
+              if (!environment.production) console.warn('[KeyPackageService] orphan KP delete failed:', serverKp.id, err);
+            });
+          }
+        }
+        if (!page.cursor) break;
+        cursor = page.cursor;
+      }
+
+      if (orphans > 0 && !environment.production) {
+        console.log(`[KeyPackageService] reconcileServerPool: ${orphans} orphan(s), delete=${RECONCILE_DELETE}`);
+      }
+    } catch (err) {
+      if (!environment.production) console.warn('[KeyPackageService] reconcileServerPool failed:', err);
+    }
+  }
+
   private async runEnsure(userDid: string, deviceId: string): Promise<void> {
     this._poolStatus = 'checking';
+
+    // Before checking the count / refilling: drop any server key package this
+    // device can't back locally, so the top-up below refills the gap (F8).
+    await this.reconcileServerPool(userDid, deviceId);
 
     let countResp: KeyPackageCountResponse;
     try {

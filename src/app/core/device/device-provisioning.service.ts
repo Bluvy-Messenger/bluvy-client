@@ -134,6 +134,12 @@ export class DeviceProvisioningService {
         // No-op if there's no local group state yet, or if already caught up
         // (see MlsService.catchUpMissedCommits) -- safe to call unconditionally.
         await this.coordinator.catchUpMissedCommits(conv.id, user, device);
+        // F4: now that commits are caught up, drain anything that was queued
+        // for replay AND re-attempt messages already stuck as [Encrypted]
+        // placeholders -- for a conversation the user never reopened, this
+        // sweep is the only thing that ever retries them.
+        await this.coordinator.replayPendingDecrypts(conv.id, user, device);
+        await this.coordinator.retryUndecryptableFromCache(conv.id, user, device);
       } catch (err) {
         console.warn(`[DeviceProvisioning] ${label}: failed for conv`, conv.id, ':', err);
       }
@@ -261,11 +267,29 @@ export class DeviceProvisioningService {
   // that to once per interval regardless of reconnect frequency.
   private lastRevokedSweepAt = 0;
   private static readonly REVOKED_SWEEP_MIN_INTERVAL_MS = 5 * 60 * 1000;
+  private static readonly REVOKED_SWEEP_AT_KEY = 'bluvy-revoked-sweep-at';
+
+  private getLastRevokedSweepAt(): number {
+    if (this.lastRevokedSweepAt > 0) return this.lastRevokedSweepAt;
+    try {
+      const stored = Number(localStorage.getItem(DeviceProvisioningService.REVOKED_SWEEP_AT_KEY));
+      if (Number.isFinite(stored) && stored > 0) this.lastRevokedSweepAt = stored;
+    } catch { /* localStorage unavailable — fall back to in-memory only */ }
+    return this.lastRevokedSweepAt;
+  }
+
+  private setLastRevokedSweepAt(ts: number): void {
+    this.lastRevokedSweepAt = ts;
+    try { localStorage.setItem(DeviceProvisioningService.REVOKED_SWEEP_AT_KEY, String(ts)); } catch { /* ignore */ }
+  }
 
   private async removeRevokedDeviceLeaves(user: UserProfile, device: DeviceInfo): Promise<void> {
     const now = Date.now();
-    if (now - this.lastRevokedSweepAt < DeviceProvisioningService.REVOKED_SWEEP_MIN_INTERVAL_MS) return;
-    this.lastRevokedSweepAt = now;
+    // Persisted across relaunches (F10): the in-memory-only cooldown never
+    // protected the first sweep after an app restart, so every cold start
+    // re-ran the full revoked-device x conversation sweep.
+    if (now - this.getLastRevokedSweepAt() < DeviceProvisioningService.REVOKED_SWEEP_MIN_INTERVAL_MS) return;
+    this.setLastRevokedSweepAt(now);
 
     let revoked: Array<{ id: string }>;
     try {

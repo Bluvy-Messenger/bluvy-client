@@ -5,6 +5,7 @@ import type {
   ConversationListItem,
   ConversationResult,
   ConversationsPage,
+  MessageItem,
   MessagesPage,
   RecreateConversationResult,
 } from './conversation.types';
@@ -12,6 +13,7 @@ import {
   mapConversationListItem,
   mapConversationResult,
   mapConversationsPage,
+  mapMessageItem,
   mapMessagesPage,
 } from './conversation.mapper';
 import { ApiClientService } from '../infrastructure/api-client.service';
@@ -49,6 +51,17 @@ export class ConversationRepository {
       { params },
     )).pipe(
       map(mapMessagesPage),
+    );
+  }
+
+  // Fetches one message (with its current server-side ciphertext). Used by the
+  // undecryptable-message sweep to re-attempt MLS decryption of a message
+  // whose pending_decrypt queue entry was already consumed.
+  getMessageById(conversationId: string, messageId: string): Observable<MessageItem> {
+    return from(this.apiClient.get<{ data: MessageItem }>(
+      `/v1/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
+    )).pipe(
+      map(res => mapMessageItem(res.data)),
     );
   }
 

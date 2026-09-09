@@ -532,8 +532,9 @@ describe('MlsMembershipService — commit lock behavior (provisionDevice / remov
 
   describe('removeRevokedDeviceFromAllGroups', () => {
     it('waits for an in-progress incoming commit on that conversation before starting', async () => {
-      const { stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
-      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
+      const { cs, stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
+      const added = await commitAdd(stateB64, cs, 'did:plc:bob#device-revoked');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
 
       let resolveIncoming!: () => void;
       const blocking = new Promise<void>(resolve => { resolveIncoming = resolve; });
@@ -558,8 +559,9 @@ describe('MlsMembershipService — commit lock behavior (provisionDevice / remov
     });
 
     it('skips a conversation whose commit lock is held by another device', async () => {
-      const { stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
-      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
+      const { cs, stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
+      const added = await commitAdd(stateB64, cs, 'did:plc:bob#device-revoked');
+      fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: added.newStateB64 }));
       mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: false }));
 
       await service.removeRevokedDeviceFromAllGroups('device-revoked', USER, DEVICE);
@@ -567,17 +569,21 @@ describe('MlsMembershipService — commit lock behavior (provisionDevice / remov
       expect(mockRepo.acquireCommitLock).toHaveBeenCalledWith(CONV_ID);
       expect(mockRepo.postCommit).not.toHaveBeenCalled();
       const finalState = await fakeStorage.load<StoredMlsState>(SCOPE);
-      expect(finalState!.groupStates[CONV_ID]).toBe(stateB64);
+      expect(finalState!.groupStates[CONV_ID]).toBe(added.newStateB64);
     });
 
-    it('proceeds to inspect membership once the lock is acquired (no-op if the device is not a member)', async () => {
+    it('does not hit the network for a conversation where the revoked device is not a member (F10 local pre-check)', async () => {
+      // A stale-but-decodable local state where the target simply isn't
+      // present: the sweep runs this for every revoked device the backend
+      // reports x every local conversation, so a network round trip here is
+      // pure waste (the post-lock membership check would no-op anyway).
       const { stateB64 } = await makeInitialGroup(CONV_ID, `${USER.did}#${DEVICE.id}`);
       fakeStorage.seed(SCOPE, baseState({ [CONV_ID]: stateB64 }));
       mockRepo.acquireCommitLock.and.returnValue(Promise.resolve({ acquired: true }));
 
       await service.removeRevokedDeviceFromAllGroups('device-not-a-member', USER, DEVICE);
 
-      expect(mockRepo.acquireCommitLock).toHaveBeenCalledWith(CONV_ID);
+      expect(mockRepo.acquireCommitLock).not.toHaveBeenCalled();
       expect(mockRepo.postCommit).not.toHaveBeenCalled();
     });
 
