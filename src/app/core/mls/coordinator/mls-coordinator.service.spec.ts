@@ -513,6 +513,65 @@ describe('MlsCoordinatorService', () => {
     }));
   });
 
+  // ── F1/F6: replayPendingDecrypts retry budget ──────────────────────────────
+  describe('replayPendingDecrypts retry budget (F1/F6)', () => {
+    const baseEntry = {
+      messageId:      'msg-pending-1',
+      conversationId: 'conv-budget',
+      ciphertext:     'cipher-b64',
+      senderDid:      'did:plc:bob',
+      senderDeviceId: 'device-bob',
+      isMine:         false,
+      createdAt:      Date.now(),
+      enqueuedAt:     Date.now(),
+      attempts:       0,
+      lastAttemptAt:  null as number | null,
+    };
+
+    function entry(overrides: Partial<typeof baseEntry> = {}) {
+      return { ...baseEntry, createdAt: Date.now(), ...overrides };
+    }
+
+    function replayAfterCatchUp(entries: Array<ReturnType<typeof entry>>, decryptErr: Error): void {
+      mockMlsSvc.hasGroupState.and.returnValue(Promise.resolve(true));
+      mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(1));
+      mockPendingRepo.getAll.and.returnValue(Promise.resolve(entries));
+      mockMessageCacheSvc.exists.and.returnValue(Promise.resolve(false));
+      mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(decryptErr));
+      service.catchUpMissedCommits('conv-budget', mockUser, mockDevice).catch(() => {});
+      tick();
+      flush();
+    }
+
+    it('keeps a GroupNotReady failure queued instead of marking it permanent on the first miss', fakeAsync(() => {
+      replayAfterCatchUp([entry({ attempts: 0 })], new Error('MLS group not ready for this conversation'));
+
+      expect(mockPendingRepo.markAttempt).toHaveBeenCalledWith('msg-pending-1');
+      expect(mockPendingRepo.remove).not.toHaveBeenCalledWith('msg-pending-1');
+      expect(mockMessageCacheSvc.store).not.toHaveBeenCalled();
+    }));
+
+    it('keeps retrying a transient failure until MAX_REPLAY_ATTEMPTS, then demotes it', fakeAsync(() => {
+      replayAfterCatchUp([entry({ attempts: 3 })], new Error('MLS group not ready for this conversation'));
+      expect(mockPendingRepo.markAttempt).toHaveBeenCalledWith('msg-pending-1');
+      expect(mockPendingRepo.remove).not.toHaveBeenCalledWith('msg-pending-1');
+
+      mockPendingRepo.markAttempt.calls.reset();
+      mockPendingRepo.remove.calls.reset();
+
+      replayAfterCatchUp([entry({ attempts: 5 })], new Error('MLS group not ready for this conversation'));
+      expect(mockMessageCacheSvc.store).toHaveBeenCalled();
+      expect(mockPendingRepo.remove).toHaveBeenCalledWith('msg-pending-1');
+    }));
+
+    it('does not treat an EpochMismatch on a recent message as permanent while catching up', fakeAsync(() => {
+      replayAfterCatchUp([entry({ attempts: 0 })], new Error('desired gen 5 but ratchet at 2'));
+
+      expect(mockPendingRepo.markAttempt).toHaveBeenCalledWith('msg-pending-1');
+      expect(mockPendingRepo.remove).not.toHaveBeenCalledWith('msg-pending-1');
+    }));
+  });
+
   // ── C1 regression + Gap B: recoverFromFailed must not destroy a state it ──
   // just healed, and must try a non-destructive catch-up before clearing.
   describe('recoverFromFailed (catch-up-before-clear, C1 regression)', () => {

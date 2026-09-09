@@ -95,6 +95,13 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   private readonly decryptionFailures = new Map<string, number>();
   private static readonly MAX_DECRYPTION_FAILURES = 3;
 
+  // How many READY-state replay passes a queued ciphertext gets before it is
+  // demoted to a permanent "[Encrypted]" placeholder. Kept well above 1 so a
+  // replay that fires while the group is still mid-catch-up (at an
+  // intermediate epoch) doesn't kill a message that decrypts fine seconds
+  // later once the remaining commits land (F1/F6).
+  private static readonly MAX_REPLAY_ATTEMPTS = 5;
+
   // Tracks the timestamp when a conversation state became READY on this device.
   // Used to distinguish historical messages (which a new device naturally cannot decrypt)
   // from new real-time messages (which should decrypt).
@@ -567,6 +574,76 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       if (msg && !msg.undecryptable) healed++;
     }
     return healed;
+  }
+
+  // F4: re-attempts MLS decryption for messages already cached as
+  // undecryptable placeholders, re-fetching each ciphertext from the server
+  // (the pending_decrypt queue entry was already consumed, so the ciphertext
+  // is no longer held locally). Unlike retryUndecryptableViaCloudBackup this
+  // does not need the MBK -- it just needs the group to have caught up since
+  // the message was first marked undecryptable, which is exactly what the
+  // reconnect / app-resume sweep guarantees by running catchUpMissedCommits
+  // first. A "permanent" classification only ever meant "not decryptable
+  // right now", never "provably impossible forever". Returns how many
+  // placeholders were turned back into plaintext.
+  override async retryUndecryptableFromCache(
+    convId: string,
+    user:   UserProfile,
+    device: DeviceInfo,
+  ): Promise<number> {
+    if (this.getConversationState(convId) !== ConversationMlsState.Ready) return 0;
+
+    const stuck: CachedMessage[] = [];
+    let cursor: number | undefined;
+    for (;;) {
+      const page = await this.messageCacheSvc.getMessagesPage(convId, cursor ?? 0, 500);
+      if (page.length === 0) break;
+      for (const m of page) {
+        if (m.undecryptable && m.deletedAt === null) stuck.push(m);
+      }
+      cursor = page[page.length - 1]!.createdAt;
+      if (page.length < 500) break;
+    }
+    if (stuck.length === 0) return 0;
+
+    const healed: CachedMessage[] = [];
+    for (const m of stuck) {
+      let ciphertext: string;
+      try {
+        const server = await firstValueFrom(this.convSvc.getMessageById(convId, m.id));
+        ciphertext = server.ciphertext;
+      } catch (err) {
+        if (!environment.production) console.warn('[MLS:coordinator] retryUndecryptableFromCache: could not fetch ciphertext for', m.id, err);
+        continue;
+      }
+
+      let plaintext: string;
+      try {
+        plaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertext);
+      } catch {
+        continue; // still not decryptable -- leave the placeholder for the next sweep / peer resend
+      }
+
+      const updated: CachedMessage = { ...m, plaintext, undecryptable: false, cachedAt: Date.now() };
+      await this.messageCacheSvc.store(updated);
+      this.backupRegistry.backupService?.enqueue({
+        messageId:      m.id,
+        conversationId: convId,
+        plaintext,
+        createdAt:      m.createdAt,
+        senderDid:      m.senderDid ?? user.did,
+      });
+      healed.push(updated);
+    }
+
+    if (healed.length > 0) {
+      this._pendingDecryptReplayed$$.next({ conversationId: convId, messages: healed });
+    }
+    if (!environment.production) console.log(
+      `[MLS:coordinator] retryUndecryptableFromCache convId=${convId}`,
+      `stuck=${stuck.length} healed=${healed.length}`,
+    );
+    return healed.length;
   }
 
   override async prepareConversation(
@@ -1046,12 +1123,39 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         succeeded++;
       } catch (err) {
         const classified = this.classifyError(err, convId);
+        const groupReady = this.getConversationState(convId) === ConversationMlsState.Ready;
 
-        // In READY state: EpochMismatch means the ratchet has advanced past this message.
+        // A queued message is only demoted to a permanent "[Encrypted]"
+        // placeholder when there is positive evidence it can never decrypt:
+        //   - a genuine crypto/signature failure (PermanentMlsError), or
+        //   - an epoch/generation mismatch on a message that predates this
+        //     device becoming READY (the ratchet has demonstrably advanced
+        //     past it -- mirrors decryptMessage()'s `isHistorical` check), or
+        //   - the retry budget is exhausted (MAX_REPLAY_ATTEMPTS ready passes).
+        // Everything else -- GroupNotReady / other transient states, an epoch
+        // mismatch while we are still catching up, an as-yet-unclassified
+        // error -- stays queued and is retried the next time group state
+        // advances (Welcome processed, commits caught up, reconnect sweep).
+        // F1/F6: previously a SINGLE failed replay (`entry.attempts >= 1`) OR
+        // any EpochMismatch demoted the message immediately, which on flaky
+        // connectivity routinely killed messages that would have decrypted a
+        // moment later (a replay firing mid-catch-up burned the only attempt).
+        const readyTime       = this.readyTimestamps.get(convId);
+        const isHistorical    = readyTime !== undefined && entry.createdAt < readyTime - 5000;
+        const budgetExhausted = entry.attempts >= MlsCoordinatorService.MAX_REPLAY_ATTEMPTS;
+        const isEpochMismatch = classified.kind === 'EpochMismatch';
+
         const isPermanent =
-          classified instanceof PermanentMlsError ||
-          classified.kind === 'EpochMismatch' ||
-          entry.attempts >= 1;
+          budgetExhausted ||
+          (isEpochMismatch
+            // "desired gen…" is only fatal for a message that predates this
+            // device becoming READY (the ratchet genuinely moved past it) --
+            // while catching up it's just an intermediate epoch and the
+            // message decrypts fine once the remaining commits land.
+            ? isHistorical
+            // A genuine crypto/signature failure (never epoch) is fatal;
+            // GroupNotReady and other transient states stay queued.
+            : classified instanceof PermanentMlsError);
 
         if (isPermanent) {
           const cached = this.buildCached(entry, '', true);
@@ -1060,7 +1164,10 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
           replayed.push(cached);
           permanentFailed++;
         } else {
-          await this.pendingRepo.markAttempt(entry.messageId);
+          // Only spend a retry attempt when the group was actually READY for
+          // this pass -- a replay fired while we are still mid-catch-up (F6)
+          // must not burn the budget on a message that never had a fair shot.
+          if (groupReady) await this.pendingRepo.markAttempt(entry.messageId);
           stillPending++;
         }
       }

@@ -25,7 +25,9 @@ describe('DeviceProvisioningService.proactiveCatchUpSweep', () => {
   }
 
   beforeEach(() => {
-    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['catchUpMissedCommits']);
+    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['catchUpMissedCommits', 'replayPendingDecrypts', 'retryUndecryptableFromCache']);
+    mockCoordinator.replayPendingDecrypts.and.returnValue(Promise.resolve({ conversationId: '', total: 0, succeeded: 0, permanentFailed: 0, stillPending: 0, operationId: '' }));
+    mockCoordinator.retryUndecryptableFromCache.and.returnValue(Promise.resolve(0));
     mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
 
     TestBed.configureTestingModule({
@@ -82,6 +84,17 @@ describe('DeviceProvisioningService.proactiveCatchUpSweep', () => {
 
     await expectAsync(service.proactiveCatchUpSweep(USER, DEVICE)).toBeResolved();
     expect(mockCoordinator.catchUpMissedCommits).not.toHaveBeenCalled();
+  });
+
+  it('drains pending decrypts and retries stuck [Encrypted] messages per conversation after catch-up (F4)', async () => {
+    mockConvSvc.getConversations.and.callFake((_cursor?: string, _limit?: number, archived?: boolean) =>
+      archived ? of(page([], false, null)) : of(page([{ id: 'conv-1' }], false, null)));
+    mockCoordinator.catchUpMissedCommits.and.returnValue(Promise.resolve());
+
+    await service.proactiveCatchUpSweep(USER, DEVICE);
+
+    expect(mockCoordinator.replayPendingDecrypts).toHaveBeenCalledWith('conv-1', USER, DEVICE);
+    expect(mockCoordinator.retryUndecryptableFromCache).toHaveBeenCalledWith('conv-1', USER, DEVICE);
   });
 
   it('runs at most once per user DID per service instance', async () => {
@@ -172,7 +185,12 @@ describe('DeviceProvisioningService.checkAndProvisionOnConnect — pending-provi
   const DEVICE: DeviceInfo  = { id: 'device-a1', name: 'Phone', platform: 'android' };
 
   beforeEach(() => {
-    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups']);
+    try { localStorage.removeItem('bluvy-revoked-sweep-at'); } catch { /* ignore */ }
+    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups', 'recoverPendingReprovisions', 'recoverPendingRemovals', 'recoverPendingGenesises', 'isDeviceMemberLocally']);
+    mockCoordinator.recoverPendingReprovisions.and.returnValue(Promise.resolve());
+    mockCoordinator.recoverPendingRemovals.and.returnValue(Promise.resolve());
+    mockCoordinator.recoverPendingGenesises.and.returnValue(Promise.resolve());
+    mockCoordinator.isDeviceMemberLocally.and.returnValue(Promise.resolve(false));
     mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
     mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getPendingProvisions', 'getRevokedDevices']);
 
@@ -258,7 +276,12 @@ describe('DeviceProvisioningService.checkAndProvisionOnConnect — revoked-devic
   const DEVICE: DeviceInfo  = { id: 'device-a1', name: 'Phone', platform: 'android' };
 
   beforeEach(() => {
-    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups']);
+    try { localStorage.removeItem('bluvy-revoked-sweep-at'); } catch { /* ignore */ }
+    mockCoordinator = jasmine.createSpyObj<MlsCoordinatorBase>('MlsCoordinatorBase', ['canProvision', 'provisionDevice', 'removeRevokedDeviceFromAllGroups', 'recoverPendingReprovisions', 'recoverPendingRemovals', 'recoverPendingGenesises', 'isDeviceMemberLocally']);
+    mockCoordinator.recoverPendingReprovisions.and.returnValue(Promise.resolve());
+    mockCoordinator.recoverPendingRemovals.and.returnValue(Promise.resolve());
+    mockCoordinator.recoverPendingGenesises.and.returnValue(Promise.resolve());
+    mockCoordinator.isDeviceMemberLocally.and.returnValue(Promise.resolve(false));
     mockConvSvc     = jasmine.createSpyObj<ConversationsService>('ConversationsService', ['getConversations']);
     mockDeviceRepo  = jasmine.createSpyObj<DeviceRepository>('DeviceRepository', ['getPendingProvisions', 'getRevokedDevices']);
 

@@ -1221,8 +1221,23 @@ export class ConversationPage implements OnDestroy {
         const user   = this.authSvc.currentUser();
         const device = this.authSvc.currentDevice();
         if (!user || !device) return;
-        void this.coordinator.catchUpMissedCommits(this.conversationId, user, device)
-          .catch(err => { if (!environment.production) console.warn('[MLS] catchUpMissedCommits on reconnect failed:', err); });
+        const convId = this.conversationId;
+        // F3: a welcome:new / message:new that fired while the socket was
+        // down is never replayed on reconnect -- only catchUpMissedCommits
+        // used to run here. Also pull any pending Welcome and re-attempt
+        // messages still stuck as [Encrypted] for the conversation the user
+        // is actually looking at (the global sweep has a 10-min cooldown and
+        // may skip a quick reconnect).
+        void (async () => {
+          try {
+            await this.coordinator.catchUpMissedCommits(convId, user, device);
+            await this.coordinator.fetchAndProcessPendingWelcome(convId, user, device);
+            await this.coordinator.replayPendingDecrypts(convId, user, device);
+            await this.coordinator.retryUndecryptableFromCache(convId, user, device);
+          } catch (err) {
+            if (!environment.production) console.warn('[MLS] reconnect recovery failed:', err);
+          }
+        })();
       }),
     );
 

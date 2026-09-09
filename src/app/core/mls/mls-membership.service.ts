@@ -615,6 +615,30 @@ export class MlsMembershipService {
       const pendingIncoming = this.pendingCommitTracker.get(convId);
       if (pendingIncoming) await pendingIncoming;
 
+      // Cheap, network-free membership pre-check BEFORE acquiring the commit
+      // lock. This sweep runs for every revoked device the backend reports
+      // (`getRevokedDevicesInMyConversations` returns the full, unbounded
+      // list) against every conversation with local group state, so without
+      // this gate a device that shares even one conversation with us costs
+      // `#revoked x #conversations` acquire-commit-lock round trips on every
+      // connect — a request storm (700+ observed) that ends in a no-op inside
+      // the storage.update() below anyway once `targetMember` isn't found.
+      // A stale local view (we missed a Commit that added this device) simply
+      // means the next sweep after catch-up removes it instead.
+      try {
+        const preCheckState = this.cryptoCtx.restoreClientState(state.groupStates[convId]!);
+        const dec = new TextDecoder();
+        const isMemberLocally = getGroupMembers(preCheckState).some(m =>
+          m.credential.credentialType === 'basic' &&
+          dec.decode(m.credential.identity).endsWith(`#${revokedDeviceId}`),
+        );
+        if (!isMemberLocally) continue;
+      } catch (err) {
+        // Undecodable local state: fall through to the full path, which has
+        // its own decode + skip handling.
+        if (!environment.production) console.warn('[MLS] removeRevokedDevice: local pre-check failed to decode state for conv', convId, '— falling through', err);
+      }
+
       // Acquire the reusable commit lock before doing any work for this
       // conversation — same rationale as provisionDevice(): if another device
       // (e.g. another member notified by the same device:revoked event)
