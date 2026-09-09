@@ -19,13 +19,20 @@ export class PeerMessageRecoveryService {
   private convSvc         = inject(ConversationsService);
   private syncSvc         = inject(SyncService);
 
-  private readonly requestAttempts = new Map<string, number>();
-  private readonly MAX_ATTEMPTS = 2;
+  private readonly MAX_ATTEMPTS = 3;
+  private static readonly ATTEMPTS_KEY = 'bluvy-resend-attempts';
+  private static readonly ATTEMPTS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // messageId -> { n: attempts, at: last attempt ms }. Persisted so a page
+  // reload doesn't silently reset the budget, pruned after 7 days (F5).
+  private requestAttempts = new Map<string, { n: number; at: number }>();
 
   private readonly _messageRecovered$$ = new Subject<CachedMessage>();
   readonly messageRecovered$: Observable<CachedMessage> = this._messageRecovered$$.asObservable();
 
   constructor() {
+    this.loadAttempts();
+
     this.socketSvc.messageResendRequested$.subscribe(payload => {
       void this.handleResendRequest(payload);
     });
@@ -33,21 +40,55 @@ export class PeerMessageRecoveryService {
     this.socketSvc.messageResent$.subscribe(payload => {
       void this.handleResentMessage(payload);
     });
+
+    // A reconnect changes which peers are online -- the device that holds the
+    // plaintext may have just come back. Reset the budget so the next
+    // conversation open / catch-up sweep re-issues the request (F5).
+    this.socketSvc.reconnect$.subscribe(() => {
+      this.requestAttempts.clear();
+      this.persistAttempts();
+    });
   }
 
   /**
    * Called when a message is received or loaded and cannot be decrypted.
-   * Emits a discrete resend request over WebSocket (bounded by MAX_ATTEMPTS).
+   * Emits a discrete resend request over WebSocket (bounded by MAX_ATTEMPTS,
+   * persisted across reloads, reset on reconnect).
    */
   requestResend(conversationId: string, messageId: string): void {
-    const attempts = this.requestAttempts.get(messageId) ?? 0;
+    const rec = this.requestAttempts.get(messageId);
+    const attempts = rec?.n ?? 0;
     if (attempts >= this.MAX_ATTEMPTS) return;
 
-    this.requestAttempts.set(messageId, attempts + 1);
+    this.requestAttempts.set(messageId, { n: attempts + 1, at: Date.now() });
+    this.persistAttempts();
     if (!environment.production) {
       console.log('[PeerMessageRecovery] Requesting resend for undecryptable message:', messageId, 'attempt:', attempts + 1);
     }
     this.socketSvc.requestMessageResend(conversationId, messageId);
+  }
+
+  private loadAttempts(): void {
+    try {
+      const raw = localStorage.getItem(PeerMessageRecoveryService.ATTEMPTS_KEY);
+      if (!raw) return;
+      const cutoff = Date.now() - PeerMessageRecoveryService.ATTEMPTS_TTL_MS;
+      const parsed = JSON.parse(raw) as Record<string, { n: number; at: number }>;
+      for (const [id, v] of Object.entries(parsed)) {
+        if (v && typeof v.n === 'number' && typeof v.at === 'number' && v.at >= cutoff) {
+          this.requestAttempts.set(id, v);
+        }
+      }
+    } catch { /* corrupt / unavailable -- start fresh */ }
+  }
+
+  private persistAttempts(): void {
+    try {
+      localStorage.setItem(
+        PeerMessageRecoveryService.ATTEMPTS_KEY,
+        JSON.stringify(Object.fromEntries(this.requestAttempts)),
+      );
+    } catch { /* ignore */ }
   }
 
   /**
@@ -157,6 +198,8 @@ export class PeerMessageRecoveryService {
           senderDid,
         });
 
+        this.requestAttempts.delete(payload.messageId);
+        this.persistAttempts();
         this._messageRecovered$$.next(updated);
         if (!environment.production) {
           console.log('[PeerMessageRecovery] Successfully recovered message in plaintext:', payload.messageId);

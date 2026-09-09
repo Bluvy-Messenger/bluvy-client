@@ -1,6 +1,6 @@
 export const environment = {
   production:    true,
-  version:       '1.0.15.8',
+  version:       '1.0.15.9',
   apiUrl:        'https://bluvy.app/api',
   socketUrl:     'https://bluvy.app',
   oauthClientId: 'https://messenger.bluvy.app/client-metadata.json',

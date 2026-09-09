@@ -788,7 +788,12 @@ export class MlsService {
     };
   }
 
-  // Returns true if the local MLS group state exists for this conversation.
+  // Returns true only if a DECODABLE local MLS group state exists for this
+  // conversation. F7 / AUDIT_08 P1: a present-but-corrupt blob must not count
+  // -- MlsCoordinatorService.getOrDeriveState() grants READY on the strength
+  // of this alone, and a READY conversation whose group state can't actually
+  // be restored fails every decrypt with no path to recovery. Returning false
+  // here instead routes it through the normal EMPTY -> re-establish flow.
   async hasGroupState(
     conversationId: string,
     user:           UserProfile,
@@ -796,7 +801,15 @@ export class MlsService {
   ): Promise<boolean> {
     const scope = this.makeScope(user.did, device.id);
     const state = await this.storage.load<StoredMlsState>(scope);
-    return !!(state?.groupStates[conversationId]);
+    const encoded = state?.groupStates[conversationId];
+    if (!encoded) return false;
+    try {
+      const epoch = this.restoreClientState(encoded).groupContext?.epoch;
+      return typeof epoch === 'bigint' || typeof epoch === 'number';
+    } catch (err) {
+      if (!environment.production) console.warn('[MLS] hasGroupState: local group state for', conversationId, 'is undecodable — treating as absent', err);
+      return false;
+    }
   }
 
   // Injects restored MLS group states from a backup into local storage.

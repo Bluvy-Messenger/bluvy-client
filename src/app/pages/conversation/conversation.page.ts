@@ -3,6 +3,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom, Observable, Subscription } from 'rxjs';
 import { map } from 'rxjs/operators';
 import {
@@ -24,6 +25,7 @@ import { ConversationsService } from '../../core/conversation/conversations.serv
 import type { ConversationListItem, ConversationParticipant } from '../../core/conversation/conversation.types';
 import { MlsCoordinatorBase } from '../../core/mls/coordinator/mls-coordinator.base';
 import { SocketService } from '../../core/infrastructure/socket.service';
+import { ConnectivityService } from '../../core/infrastructure/connectivity.service';
 import type { MessageNewPayload, WelcomeNewPayload } from '../../core/infrastructure/socket.types';
 import { MessageCacheService } from '../../core/conversation/message-cache.service';
 import { OutboxRepository, OutboxEntry } from '../../core/conversation/outbox.repository';
@@ -71,6 +73,7 @@ export class ConversationPage implements OnDestroy {
   private convSvc         = inject(ConversationsService);
   private coordinator     = inject(MlsCoordinatorBase);
   private socketSvc       = inject(SocketService);
+  private connectivitySvc = inject(ConnectivityService);
   private cdr             = inject(ChangeDetectorRef);
   private messageCacheSvc = inject(MessageCacheService);
   private outboxRepo      = inject(OutboxRepository);
@@ -90,6 +93,10 @@ export class ConversationPage implements OnDestroy {
   loading          = false;
   sending          = false;
   error            = '';
+  // Typed failure of the initial conversation load (distinct from `error`,
+  // which covers send/restore failures). Drives a specific message + a Retry
+  // button instead of one generic "Could not load conversation."
+  loadError:       'offline' | 'auth' | 'not-found' | 'generic' | null = null;
   // Recovered from the outbox on open -- see ionViewWillEnter -- when this
   // device was killed after a send reached the network but before it was
   // confirmed locally. Restored into the composer, never auto-resent.
@@ -160,6 +167,16 @@ export class ConversationPage implements OnDestroy {
     this.subs = new Subscription();
     this.subscribeToSocket();
 
+    await this.loadConversation(currentConvId);
+  }
+
+  // Retry affordance for a failed initial load (see loadError).
+  async retryLoad(): Promise<void> {
+    await this.loadConversation(this.conversationId);
+  }
+
+  private async loadConversation(currentConvId: string): Promise<void> {
+    this.loadError = null;
     this.loading = true;
     try {
       const conversation = await firstValueFrom(
@@ -281,8 +298,12 @@ export class ConversationPage implements OnDestroy {
       // reappearing every time the active device changed (multi-device bug).
       this.mlsGroupReady = !this.coordinator.isConversationFailed(currentConvId);
       this.markReadIfVisible();
-    } catch {
-      this.error = 'Could not load conversation.';
+    } catch (err) {
+      if (!this.connectivitySvc.online())            this.loadError = 'offline';
+      else if (!this.authSvc.isAuthenticated())      this.loadError = 'auth';
+      else if (err instanceof HttpErrorResponse && err.status === 404) this.loadError = 'not-found';
+      else                                          this.loadError = 'generic';
+      if (!environment.production) console.warn('[Conversation] load failed:', this.loadError, err);
     } finally {
       this.loading = false;
       this.cdr.detectChanges();
@@ -1221,8 +1242,23 @@ export class ConversationPage implements OnDestroy {
         const user   = this.authSvc.currentUser();
         const device = this.authSvc.currentDevice();
         if (!user || !device) return;
-        void this.coordinator.catchUpMissedCommits(this.conversationId, user, device)
-          .catch(err => { if (!environment.production) console.warn('[MLS] catchUpMissedCommits on reconnect failed:', err); });
+        const convId = this.conversationId;
+        // F3: a welcome:new / message:new that fired while the socket was
+        // down is never replayed on reconnect -- only catchUpMissedCommits
+        // used to run here. Also pull any pending Welcome and re-attempt
+        // messages still stuck as [Encrypted] for the conversation the user
+        // is actually looking at (the global sweep has a 10-min cooldown and
+        // may skip a quick reconnect).
+        void (async () => {
+          try {
+            await this.coordinator.catchUpMissedCommits(convId, user, device);
+            await this.coordinator.fetchAndProcessPendingWelcome(convId, user, device);
+            await this.coordinator.replayPendingDecrypts(convId, user, device);
+            await this.coordinator.retryUndecryptableFromCache(convId, user, device);
+          } catch (err) {
+            if (!environment.production) console.warn('[MLS] reconnect recovery failed:', err);
+          }
+        })();
       }),
     );
 

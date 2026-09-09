@@ -200,6 +200,13 @@ export abstract class MlsCoordinatorBase {
   // there was nothing to retry.
   abstract retryUndecryptableViaCloudBackup(convId: string, user: UserProfile, device: DeviceInfo): Promise<number>;
 
+  // Re-attempts MLS decryption for messages cached as undecryptable
+  // placeholders, re-fetching each ciphertext from the server. Meant to run
+  // after catchUpMissedCommits() on reconnect / app resume so a conversation
+  // the user never reopened still self-heals (F4). Returns how many
+  // placeholders were turned back into plaintext.
+  abstract retryUndecryptableFromCache(convId: string, user: UserProfile, device: DeviceInfo): Promise<number>;
+
   // ── Domain events (Observable only — never Subject) ───────────────────────
   abstract readonly conversationReady$:          Observable<ConversationReadyEvent>;
   abstract readonly welcomeProcessed$:           Observable<WelcomeProcessedEvent>;
