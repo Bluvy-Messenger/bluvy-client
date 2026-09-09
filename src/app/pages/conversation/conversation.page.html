@@ -120,6 +120,24 @@
     }
   }
 
+  @if (loadError && !loading) {
+    <div class="ion-padding ion-text-center load-error">
+      <ion-text color="medium">
+        @switch (loadError) {
+          @case ('offline')   { {{ 'conversation.load_error.offline'   | translate }} }
+          @case ('auth')      { {{ 'conversation.load_error.auth'      | translate }} }
+          @case ('not-found') { {{ 'conversation.load_error.not_found' | translate }} }
+          @default            { {{ 'conversation.load_error.generic'   | translate }} }
+        }
+      </ion-text>
+      <div>
+        <ion-button fill="clear" size="small" (click)="retryLoad()">
+          {{ 'conversation.retry' | translate }}
+        </ion-button>
+      </div>
+    </div>
+  }
+
   @if (error && !loading) {
     <div class="ion-padding-horizontal error-inline">
       <ion-text color="danger">{{ error }}</ion-text>
