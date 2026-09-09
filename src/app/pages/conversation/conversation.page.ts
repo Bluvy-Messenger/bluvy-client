@@ -753,7 +753,7 @@ export class ConversationPage implements OnDestroy {
     // consumed successfully, so retrying doesn't touch an already-used ratchet
     // generation the way re-decrypting a *successful* past message would.
     const orphans = cacheResult.messages.filter(
-      m => m.deletedAt === null && (
+      m => m.deletedAt === null && !m.id.startsWith('spliced:') && (
         (m.isMine && m.plaintext === '' && !m.undecryptable) ||
         m.undecryptable
       ),
