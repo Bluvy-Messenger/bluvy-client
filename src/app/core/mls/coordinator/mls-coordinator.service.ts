@@ -622,7 +622,12 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       const page = await this.messageCacheSvc.getMessagesPage(convId, cursor ?? 0, 500);
       if (page.length === 0) break;
       for (const m of page) {
-        if (m.undecryptable && m.deletedAt === null) stuck.push(m);
+        // `spliced:{conv}:{srcId}` messages are cache-only copies from a
+        // predecessor conversation (recreate flow) -- there is no server row
+        // under that synthetic id, so a re-fetch is a guaranteed 404. If one
+        // is undecryptable it already was in the predecessor; cloud backup is
+        // its only recovery path, not this one.
+        if (m.undecryptable && m.deletedAt === null && !m.id.startsWith('spliced:')) stuck.push(m);
       }
       cursor = page[page.length - 1]!.createdAt;
       if (page.length < 500) break;
