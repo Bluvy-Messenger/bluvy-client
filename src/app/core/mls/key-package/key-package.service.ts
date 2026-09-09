@@ -27,6 +27,11 @@ export type { KeyPackageCountResponse, KeyPackagePoolStatus } from './key-packag
 const KP_TARGET    = 20;
 const KP_THRESHOLD = 10;
 
+// F8 orphan cleanup: while false, reconcileServerPool() only LOGS the server
+// key packages it can't back with a local private key. Flip to true in a
+// follow-up commit once production logs confirm there are no false positives.
+const RECONCILE_DELETE = false;
+
 // How often syncDeclaration() is allowed to actually read the declaration
 // back from the PDS to verify it hasn't drifted (wrong URL, stale
 // visibility, etc.) when the local device key hasn't changed. Keeps launch
@@ -269,8 +274,56 @@ export class KeyPackageService {
     }
   }
 
+  // F8 orphan cleanup: a crash before the private halves were persisted (old
+  // ordering) could leave the server serving key packages this device can't
+  // use. consumeKeyPackage is newest-first, so discovery is *more* likely to
+  // hand one of those to a conversation initiator, whose Welcome the invited
+  // device could then never join. Delete any server key package whose payload
+  // isn't in local state. Gated on RECONCILE_DELETE (log-only until proven
+  // safe in prod). Never throws.
+  private async reconcileServerPool(userDid: string, deviceId: string): Promise<void> {
+    try {
+      const scope = this.cryptoCtx.getStorageScope(userDid, deviceId);
+      const state = await this.storage.load<StoredMlsState>(scope);
+      // Empty/absent local state means "restore needed", not "orphans" --
+      // deleting here would destroy a pool the device legitimately owns.
+      if (!state?.keyPackages?.length) return;
+
+      const localPayloads = new Set(state.keyPackages.map(k => k.serializedKeyPackage));
+
+      let cursor: string | undefined;
+      let orphans = 0;
+      for (;;) {
+        const page = await this.kpRepo.listMine(cursor);
+        for (const serverKp of page.data) {
+          if (localPayloads.has(serverKp.keyPackage)) continue;
+          orphans++;
+          console.warn('[KeyPackageService] orphan KP detected (no local private key):', serverKp.id,
+            RECONCILE_DELETE ? '— deleting' : '— log-only');
+          if (RECONCILE_DELETE) {
+            await this.kpRepo.deleteById(serverKp.id).catch(err => {
+              if (!environment.production) console.warn('[KeyPackageService] orphan KP delete failed:', serverKp.id, err);
+            });
+          }
+        }
+        if (!page.cursor) break;
+        cursor = page.cursor;
+      }
+
+      if (orphans > 0 && !environment.production) {
+        console.log(`[KeyPackageService] reconcileServerPool: ${orphans} orphan(s), delete=${RECONCILE_DELETE}`);
+      }
+    } catch (err) {
+      if (!environment.production) console.warn('[KeyPackageService] reconcileServerPool failed:', err);
+    }
+  }
+
   private async runEnsure(userDid: string, deviceId: string): Promise<void> {
     this._poolStatus = 'checking';
+
+    // Before checking the count / refilling: drop any server key package this
+    // device can't back locally, so the top-up below refills the gap (F8).
+    await this.reconcileServerPool(userDid, deviceId);
 
     let countResp: KeyPackageCountResponse;
     try {

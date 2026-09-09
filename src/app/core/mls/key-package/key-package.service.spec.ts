@@ -28,7 +28,9 @@ describe('KeyPackageService.refillPool ordering (F8)', () => {
 
   beforeEach(() => {
     calls.length = 0;
-    mockRepo    = jasmine.createSpyObj('KeyPackageRepository', ['getCount', 'upload']);
+    mockRepo    = jasmine.createSpyObj('KeyPackageRepository', ['getCount', 'upload', 'listMine', 'deleteById']);
+    mockRepo.listMine.and.returnValue(Promise.resolve({ data: [], cursor: null }));
+    mockRepo.deleteById.and.returnValue(Promise.resolve({ deleted: true }));
     mockStorage = jasmine.createSpyObj('MlsStateStorageService', ['update', 'load']);
     mockSigner  = jasmine.createSpyObj('DidSignerService', ['signPayload']);
 
@@ -50,6 +52,7 @@ describe('KeyPackageService.refillPool ordering (F8)', () => {
         { provide: MlsStateStorageService, useValue: mockStorage },
         { provide: MlsCryptoContextService, useValue: {
           makeScope: () => 'mls:did:plc:alice:device-a1',
+          getStorageScope: () => 'mls:did:plc:alice:device-a1',
           base64ToBytes: () => new Uint8Array(),
           sha256hex: () => Promise.resolve('deadbeef'),
         } },
@@ -83,6 +86,32 @@ describe('KeyPackageService.refillPool ordering (F8)', () => {
 
     expect(state.keyPackages[0].serverId).toBe('srv-kp-a');
     expect(state.keyPackages[1].serverId).toBe('srv-kp-b');
+  });
+
+  describe('reconcileServerPool (F8 orphan cleanup)', () => {
+    it('does nothing when local MLS state is empty/absent (restore needed, not orphans)', async () => {
+      mockStorage.load.and.returnValue(Promise.resolve(null));
+      await (service as any).reconcileServerPool('did:plc:alice', 'device-a1');
+      expect(mockRepo.listMine).not.toHaveBeenCalled();
+      expect(mockRepo.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('lists the server pool when local state has key packages, but never deletes while RECONCILE_DELETE is off', async () => {
+      mockStorage.load.and.returnValue(Promise.resolve({ keyPackages: [record('kp-a')] } as any));
+      mockRepo.listMine.and.returnValue(Promise.resolve({
+        data: [{ id: 'srv-1', keyPackage: 'kp-a' }, { id: 'srv-2', keyPackage: 'kp-orphan' }],
+        cursor: null,
+      }));
+      await (service as any).reconcileServerPool('did:plc:alice', 'device-a1');
+      expect(mockRepo.listMine).toHaveBeenCalled();
+      expect(mockRepo.deleteById).not.toHaveBeenCalled(); // log-only
+    });
+
+    it('never throws even if listMine fails', async () => {
+      mockStorage.load.and.returnValue(Promise.resolve({ keyPackages: [record('kp-a')] } as any));
+      mockRepo.listMine.and.returnValue(Promise.reject(new Error('network')));
+      await expectAsync((service as any).reconcileServerPool('did:plc:alice', 'device-a1')).toBeResolved();
+    });
   });
 
   it('does not throw if the serverId backfill write fails', async () => {
