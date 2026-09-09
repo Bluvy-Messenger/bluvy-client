@@ -39,6 +39,23 @@ import { MlsCoordinatorBase } from './mls-coordinator.base';
 const TRANSIENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/mls group not ready/i,   'GroupNotReady'],
   [/mls not initialized/i,   'GroupNotReady'],
+  // ts-mls: "Desired generation too far in the future" -- an out-of-order
+  // message within an epoch (we haven't processed the sender's earlier
+  // messages yet). The replay path still demotes it to [Encrypted] once it
+  // is historical or the retry budget is spent (F2). NOT "Desired gen in the
+  // past", which is a genuinely ratcheted-past generation (see below).
+  [/desired gen(?:eration)? too far in the future/i, 'EpochMismatch'],
+] as const;
+
+// Raw WebCrypto / AEAD failures whose text is byte-identical whether the
+// cause is "we decrypted with a stale epoch's key because we're mid-catch-up"
+// or a genuine tamper/fork. Treated as PERMANENT only once caughtUpConvs
+// proves this device is current; otherwise queued for replay (F2). The
+// replay budget (MAX_REPLAY_ATTEMPTS) bounds this either way.
+const RETRYABLE_UNTIL_CAUGHT_UP: readonly RegExp[] = [
+  /operation ?error/i,
+  /\bcrypto\b/i,
+  /out of range/i,
 ] as const;
 
 const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -49,11 +66,10 @@ const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/expected application message/i,  'WireformatMismatch'],
   [/invalid mac/i,                   'InvalidSignature'],
   [/invalid signature/i,             'InvalidSignature'],
-  [/verification/i,                  'InvalidSignature'],
   [/could not verify/i,              'InvalidSignature'],
-  [/crypto/i,                        'InvalidSignature'],
   [/epoch too old/i,                 'EpochTooOld'],
-  [/desired gen/i,                   'EpochMismatch'],
+  // ts-mls: forward secrecy already ratcheted past this generation's key.
+  [/desired gen(?:eration)? in the past/i, 'EpochTooOld'],
 ] as const;
 
 @Injectable({ providedIn: 'root' })
@@ -101,6 +117,12 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
   // intermediate epoch) doesn't kill a message that decrypts fine seconds
   // later once the remaining commits land (F1/F6).
   private static readonly MAX_REPLAY_ATTEMPTS = 5;
+
+  // Conversations this device has confirmed it is caught up on this session
+  // (a successful catchUpMissedCommits, or a successful decrypt). Gates the
+  // RETRYABLE_UNTIL_CAUGHT_UP classification: an epoch/crypto error before
+  // this is set is an intermediate catch-up state, not a fork (F2).
+  private readonly caughtUpConvs = new Set<string>();
 
   // Tracks the timestamp when a conversation state became READY on this device.
   // Used to distinguish historical messages (which a new device naturally cannot decrypt)
@@ -530,6 +552,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     }
 
     await this.pendingRepo.clear(convId);
+    this.caughtUpConvs.delete(convId);
     this.transitionState(convId, ConversationMlsState.Empty);
   }
 
@@ -704,6 +727,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         console.log('[MLS:coordinator] decryptMessage success for', messageId, 'length:', plaintext.length);
         this.transitionState(convId, ConversationMlsState.Ready);
         this.decryptionFailures.set(convId, 0);
+        this.caughtUpConvs.add(convId); // a clean decrypt proves we're current
         return { messageId, conversationId: convId, state: 'plaintext' as const, plaintext, operationId };
       } catch (err) {
         // P2 fix: an epoch-ahead ciphertext (this device missed a later
@@ -721,6 +745,7 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
         // ORIGINAL error -- today's behavior for "catch-up didn't close the
         // gap" is completely unaffected.
         if (err instanceof DecryptEpochAheadError) {
+          this.caughtUpConvs.delete(convId); // we just learned we're behind
           try {
             await this.catchUpMissedCommits(convId, user, device);
             const retriedPlaintext = await this.mlsSvc.decryptMessage(convId, user, device, ciphertextB64);
@@ -939,6 +964,11 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
       convId, user, device,
       () => this.mlsSvc.catchUpMissedCommits(convId, user, device),
     );
+
+    // A completed catch-up batch means every commit the server has for this
+    // conversation is applied locally -- from here an epoch/crypto decrypt
+    // failure is real, not an intermediate state (F2).
+    this.caughtUpConvs.add(convId);
 
     // A background catch-up (proactiveCatchUpSweep, socket reconnect) was the
     // only path that could bring a conversation up to date without ever
@@ -1392,14 +1422,24 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
 
   private classifyError(err: unknown, convId: string): TransientMlsError | PermanentMlsError {
     const msg = err instanceof Error ? err.message : String(err);
+    const caughtUp = this.caughtUpConvs.has(convId);
 
     for (const [pattern, kind] of TRANSIENT_PATTERNS) {
       if (pattern.test(msg)) return new TransientMlsError(kind as never, msg, convId);
+    }
+    for (const pattern of RETRYABLE_UNTIL_CAUGHT_UP) {
+      if (pattern.test(msg)) {
+        return caughtUp
+          ? new PermanentMlsError('InvalidCiphertext', msg, convId)
+          : new TransientMlsError('NotCaughtUp', msg, convId);
+      }
     }
     for (const [pattern, kind] of PERMANENT_PATTERNS) {
       if (pattern.test(msg)) return new PermanentMlsError(kind as never, msg, convId);
     }
 
+    // Unrecognized: still only fatal once we've proven we're caught up.
+    if (!caughtUp) return new TransientMlsError('NotCaughtUp', msg, convId);
     console.error('[MLS:coordinator] Unrecognized ts-mls error, classifying as PermanentMlsError:', err);
     return new PermanentMlsError('InvalidCiphertext', msg, convId);
   }
@@ -1440,5 +1480,6 @@ export class MlsCoordinatorService extends MlsCoordinatorBase {
     this.commitFailureCounts.clear();
     this.decryptionFailures.clear();
     this.readyTimestamps.clear();
+    this.caughtUpConvs.clear();
   }
 }

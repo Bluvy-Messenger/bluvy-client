@@ -101,6 +101,35 @@ describe('MlsCoordinatorService', () => {
     expect(mockPendingRepo.enqueue).not.toHaveBeenCalled();
   }));
 
+  it('queues a raw WebCrypto failure for replay while not yet caught up, instead of [Encrypted] on the first miss (F2)', fakeAsync(() => {
+    mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(new Error('CryptoError: OperationError')));
+    mockPendingRepo.enqueue.and.returnValue(Promise.resolve());
+
+    let resultState: string | undefined;
+    service.decryptMessage('conv-f2', 'msg-f2', 'did:plc:bob', 'device-bob', false, Date.now(), 'ct', mockUser, mockDevice)
+      .then(res => { resultState = res.state; });
+    tick();
+
+    expect(resultState).toBe('pending_decrypt');
+    expect(mockPendingRepo.enqueue).toHaveBeenCalled();
+  }));
+
+  it('treats the same raw WebCrypto failure as permanent once the conversation is confirmed caught up (F2)', fakeAsync(() => {
+    // First: a clean decrypt marks conv-f2b caught up.
+    mockMlsSvc.decryptMessage.and.returnValue(Promise.resolve('hello'));
+    service.decryptMessage('conv-f2b', 'msg-ok', 'did:plc:bob', 'device-bob', false, Date.now(), 'ct', mockUser, mockDevice).then(() => {});
+    tick();
+
+    mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(new Error('CryptoError: OperationError')));
+    let resultState: string | undefined;
+    service.decryptMessage('conv-f2b', 'msg-bad', 'did:plc:bob', 'device-bob', false, Date.now(), 'ct', mockUser, mockDevice)
+      .then(res => { resultState = res.state; });
+    tick();
+
+    expect(resultState).toBe('undecryptable');
+    expect(mockPendingRepo.enqueue).not.toHaveBeenCalled();
+  }));
+
   it('should treat transient errors (like group not ready) as transient (pending_decrypt) and enqueue them', fakeAsync(() => {
     // Arrange: Mock the MlsService to throw "MLS group not ready for this conversation"
     const transientError = new Error('MLS group not ready for this conversation');
@@ -220,10 +249,11 @@ describe('MlsCoordinatorService', () => {
       expect(console.error).not.toHaveBeenCalledWith(jasmine.stringMatching('Unrecognized ts-mls error'), jasmine.anything());
     }));
 
-    it('falls through unchanged to the existing classification/heal chain when catch-up does not close the gap (retry also throws DecryptEpochAheadError)', fakeAsync(() => {
+    it('falls through to the classification/heal chain when catch-up does not close the gap; queues for replay while not yet caught up (F2)', fakeAsync(() => {
       const epochAheadError = new DecryptEpochAheadError('conv-123', 1, 2);
       mockMlsSvc.decryptMessage.and.returnValue(Promise.reject(epochAheadError));
       mockMlsSvc.catchUpMissedCommits.and.returnValue(Promise.resolve(0));
+      mockPendingRepo.enqueue.and.returnValue(Promise.resolve());
 
       let resultState: string | undefined;
       service.decryptMessage(
@@ -233,12 +263,12 @@ describe('MlsCoordinatorService', () => {
 
       tick();
 
-      // DecryptEpochAheadError isn't one of TRANSIENT_PATTERNS/PERMANENT_PATTERNS'
-      // regex matches (its .message is a synthetic, non-matching string), so it
-      // falls to the unrecognized-error default: PermanentMlsError -> undecryptable.
-      // This is today's exact pre-fix behavior for "catch-up didn't help" -- unchanged.
-      expect(resultState).toBe('undecryptable');
-      expect(mockPendingRepo.enqueue).not.toHaveBeenCalled();
+      // DecryptEpochAheadError's synthetic .message matches no pattern -> the
+      // unrecognized-error default. Pre-F2 that was PermanentMlsError ->
+      // undecryptable on the first miss; now, while the conversation has not
+      // been confirmed caught up, it stays queued for replay instead.
+      expect(resultState).toBe('pending_decrypt');
+      expect(mockPendingRepo.enqueue).toHaveBeenCalled();
     }));
 
     it('does not affect classification of unrelated errors (transient/permanent paths untouched)', fakeAsync(() => {
@@ -565,7 +595,7 @@ describe('MlsCoordinatorService', () => {
     }));
 
     it('does not treat an EpochMismatch on a recent message as permanent while catching up', fakeAsync(() => {
-      replayAfterCatchUp([entry({ attempts: 0 })], new Error('desired gen 5 but ratchet at 2'));
+      replayAfterCatchUp([entry({ attempts: 0 })], new Error('ValidationError: Desired generation too far in the future'));
 
       expect(mockPendingRepo.markAttempt).toHaveBeenCalledWith('msg-pending-1');
       expect(mockPendingRepo.remove).not.toHaveBeenCalledWith('msg-pending-1');
